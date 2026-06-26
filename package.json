@@ -1,0 +1,7 @@
+{
+  "name": "mapterhorn-hillshade",
+  "private": true,
+  "scripts": {
+    "start": "npx --yes serve ."
+  }
+}
