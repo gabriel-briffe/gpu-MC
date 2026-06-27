@@ -35,6 +35,18 @@ export function globalPixelToLngLat(gx, gy, zoom) {
   return { lng, lat };
 }
 
+export function gridCellToLngLat(gi, gj, dem) {
+  const { gx0, gy0, zoom } = dem;
+  return globalPixelToLngLat(gx0 + gi + 0.5, gy0 + gj + 0.5, zoom);
+}
+
+export function gridIndexFromLngLat(lng, lat, dem) {
+  const { gx, gy } = lngLatToGlobalPixel(lng, lat, dem.zoom);
+  const gi = Math.floor(gx) - dem.gx0;
+  const gj = Math.floor(gy) - dem.gy0;
+  return { gi, gj };
+}
+
 export function gridBoundsLngLat(gx0, gy0, width, height, zoom) {
   const nw = globalPixelToLngLat(gx0, gy0, zoom);
   const ne = globalPixelToLngLat(gx0 + width, gy0, zoom);

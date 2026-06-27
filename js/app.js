@@ -1,7 +1,8 @@
 import {
   formatCoord,
   gridBoundsLngLat,
-  lngLatToGlobalPixel,
+  gridCellToLngLat,
+  gridIndexFromLngLat,
   pickTerrainZoom,
   metersPerPixel,
 } from "./geo.js";
@@ -10,6 +11,12 @@ import { GlideConeEngine } from "./glidecone.js";
 
 const MAX_ALTITUDE = 4200;
 const MAX_GRID_DIM = 1024;
+
+const EMPTY_PATH = {
+  type: "Feature",
+  geometry: { type: "LineString", coordinates: [] },
+  properties: {},
+};
 
 const info = document.getElementById("info");
 const latEl = document.getElementById("lat");
@@ -23,6 +30,7 @@ let engine = null;
 let computing = false;
 let overlayCanvas = null;
 let coneState = null;
+let pathLayerReady = false;
 
 function getGlideParams() {
   const glideRatio = Number.parseFloat(document.getElementById("ld").value);
@@ -76,10 +84,41 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
+function raisePathLayer() {
+  if (pathLayerReady && map.getLayer("glide-path")) {
+    map.moveLayer("glide-path");
+  }
+}
+
+function ensurePathLayer() {
+  if (pathLayerReady) {
+    return;
+  }
+  map.addSource("glide-path", {
+    type: "geojson",
+    data: EMPTY_PATH,
+  });
+  map.addLayer({
+    id: "glide-path",
+    type: "line",
+    source: "glide-path",
+    paint: {
+      "line-color": "#ffcc00",
+      "line-width": 3,
+      "line-opacity": 0.95,
+    },
+  });
+  pathLayerReady = true;
+  raisePathLayer();
+}
+
 function setConeState(dem, result) {
   coneState = {
     dem,
     altitudes: result.altitudes,
+    originX: result.originX,
+    originY: result.originY,
+    ground: result.ground,
     imageData: result.imageData,
     maxAltitude: MAX_ALTITUDE,
   };
@@ -106,6 +145,7 @@ function updateOverlay(imageData, dem) {
       url: overlayCanvas.toDataURL(),
       coordinates,
     });
+    raisePathLayer();
     return;
   }
 
@@ -123,17 +163,16 @@ function updateOverlay(imageData, dem) {
       "raster-opacity": 1,
     },
   });
+  raisePathLayer();
 }
 
-function sampleConeAltitude(lng, lat) {
+function sampleConeCell(lng, lat) {
   if (!coneState) {
     return null;
   }
 
-  const { dem, altitudes, maxAltitude } = coneState;
-  const { gx, gy } = lngLatToGlobalPixel(lng, lat, dem.zoom);
-  const gi = Math.floor(gx) - dem.gx0;
-  const gj = Math.floor(gy) - dem.gy0;
+  const { dem, altitudes, ground, maxAltitude } = coneState;
+  const { gi, gj } = gridIndexFromLngLat(lng, lat, dem);
 
   if (gi < 0 || gj < 0 || gi >= dem.width || gj >= dem.height) {
     return null;
@@ -141,11 +180,76 @@ function sampleConeAltitude(lng, lat) {
 
   const idx = gj * dem.width + gi;
   const alt = altitudes[idx];
-  if (!Number.isFinite(alt) || alt >= maxAltitude) {
+  if (!Number.isFinite(alt) || alt >= maxAltitude || ground[idx] === 1) {
     return null;
   }
 
-  return alt;
+  return { gi, gj, alt, idx };
+}
+
+function traceOriginPath(gi, gj) {
+  const { dem, originX, originY } = coneState;
+  const coordinates = [];
+  const visited = new Set();
+  let x = gi;
+  let y = gj;
+  const maxSteps = dem.width + dem.height;
+
+  for (let step = 0; step < maxSteps; step += 1) {
+    const key = `${x},${y}`;
+    if (visited.has(key)) {
+      break;
+    }
+    visited.add(key);
+
+    const pt = gridCellToLngLat(x, y, dem);
+    coordinates.push([pt.lng, pt.lat]);
+
+    const idx = y * dem.width + x;
+    const ox = originX[idx];
+    const oy = originY[idx];
+
+    if (ox < 0 || oy < 0) {
+      break;
+    }
+
+    if (ox === dem.homeX && oy === dem.homeY) {
+      if (x !== dem.homeX || y !== dem.homeY) {
+        const home = gridCellToLngLat(dem.homeX, dem.homeY, dem);
+        coordinates.push([home.lng, home.lat]);
+      }
+      break;
+    }
+
+    if (ox === x && oy === y) {
+      break;
+    }
+
+    x = ox;
+    y = oy;
+  }
+
+  return coordinates;
+}
+
+function updateGlidePath(coordinates) {
+  ensurePathLayer();
+  map.getSource("glide-path").setData({
+    type: "Feature",
+    geometry: {
+      type: "LineString",
+      coordinates,
+    },
+    properties: {},
+  });
+  raisePathLayer();
+}
+
+function clearGlidePath() {
+  if (!pathLayerReady) {
+    return;
+  }
+  map.getSource("glide-path").setData(EMPTY_PATH);
 }
 
 async function ensureEngine() {
@@ -158,6 +262,7 @@ async function ensureEngine() {
 
 map.on("load", async () => {
   info.classList.add("visible");
+  ensurePathLayer();
   try {
     await ensureEngine();
     setStatus("WebGPU ready — click the map to compute a glide cone");
@@ -168,20 +273,29 @@ map.on("load", async () => {
 });
 
 map.on("mousemove", (event) => {
-  const alt = sampleConeAltitude(event.lngLat.lng, event.lngLat.lat);
-  if (alt === null) {
+  const cell = sampleConeCell(event.lngLat.lng, event.lngLat.lat);
+  if (cell === null) {
     hoverTip.style.display = "none";
+    clearGlidePath();
     return;
   }
 
   hoverTip.style.display = "block";
   hoverTip.style.left = `${event.point.x + 14}px`;
   hoverTip.style.top = `${event.point.y + 14}px`;
-  hoverTip.textContent = `${Math.round(alt)} m`;
+  hoverTip.textContent = `${Math.round(cell.alt)} m`;
+
+  const path = traceOriginPath(cell.gi, cell.gj);
+  if (path.length >= 2) {
+    updateGlidePath(path);
+  } else {
+    clearGlidePath();
+  }
 });
 
 map.on("mouseleave", () => {
   hoverTip.style.display = "none";
+  clearGlidePath();
 });
 
 paramsForm.addEventListener("submit", (event) => {
@@ -200,6 +314,7 @@ async function runComputation(lng, lat) {
   elevationEl.textContent = "…";
   setStatus("Sampling terrain…");
   hoverTip.style.display = "none";
+  clearGlidePath();
 
   computing = true;
 
@@ -222,6 +337,7 @@ async function runComputation(lng, lat) {
 
     setConeState(dem, result);
     updateOverlay(result.imageData, dem);
+    ensurePathLayer();
 
     setStatus(
       `Done — z${dem.zoom}, ${Math.round(dem.cellSizeM)} m, ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms GPU` +

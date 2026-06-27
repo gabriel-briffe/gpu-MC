@@ -15,11 +15,108 @@ struct Params {
 @group(0) @binding(2) var<storage, read> altIn: array<f32>;
 @group(0) @binding(3) var<storage, read> originXIn: array<i32>;
 @group(0) @binding(4) var<storage, read> originYIn: array<i32>;
-@group(0) @binding(5) var<storage, read_write> originXOut: array<i32>;
-@group(0) @binding(6) var<storage, read_write> originYOut: array<i32>;
+@group(0) @binding(5) var<storage, read> groundIn: array<u32>;
+@group(0) @binding(6) var<storage, read_write> originXOut: array<i32>;
+@group(0) @binding(7) var<storage, read_write> originYOut: array<i32>;
 
 fn idx(x: i32, y: i32) -> u32 {
   return u32(y) * params.width + u32(x);
+}
+
+fn inBounds(x: i32, y: i32) -> bool {
+  return x >= 0 && y >= 0 && x < i32(params.width) && y < i32(params.height);
+}
+
+fn isGround(x: i32, y: i32) -> bool {
+  if (!inBounds(x, y)) {
+    return false;
+  }
+  return groundIn[idx(x, y)] == 1u;
+}
+
+fn hasSameOrigin(x: i32, y: i32, targetOx: i32, targetOy: i32) -> bool {
+  let ci = idx(x, y);
+  return originXIn[ci] == targetOx && originYIn[ci] == targetOy;
+}
+
+// Bresenham toward origin cell; stop early on ground (blocked) or same-origin frontier (clear).
+fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
+  if (targetOx < 0 || targetOy < 0 || !inBounds(targetOx, targetOy)) {
+    return false;
+  }
+  if (x0 == targetOx && y0 == targetOy) {
+    return true;
+  }
+  let adx = abs(targetOx - x0);
+  let ady = abs(targetOy - y0);
+  if (adx <= 1 && ady <= 1) {
+    return true;
+  }
+
+  var x1 = x0;
+  var y1 = y0;
+  let xstep = select(-1, 1, targetOx > x1);
+  let ystep = select(-1, 1, targetOy > y1);
+  let dx = adx;
+  let dy = ady;
+  let ddy = dy * 2;
+  let ddx = dx * 2;
+  var error = dx;
+  var errorprev = error;
+
+  if (dx >= dy) {
+    for (var step = 0; step < dx; step = step + 1) {
+      x1 = x1 + xstep;
+      error = error + ddy;
+      if (error > ddx) {
+        y1 = y1 + ystep;
+        error = error - ddx;
+        if (error + errorprev < ddx) {
+          if (isGround(x1, y1 - ystep)) {
+            return false;
+          }
+        } else if (error + errorprev > ddx) {
+          if (isGround(x1 - xstep, y1)) {
+            return false;
+          }
+        }
+      }
+      if (isGround(x1, y1)) {
+        return false;
+      }
+      if (hasSameOrigin(x1, y1, targetOx, targetOy)) {
+        return true;
+      }
+      errorprev = error;
+    }
+  } else {
+    for (var step = 0; step < dy; step = step + 1) {
+      y1 = y1 + ystep;
+      error = error + ddx;
+      if (error > ddy) {
+        x1 = x1 + xstep;
+        error = error - ddy;
+        if (error + errorprev < ddy) {
+          if (isGround(x1 - xstep, y1)) {
+            return false;
+          }
+        } else if (error + errorprev > ddy) {
+          if (isGround(x1, y1 - ystep)) {
+            return false;
+          }
+        }
+      }
+      if (isGround(x1, y1)) {
+        return false;
+      }
+      if (hasSameOrigin(x1, y1, targetOx, targetOy)) {
+        return true;
+      }
+      errorprev = error;
+    }
+  }
+
+  return true;
 }
 
 fn coneAlt(ox: i32, oy: i32, x: i32, y: i32) -> f32 {
@@ -30,7 +127,7 @@ fn coneAlt(ox: i32, oy: i32, x: i32, y: i32) -> f32 {
 }
 
 fn tryOrigin(ox: i32, oy: i32, x: i32, y: i32, bestReq: f32, bestOx: i32, bestOy: i32) -> vec3<f32> {
-  if (ox < 0 || oy < 0) {
+  if (ox < 0 || oy < 0 || !inBounds(ox, oy)) {
     return vec3<f32>(bestReq, f32(bestOx), f32(bestOy));
   }
   let req = coneAlt(ox, oy, x, y);
@@ -40,11 +137,35 @@ fn tryOrigin(ox: i32, oy: i32, x: i32, y: i32, bestReq: f32, bestOx: i32, bestOy
   return vec3<f32>(bestReq, f32(bestOx), f32(bestOy));
 }
 
+fn electedOrigin(x: i32, y: i32, ox: i32, oy: i32, rx: i32, ry: i32) -> vec2<i32> {
+  if (ox < 0 || oy < 0) {
+    return vec2<i32>(-1, -1);
+  }
+  if (isInViewToOrigin(x, y, ox, oy)) {
+    return vec2<i32>(ox, oy);
+  }
+  return vec2<i32>(rx, ry);
+}
+
+fn tryNeighbor(nx: i32, ny: i32, x: i32, y: i32, bestReq: f32, bestOx: i32, bestOy: i32) -> vec3<f32> {
+  if (!inBounds(nx, ny)) {
+    return vec3<f32>(bestReq, f32(bestOx), f32(bestOy));
+  }
+  let ni = idx(nx, ny);
+  let nox = originXIn[ni];
+  let noy = originYIn[ni];
+  if (nox < 0 || noy < 0) {
+    return vec3<f32>(bestReq, f32(bestOx), f32(bestOy));
+  }
+  let elected = electedOrigin(x, y, nox, noy, nx, ny);
+  return tryOrigin(elected.x, elected.y, x, y, bestReq, bestOx, bestOy);
+}
+
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let x = i32(gid.x);
   let y = i32(gid.y);
-  if (x >= i32(params.width) || y >= i32(params.height)) {
+  if (!inBounds(x, y)) {
     return;
   }
 
@@ -53,31 +174,22 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   var bestOx = originXIn[i];
   var bestOy = originYIn[i];
 
-  let own = tryOrigin(bestOx, bestOy, x, y, bestReq, bestOx, bestOy);
-  bestReq = own.x;
-  bestOx = i32(own.y);
-  bestOy = i32(own.z);
+  if (bestOx >= 0 && bestOy >= 0) {
+    let elected = electedOrigin(x, y, bestOx, bestOy, x, y);
+    let own = tryOrigin(elected.x, elected.y, x, y, bestReq, bestOx, bestOy);
+    bestReq = own.x;
+    bestOx = i32(own.y);
+    bestOy = i32(own.z);
+  }
 
-  if (y > 0) {
-    let n = idx(x, y - 1);
-    let v = tryOrigin(originXIn[n], originYIn[n], x, y, bestReq, bestOx, bestOy);
-    bestReq = v.x; bestOx = i32(v.y); bestOy = i32(v.z);
-  }
-  if (y + 1 < i32(params.height)) {
-    let n = idx(x, y + 1);
-    let v = tryOrigin(originXIn[n], originYIn[n], x, y, bestReq, bestOx, bestOy);
-    bestReq = v.x; bestOx = i32(v.y); bestOy = i32(v.z);
-  }
-  if (x > 0) {
-    let n = idx(x - 1, y);
-    let v = tryOrigin(originXIn[n], originYIn[n], x, y, bestReq, bestOx, bestOy);
-    bestReq = v.x; bestOx = i32(v.y); bestOy = i32(v.z);
-  }
-  if (x + 1 < i32(params.width)) {
-    let n = idx(x + 1, y);
-    let v = tryOrigin(originXIn[n], originYIn[n], x, y, bestReq, bestOx, bestOy);
-    bestReq = v.x; bestOx = i32(v.y); bestOy = i32(v.z);
-  }
+  var v = tryNeighbor(x, y - 1, x, y, bestReq, bestOx, bestOy);
+  bestReq = v.x; bestOx = i32(v.y); bestOy = i32(v.z);
+  v = tryNeighbor(x, y + 1, x, y, bestReq, bestOx, bestOy);
+  bestReq = v.x; bestOx = i32(v.y); bestOy = i32(v.z);
+  v = tryNeighbor(x - 1, y, x, y, bestReq, bestOx, bestOy);
+  bestReq = v.x; bestOx = i32(v.y); bestOy = i32(v.z);
+  v = tryNeighbor(x + 1, y, x, y, bestReq, bestOx, bestOy);
+  bestReq = v.x; bestOx = i32(v.y); bestOy = i32(v.z);
 
   originXOut[i] = bestOx;
   originYOut[i] = bestOy;
@@ -146,7 +258,7 @@ struct Params {
 @group(0) @binding(3) var<storage, read_write> altOut: array<f32>;
 @group(0) @binding(4) var<storage, read_write> originX: array<i32>;
 @group(0) @binding(5) var<storage, read_write> originY: array<i32>;
-@group(0) @binding(6) var<storage, read_write> ground: array<u32>;
+@group(0) @binding(6) var<storage, read_write> groundOut: array<u32>;
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -158,12 +270,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let i = u32(y) * params.width + u32(x);
   if (altIn[i] <= elev[i] + 0.01) {
-    ground[i] = 1u;
+    groundOut[i] = 1u;
     originX[i] = x;
     originY[i] = y;
     altOut[i] = elev[i];
   } else {
-    ground[i] = 0u;
+    groundOut[i] = 0u;
     altOut[i] = altIn[i];
   }
 }
@@ -184,7 +296,8 @@ struct Params {
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> alt: array<f32>;
 @group(0) @binding(2) var<storage, read> originX: array<i32>;
-@group(0) @binding(3) var<storage, read_write> rgba: array<u32>;
+@group(0) @binding(3) var<storage, read> ground: array<u32>;
+@group(0) @binding(4) var<storage, read_write> rgba: array<u32>;
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -198,7 +311,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let ox = originX[i];
   let a = alt[i];
 
-  if (ox < 0 || a >= params.maxAlt) {
+  if (ox < 0 || a >= params.maxAlt || ground[i] == 1u) {
     rgba[i] = 0u;
     return;
   }
@@ -284,6 +397,7 @@ export class GlideConeEngine {
         "read-only-storage",
         "read-only-storage",
         "read-only-storage",
+        "read-only-storage",
         "storage",
         "storage",
       ]),
@@ -306,6 +420,7 @@ export class GlideConeEngine {
       ]),
       color: await createPipeline(this.device, COLOR_SHADER, [
         "uniform",
+        "read-only-storage",
         "read-only-storage",
         "read-only-storage",
         "storage",
@@ -353,12 +468,13 @@ export class GlideConeEngine {
     let originYRead = createBuffer(device, new Uint8Array(originY.buffer), storageUsage);
     let originXWrite = createBuffer(device, new Uint8Array(originX.buffer), storageUsage);
     let originYWrite = createBuffer(device, new Uint8Array(originY.buffer), storageUsage);
-    const groundBuffer = createBuffer(device, new Uint8Array(ground.buffer), storageUsage);
+    let groundRead = createBuffer(device, new Uint8Array(ground.buffer), storageUsage);
+    let groundWrite = createBuffer(device, new Uint8Array(ground.buffer), storageUsage);
     const rgbaBuffer = createBuffer(device, new Uint8Array(count * 4), storageUsage);
 
     const wgX = Math.ceil(width / 8);
     const wgY = Math.ceil(height / 8);
-    const iterations = width + height;
+    const iterations = (width + height) * 2;
     const t0 = performance.now();
 
     for (let iter = 0; iter < iterations; iter += 1) {
@@ -372,8 +488,9 @@ export class GlideConeEngine {
           { binding: 2, resource: { buffer: altRead } },
           { binding: 3, resource: { buffer: originXRead } },
           { binding: 4, resource: { buffer: originYRead } },
-          { binding: 5, resource: { buffer: originXWrite } },
-          { binding: 6, resource: { buffer: originYWrite } },
+          { binding: 5, resource: { buffer: groundRead } },
+          { binding: 6, resource: { buffer: originXWrite } },
+          { binding: 7, resource: { buffer: originYWrite } },
         ],
       });
       const passOrigin = encoder.beginComputePass();
@@ -413,7 +530,7 @@ export class GlideConeEngine {
           { binding: 3, resource: { buffer: altWrite } },
           { binding: 4, resource: { buffer: originXRead } },
           { binding: 5, resource: { buffer: originYRead } },
-          { binding: 6, resource: { buffer: groundBuffer } },
+          { binding: 6, resource: { buffer: groundWrite } },
         ],
       });
       const passGround = encoder.beginComputePass();
@@ -423,6 +540,7 @@ export class GlideConeEngine {
       passGround.end();
 
       [altRead, altWrite] = [altWrite, altRead];
+      [groundRead, groundWrite] = [groundWrite, groundRead];
 
       device.queue.submit([encoder.finish()]);
     }
@@ -434,7 +552,8 @@ export class GlideConeEngine {
         { binding: 0, resource: { buffer: colorUniform } },
         { binding: 1, resource: { buffer: altRead } },
         { binding: 2, resource: { buffer: originXRead } },
-        { binding: 3, resource: { buffer: rgbaBuffer } },
+        { binding: 3, resource: { buffer: groundRead } },
+        { binding: 4, resource: { buffer: rgbaBuffer } },
       ],
     });
 
@@ -468,6 +587,36 @@ export class GlideConeEngine {
     const altitudes = new Float32Array(altReadBuffer.getMappedRange().slice(0));
     altReadBuffer.unmap();
 
+    const originXBuffer = device.createBuffer({
+      size: count * 4,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+    const originYBuffer = device.createBuffer({
+      size: count * 4,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+    const originCopyEncoder = device.createCommandEncoder();
+    originCopyEncoder.copyBufferToBuffer(originXRead, 0, originXBuffer, 0, count * 4);
+    originCopyEncoder.copyBufferToBuffer(originYRead, 0, originYBuffer, 0, count * 4);
+    device.queue.submit([originCopyEncoder.finish()]);
+    await originXBuffer.mapAsync(GPUMapMode.READ);
+    await originYBuffer.mapAsync(GPUMapMode.READ);
+    const originXOut = new Int32Array(originXBuffer.getMappedRange().slice(0));
+    const originYOut = new Int32Array(originYBuffer.getMappedRange().slice(0));
+    originXBuffer.unmap();
+    originYBuffer.unmap();
+
+    const groundReadBuffer = device.createBuffer({
+      size: count * 4,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+    const groundCopyEncoder = device.createCommandEncoder();
+    groundCopyEncoder.copyBufferToBuffer(groundRead, 0, groundReadBuffer, 0, count * 4);
+    device.queue.submit([groundCopyEncoder.finish()]);
+    await groundReadBuffer.mapAsync(GPUMapMode.READ);
+    const groundOut = new Uint32Array(groundReadBuffer.getMappedRange().slice(0));
+    groundReadBuffer.unmap();
+
     const imageData = new ImageData(width, height);
     for (let i = 0; i < count; i += 1) {
       const p = packed[i];
@@ -481,6 +630,9 @@ export class GlideConeEngine {
     return {
       imageData,
       altitudes,
+      originX: originXOut,
+      originY: originYOut,
+      ground: groundOut,
       width,
       height,
       homeAlt,
