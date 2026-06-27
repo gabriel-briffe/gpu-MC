@@ -124,37 +124,12 @@ function setConeState(dem, result) {
   };
 }
 
-const NEIGHBORS_8 = [
-  [-1, -1],
-  [0, -1],
-  [1, -1],
-  [-1, 0],
-  [1, 0],
-  [-1, 1],
-  [0, 1],
-  [1, 1],
-];
-
 function cellKey(x, y) {
   return `${x},${y}`;
 }
 
-function inGrid(x, y, dem) {
-  return x >= 0 && y >= 0 && x < dem.width && y < dem.height;
-}
-
 function cellIndex(x, y, dem) {
   return y * dem.width + x;
-}
-
-function distToHomeSq(x, y, dem) {
-  const dx = x - dem.homeX;
-  const dy = y - dem.homeY;
-  return dx * dx + dy * dy;
-}
-
-function isAtHome(x, y, dem) {
-  return x === dem.homeX && y === dem.homeY;
 }
 
 function pushPathPoint(coordinates, x, y, dem) {
@@ -166,81 +141,13 @@ function pushPathPoint(coordinates, x, y, dem) {
   coordinates.push([pt.lng, pt.lat]);
 }
 
-function getCellState(x, y) {
-  const { dem, altitudes, ground, originX, originY, maxAltitude } = coneState;
-  if (!inGrid(x, y, dem)) {
-    return null;
-  }
-
-  const idx = cellIndex(x, y, dem);
-  const alt = altitudes[idx];
-  const unreachable = !Number.isFinite(alt) || alt >= maxAltitude;
-  const isGroundCell = ground[idx] === 1;
-  const ox = originX[idx];
-  const oy = originY[idx];
-  const hasOrigin = ox >= 0 && oy >= 0;
-
-  return {
-    x,
-    y,
-    idx,
-    elev: dem.elevation[idx],
-    isGround: isGroundCell,
-    isCone: !unreachable && !isGroundCell && hasOrigin,
-    unreachable,
-    ox,
-    oy,
-    selfOrigin: hasOrigin && ox === x && oy === y,
-  };
-}
-
-function pickLowestNeighbor(x, y, currentElev) {
-  const { dem } = coneState;
-  const candidates = [];
-
-  for (const [dx, dy] of NEIGHBORS_8) {
-    const nx = x + dx;
-    const ny = y + dy;
-    const neighbor = getCellState(nx, ny);
-    if (!neighbor || neighbor.unreachable) {
-      continue;
-    }
-    if (!neighbor.isGround && !neighbor.isCone) {
-      continue;
-    }
-    candidates.push(neighbor);
-  }
-
-  if (candidates.length === 0) {
-    return null;
-  }
-
-  candidates.sort((a, b) => {
-    if (a.elev !== b.elev) {
-      return a.elev - b.elev;
-    }
-    if (a.isCone !== b.isCone) {
-      return a.isCone ? -1 : 1;
-    }
-    return distToHomeSq(a.x, a.y, dem) - distToHomeSq(b.x, b.y, dem);
-  });
-
-  const lowest = candidates[0];
-  if (lowest.elev > currentElev + 0.01) {
-    return null;
-  }
-
-  return lowest;
-}
-
 function traceOriginPath(gi, gj) {
-  const { dem } = coneState;
+  const { dem, altitudes, originX, originY, maxAltitude } = coneState;
   const coordinates = [];
   const visited = new Set();
   let x = gi;
   let y = gj;
-  let mode = "ORIGIN_CHAIN";
-  const maxSteps = (dem.width + dem.height) * 4;
+  const maxSteps = dem.width + dem.height;
 
   for (let step = 0; step < maxSteps; step += 1) {
     const key = cellKey(x, y);
@@ -251,43 +158,24 @@ function traceOriginPath(gi, gj) {
 
     pushPathPoint(coordinates, x, y, dem);
 
-    if (isAtHome(x, y, dem)) {
+    if (x === dem.homeX && y === dem.homeY) {
       break;
     }
 
-    const state = getCellState(x, y);
-    if (!state || state.unreachable) {
+    const idx = cellIndex(x, y, dem);
+    const alt = altitudes[idx];
+    if (!Number.isFinite(alt) || alt >= maxAltitude) {
       break;
     }
 
-    if (mode === "ORIGIN_CHAIN") {
-      if (!state.isGround && !state.selfOrigin) {
-        const { ox, oy } = state;
-        if (ox < 0 || oy < 0) {
-          break;
-        }
-
-        if (isAtHome(ox, oy, dem)) {
-          pushPathPoint(coordinates, dem.homeX, dem.homeY, dem);
-          break;
-        }
-
-        x = ox;
-        y = oy;
-        continue;
-      }
-
-      mode = "GROUND_DESCENT";
-    }
-
-    const next = pickLowestNeighbor(x, y, state.elev);
-    if (!next) {
+    const ox = originX[idx];
+    const oy = originY[idx];
+    if (ox < 0 || oy < 0 || (ox === x && oy === y)) {
       break;
     }
 
-    x = next.x;
-    y = next.y;
-    mode = next.isCone ? "ORIGIN_CHAIN" : "GROUND_DESCENT";
+    x = ox;
+    y = oy;
   }
 
   return coordinates;
