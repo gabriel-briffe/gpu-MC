@@ -118,6 +118,8 @@ function setConeState(dem, result) {
     altitudes: result.altitudes,
     originX: result.originX,
     originY: result.originY,
+    parentX: result.parentX,
+    parentY: result.parentY,
     ground: result.ground,
     imageData: result.imageData,
     maxAltitude: MAX_ALTITUDE,
@@ -141,8 +143,8 @@ function pushPathPoint(coordinates, x, y, dem) {
   coordinates.push([pt.lng, pt.lat]);
 }
 
-function traceOriginPath(gi, gj) {
-  const { dem, altitudes, originX, originY, maxAltitude } = coneState;
+function traceGlidePath(gi, gj) {
+  const { dem, originX, originY, parentX, parentY, ground } = coneState;
   const coordinates = [];
   const visited = new Set();
   let x = gi;
@@ -163,19 +165,22 @@ function traceOriginPath(gi, gj) {
     }
 
     const idx = cellIndex(x, y, dem);
-    const alt = altitudes[idx];
-    if (!Number.isFinite(alt) || alt >= maxAltitude) {
+    let nx;
+    let ny;
+    if (ground[idx] === 1) {
+      nx = parentX[idx];
+      ny = parentY[idx];
+    } else {
+      nx = originX[idx];
+      ny = originY[idx];
+    }
+
+    if (nx < 0 || ny < 0 || (nx === x && ny === y)) {
       break;
     }
 
-    const ox = originX[idx];
-    const oy = originY[idx];
-    if (ox < 0 || oy < 0 || (ox === x && oy === y)) {
-      break;
-    }
-
-    x = ox;
-    y = oy;
+    x = nx;
+    y = ny;
   }
 
   return coordinates;
@@ -297,7 +302,7 @@ map.on("mousemove", (event) => {
   hoverTip.style.top = `${event.point.y + 14}px`;
   hoverTip.textContent = `${Math.round(cell.alt)} m`;
 
-  const path = traceOriginPath(cell.gi, cell.gj);
+  const path = traceGlidePath(cell.gi, cell.gj);
   if (path.length >= 2) {
     updateGlidePath(path);
   } else {
