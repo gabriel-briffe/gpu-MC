@@ -10,7 +10,10 @@ import { buildDemGrid, sampleElevationAt } from "./dem.js";
 import { GlideConeEngine } from "./glidecone.js";
 
 const MAX_ALTITUDE = 4200;
-const MAX_GRID_DIM = 1024;
+const DEFAULT_GRID_MAX = 512;
+const MAP_CENTER = { lng: 9.0788, lat: 47.1194 };
+const INITIAL_TERRAIN_Z = pickTerrainZoom(MAP_CENTER.lat);
+const MAP_MAX_ZOOM = 22;
 
 const EMPTY_PATH = {
   type: "Feature",
@@ -23,35 +26,66 @@ const latEl = document.getElementById("lat");
 const lngEl = document.getElementById("lng");
 const elevationEl = document.getElementById("elevation");
 const statusEl = document.getElementById("status");
+const pathMetaEl = document.getElementById("path-meta");
+const pathCellEl = document.getElementById("path-cell");
+const pathOriginEl = document.getElementById("path-origin");
+const pathParentEl = document.getElementById("path-parent");
+const pathLowestEl = document.getElementById("path-lowest");
+const pathStopEl = document.getElementById("path-stop");
 const hoverTip = document.getElementById("hover-tip");
 const paramsForm = document.getElementById("params");
+const compareLosBtn = document.getElementById("compare-los");
+const pathModeEl = document.getElementById("path-mode");
+
+const NEIGHBORS_8 = [
+  [-1, -1],
+  [0, -1],
+  [1, -1],
+  [-1, 0],
+  [1, 0],
+  [-1, 1],
+  [0, 1],
+  [1, 1],
+];
 
 let engine = null;
 let computing = false;
 let overlayCanvas = null;
+let compareOverlayCanvas = null;
 let coneState = null;
 let pathLayerReady = false;
+let lastHoverCell = null;
 
 function getGlideParams() {
   const glideRatio = Number.parseFloat(document.getElementById("ld").value);
   const circuitHeight = Number.parseFloat(document.getElementById("circuit").value);
   const groundClearance = Number.parseFloat(document.getElementById("clearance").value);
+  const originRunN = Number.parseInt(document.getElementById("los-run").value, 10);
+  const maxGridDim = Number.parseInt(document.getElementById("grid-max").value, 10);
 
   return {
     glideRatio: Number.isFinite(glideRatio) && glideRatio > 0 ? glideRatio : 20,
     circuitHeight: Number.isFinite(circuitHeight) && circuitHeight >= 0 ? circuitHeight : 250,
     groundClearance:
       Number.isFinite(groundClearance) && groundClearance >= 0 ? groundClearance : 100,
+    originRunN:
+      Number.isFinite(originRunN) && originRunN === 0
+        ? 0
+        : Number.isFinite(originRunN) && originRunN >= 1
+          ? originRunN
+          : 0,
+    maxGridDim:
+      Number.isFinite(maxGridDim) && maxGridDim >= 64 ? maxGridDim : DEFAULT_GRID_MAX,
     maxAltitude: MAX_ALTITUDE,
-    maxGridDim: MAX_GRID_DIM,
   };
 }
 
 const map = new maplibregl.Map({
   container: "map",
   hash: "map",
-  zoom: 10.5,
-  center: [9.0788, 47.1194],
+  zoom: INITIAL_TERRAIN_Z,
+  maxZoom: MAP_MAX_ZOOM,
+  center: [MAP_CENTER.lng, MAP_CENTER.lat],
   style: {
     version: 8,
     sources: {
@@ -60,6 +94,7 @@ const map = new maplibregl.Map({
         url: "https://tiles.mapterhorn.com/tilejson.json",
         encoding: "terrarium",
         tileSize: 512,
+        maxzoom: INITIAL_TERRAIN_Z,
       },
     },
     layers: [
@@ -82,6 +117,21 @@ map.addControl(new maplibregl.NavigationControl(), "top-right");
 
 function setStatus(text) {
   statusEl.textContent = text;
+}
+
+function setTerrainTileMaxZoom(zoom) {
+  const style = map.getStyle();
+  if (!style?.sources?.hillshadeSource) {
+    return;
+  }
+
+  style.sources.hillshadeSource.maxzoom = zoom;
+
+  const cache = map.style?.sourceCaches?.hillshadeSource;
+  if (cache?._source) {
+    cache._source.maxzoom = zoom;
+    cache.reload();
+  }
 }
 
 function raisePathLayer() {
@@ -143,17 +193,105 @@ function pushPathPoint(coordinates, x, y, dem) {
   coordinates.push([pt.lng, pt.lat]);
 }
 
+function formatCellPair(x, y) {
+  if (x < 0 || y < 0) {
+    return "—";
+  }
+  return `${x}, ${y}`;
+}
+
+function formatLowestNeighbor(neighbor) {
+  if (!neighbor) {
+    return "—";
+  }
+  const kind = neighbor.isAir ? "air" : "ground";
+  return `${neighbor.x}, ${neighbor.y} · ${kind}`;
+}
+
+function getPathMode() {
+  return pathModeEl.value === "lowest" ? "lowest" : "parent";
+}
+
+function distToHomeSq(x, y, dem) {
+  const dx = x - dem.homeX;
+  const dy = y - dem.homeY;
+  return dx * dx + dy * dy;
+}
+
+function isReachableCell(x, y) {
+  const { dem, altitudes, ground, originX, originY, maxAltitude } = coneState;
+  if (x < 0 || y < 0 || x >= dem.width || y >= dem.height) {
+    return false;
+  }
+
+  const idx = cellIndex(x, y, dem);
+  const alt = altitudes[idx];
+  if (!Number.isFinite(alt) || alt >= maxAltitude) {
+    return false;
+  }
+
+  if (ground[idx] === 1) {
+    return true;
+  }
+
+  return originX[idx] >= 0 && originY[idx] >= 0;
+}
+
+function pickLowestGroundNeighbor(x, y) {
+  const { dem, altitudes, ground } = coneState;
+  const idx = cellIndex(x, y, dem);
+  const currentAlt = altitudes[idx];
+  const candidates = [];
+
+  for (const [dx, dy] of NEIGHBORS_8) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (!isReachableCell(nx, ny)) {
+      continue;
+    }
+
+    const nIdx = cellIndex(nx, ny, dem);
+    candidates.push({
+      x: nx,
+      y: ny,
+      alt: altitudes[nIdx],
+      isAir: ground[nIdx] !== 1,
+    });
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((a, b) => {
+    if (a.alt !== b.alt) {
+      return a.alt - b.alt;
+    }
+    return distToHomeSq(a.x, a.y, dem) - distToHomeSq(b.x, b.y, dem);
+  });
+
+  const lowest = candidates[0];
+  if (lowest.alt > currentAlt + 0.01) {
+    return null;
+  }
+
+  return lowest;
+}
+
 function traceGlidePath(gi, gj) {
   const { dem, originX, originY, parentX, parentY, ground } = coneState;
+  const pathMode = getPathMode();
   const coordinates = [];
   const visited = new Set();
   let x = gi;
   let y = gj;
-  const maxSteps = dem.width + dem.height;
+  let stopReason = null;
+  const maxSteps = (dem.width + dem.height) * 2;
 
   for (let step = 0; step < maxSteps; step += 1) {
     const key = cellKey(x, y);
     if (visited.has(key)) {
+      stopReason = "loop";
       break;
     }
     visited.add(key);
@@ -161,29 +299,128 @@ function traceGlidePath(gi, gj) {
     pushPathPoint(coordinates, x, y, dem);
 
     if (x === dem.homeX && y === dem.homeY) {
+      stopReason = "home";
       break;
     }
 
     const idx = cellIndex(x, y, dem);
     let nx;
     let ny;
+
     if (ground[idx] === 1) {
-      nx = parentX[idx];
-      ny = parentY[idx];
+      if (pathMode === "lowest") {
+        const next = pickLowestGroundNeighbor(x, y);
+        if (!next) {
+          stopReason = "stalled";
+          break;
+        }
+        nx = next.x;
+        ny = next.y;
+      } else {
+        nx = parentX[idx];
+        ny = parentY[idx];
+        if (nx < 0 || ny < 0 || (nx === x && ny === y)) {
+          stopReason = "stalled";
+          break;
+        }
+      }
     } else {
       nx = originX[idx];
       ny = originY[idx];
-    }
-
-    if (nx < 0 || ny < 0 || (nx === x && ny === y)) {
-      break;
+      if (nx < 0 || ny < 0 || (nx === x && ny === y)) {
+        stopReason = "stalled";
+        break;
+      }
     }
 
     x = nx;
     y = ny;
   }
 
-  return coordinates;
+  if (stopReason === null) {
+    stopReason = "maxSteps";
+  }
+
+  const lastIdx = cellIndex(x, y, dem);
+  const lowestNeighbor = pickLowestGroundNeighbor(x, y);
+  return {
+    coordinates,
+    stopReason,
+    lowestNeighbor,
+    lastCell: {
+      x,
+      y,
+      ox: originX[lastIdx],
+      oy: originY[lastIdx],
+      px: parentX[lastIdx],
+      py: parentY[lastIdx],
+    },
+  };
+}
+
+function refreshHoverPath(cell) {
+  const { coordinates, lastCell, stopReason, lowestNeighbor } = traceGlidePath(cell.gi, cell.gj);
+  if (coordinates.length >= 2) {
+    updateGlidePath(coordinates);
+    updatePathMeta(lastCell, stopReason, lowestNeighbor);
+  } else {
+    clearGlidePath();
+  }
+}
+
+function setCompareButtonVisible(visible) {
+  compareLosBtn.hidden = !visible;
+}
+
+function clearCompareOverlay() {
+  if (map.getLayer("glide-cone-full")) {
+    map.removeLayer("glide-cone-full");
+  }
+  if (map.getSource("glide-cone-full")) {
+    map.removeSource("glide-cone-full");
+  }
+}
+
+function updateCompareOverlay(imageData, dem) {
+  if (!compareOverlayCanvas) {
+    compareOverlayCanvas = document.createElement("canvas");
+  }
+  compareOverlayCanvas.width = imageData.width;
+  compareOverlayCanvas.height = imageData.height;
+  compareOverlayCanvas.getContext("2d").putImageData(imageData, 0, 0);
+
+  const coords = gridBoundsLngLat(dem.gx0, dem.gy0, dem.width, dem.height, dem.zoom);
+  const coordinates = [
+    [coords[0].lng, coords[0].lat],
+    [coords[1].lng, coords[1].lat],
+    [coords[2].lng, coords[2].lat],
+    [coords[3].lng, coords[3].lat],
+  ];
+
+  if (map.getSource("glide-cone-full")) {
+    map.getSource("glide-cone-full").updateImage({
+      url: compareOverlayCanvas.toDataURL(),
+      coordinates,
+    });
+    raisePathLayer();
+    return;
+  }
+
+  map.addSource("glide-cone-full", {
+    type: "image",
+    url: compareOverlayCanvas.toDataURL(),
+    coordinates,
+  });
+
+  map.addLayer({
+    id: "glide-cone-full",
+    type: "raster",
+    source: "glide-cone-full",
+    paint: {
+      "raster-opacity": 1,
+    },
+  });
+  raisePathLayer();
 }
 
 function updateOverlay(imageData, dem) {
@@ -228,7 +465,7 @@ function updateOverlay(imageData, dem) {
   raisePathLayer();
 }
 
-function sampleConeCell(lng, lat) {
+function sampleDemCell(lng, lat) {
   if (!coneState) {
     return null;
   }
@@ -241,12 +478,26 @@ function sampleConeCell(lng, lat) {
   }
 
   const idx = gj * dem.width + gi;
+  const groundElev = dem.elevation[idx] - dem.groundClearance;
   const alt = altitudes[idx];
-  if (!Number.isFinite(alt) || alt >= maxAltitude || ground[idx] === 1) {
-    return null;
-  }
+  const isCone = Number.isFinite(alt) && alt < maxAltitude && ground[idx] !== 1;
 
-  return { gi, gj, alt, idx };
+  return {
+    gi,
+    gj,
+    idx,
+    groundElev,
+    alt: isCone ? alt : null,
+    isCone,
+  };
+}
+
+function formatHoverTip(cell) {
+  const ground = `${Math.round(cell.groundElev)} m ground`;
+  if (cell.isCone) {
+    return `${Math.round(cell.alt)} m cone · ${ground}`;
+  }
+  return ground;
 }
 
 function updateGlidePath(coordinates) {
@@ -262,11 +513,41 @@ function updateGlidePath(coordinates) {
   raisePathLayer();
 }
 
+function clearPathMeta() {
+  pathMetaEl.hidden = true;
+  pathCellEl.textContent = "—";
+  pathOriginEl.textContent = "—";
+  pathParentEl.textContent = "—";
+  pathLowestEl.textContent = "—";
+  pathStopEl.hidden = true;
+  pathStopEl.textContent = "";
+}
+
+function updatePathMeta(lastCell, stopReason, lowestNeighbor) {
+  pathMetaEl.hidden = false;
+  pathCellEl.textContent = formatCellPair(lastCell.x, lastCell.y);
+  pathOriginEl.textContent = formatCellPair(lastCell.ox, lastCell.oy);
+  pathParentEl.textContent = formatCellPair(lastCell.px, lastCell.py);
+  pathLowestEl.textContent = formatLowestNeighbor(lowestNeighbor);
+  const stopMessages = {
+    loop: "stopped: loop",
+    maxSteps: "stopped: max steps",
+  };
+  if (stopMessages[stopReason]) {
+    pathStopEl.hidden = false;
+    pathStopEl.textContent = stopMessages[stopReason];
+  } else {
+    pathStopEl.hidden = true;
+    pathStopEl.textContent = "";
+  }
+}
+
 function clearGlidePath() {
   if (!pathLayerReady) {
     return;
   }
   map.getSource("glide-path").setData(EMPTY_PATH);
+  clearPathMeta();
 }
 
 async function ensureEngine() {
@@ -278,6 +559,7 @@ async function ensureEngine() {
 }
 
 map.on("load", async () => {
+  setTerrainTileMaxZoom(INITIAL_TERRAIN_Z);
   info.classList.add("visible");
   ensurePathLayer();
   try {
@@ -290,9 +572,10 @@ map.on("load", async () => {
 });
 
 map.on("mousemove", (event) => {
-  const cell = sampleConeCell(event.lngLat.lng, event.lngLat.lat);
+  const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
   if (cell === null) {
     hoverTip.style.display = "none";
+    lastHoverCell = null;
     clearGlidePath();
     return;
   }
@@ -300,24 +583,65 @@ map.on("mousemove", (event) => {
   hoverTip.style.display = "block";
   hoverTip.style.left = `${event.point.x + 14}px`;
   hoverTip.style.top = `${event.point.y + 14}px`;
-  hoverTip.textContent = `${Math.round(cell.alt)} m`;
+  hoverTip.textContent = formatHoverTip(cell);
 
-  const path = traceGlidePath(cell.gi, cell.gj);
-  if (path.length >= 2) {
-    updateGlidePath(path);
+  if (cell.isCone) {
+    lastHoverCell = cell;
+    refreshHoverPath(cell);
   } else {
+    lastHoverCell = null;
     clearGlidePath();
   }
 });
 
 map.on("mouseleave", () => {
   hoverTip.style.display = "none";
+  lastHoverCell = null;
   clearGlidePath();
 });
 
 paramsForm.addEventListener("submit", (event) => {
   event.preventDefault();
 });
+
+pathModeEl.addEventListener("change", () => {
+  if (lastHoverCell) {
+    refreshHoverPath(lastHoverCell);
+  }
+});
+
+compareLosBtn.addEventListener("click", () => {
+  runFullBresenhamCompare();
+});
+
+async function runFullBresenhamCompare() {
+  if (!coneState || computing) {
+    return;
+  }
+
+  computing = true;
+  compareLosBtn.disabled = true;
+  setStatus("Running full Bresenham on current grid…");
+
+  try {
+    const gpu = await ensureEngine();
+    const result = await gpu.compute(coneState.dem, getGlideParams(), {
+      fullBresenham: true,
+      overlayColor: "red",
+      imageOnly: true,
+    });
+    updateCompareOverlay(result.imageData, coneState.dem);
+    setStatus(
+      `Full Bresenham overlay — ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms GPU`
+    );
+  } catch (error) {
+    setStatus(`Error: ${error.message}`);
+    console.error(error);
+  } finally {
+    computing = false;
+    compareLosBtn.disabled = false;
+  }
+}
 
 async function runComputation(lng, lat) {
   if (computing) {
@@ -332,6 +656,8 @@ async function runComputation(lng, lat) {
   setStatus("Sampling terrain…");
   hoverTip.style.display = "none";
   clearGlidePath();
+  clearCompareOverlay();
+  setCompareButtonVisible(false);
 
   computing = true;
 
@@ -342,7 +668,7 @@ async function runComputation(lng, lat) {
     elevationEl.textContent = `${Math.round(pointElev)} m`;
 
     setStatus(
-      `Fetching DEM z${terrainZ} (~${Math.round(cellSizeM)} m) — L/D ${glideParams.glideRatio}, circuit ${glideParams.circuitHeight} m, ground ${glideParams.groundClearance} m…`
+      `Fetching DEM z${terrainZ} (~${Math.round(cellSizeM)} m) — L/D ${glideParams.glideRatio}, circuit ${glideParams.circuitHeight} m, ground ${glideParams.groundClearance} m, grid max ${glideParams.maxGridDim} px…`
     );
     const dem = await buildDemGrid(lng, lat, glideParams);
 
@@ -353,8 +679,10 @@ async function runComputation(lng, lat) {
     const result = await gpu.compute(dem, glideParams);
 
     setConeState(dem, result);
+    setTerrainTileMaxZoom(dem.zoom);
     updateOverlay(result.imageData, dem);
     ensurePathLayer();
+    setCompareButtonVisible(true);
 
     setStatus(
       `Done — z${dem.zoom}, ${Math.round(dem.cellSizeM)} m, ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms GPU` +

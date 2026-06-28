@@ -7,7 +7,11 @@ struct Params {
   cellSizeM: f32,
   glideRatio: f32,
   maxAlt: f32,
-  _pad: f32,
+  homeAlt: f32,
+  losShortcut: u32,
+  originRunN: u32,
+  _pad1: u32,
+  _pad2: u32,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -57,7 +61,18 @@ fn hasSameOrigin(x: i32, y: i32, targetOx: i32, targetOy: i32) -> bool {
   return o.x == targetOx && o.y == targetOy;
 }
 
-// Bresenham toward origin cell; stop early on ground (blocked) or same-origin frontier (clear).
+fn bumpSameOriginRun(x: i32, y: i32, targetOx: i32, targetOy: i32, run: u32) -> u32 {
+  if (hasSameOrigin(x, y, targetOx, targetOy)) {
+    return run + 1u;
+  }
+  return 0u;
+}
+
+fn sameOriginRunIsClear(run: u32) -> bool {
+  return params.losShortcut != 0u && run >= params.originRunN;
+}
+
+// Bresenham toward origin cell; stop early on ground (blocked) or N-cell same-origin run (clear).
 fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
   if (targetOx < 0 || targetOy < 0 || !inBounds(targetOx, targetOy)) {
     return false;
@@ -81,6 +96,7 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
   let ddx = dx * 2;
   var error = dx;
   var errorprev = error;
+  var sameOriginRun = 0u;
 
   if (dx >= dy) {
     for (var step = 0; step < dx; step = step + 1) {
@@ -102,7 +118,8 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
       if (isGround(x1, y1)) {
         return false;
       }
-      if (hasSameOrigin(x1, y1, targetOx, targetOy)) {
+      sameOriginRun = bumpSameOriginRun(x1, y1, targetOx, targetOy, sameOriginRun);
+      if (sameOriginRunIsClear(sameOriginRun)) {
         return true;
       }
       errorprev = error;
@@ -127,7 +144,8 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
       if (isGround(x1, y1)) {
         return false;
       }
-      if (hasSameOrigin(x1, y1, targetOx, targetOy)) {
+      sameOriginRun = bumpSameOriginRun(x1, y1, targetOx, targetOy, sameOriginRun);
+      if (sameOriginRunIsClear(sameOriginRun)) {
         return true;
       }
       errorprev = error;
@@ -350,8 +368,24 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
-function packParams(width, height, homeX, homeY, cellSizeM, glideRatio, maxAlt, homeAlt = 0) {
-  const buf = new ArrayBuffer(32);
+const COLOR_SHADER_RED = COLOR_SHADER.replace(
+  "let r = 40u;",
+  "let r = 255u;"
+).replace("let g = 120u;", "let g = 48u;").replace("let b = 255u;", "let b = 48u;");
+
+function packParams(
+  width,
+  height,
+  homeX,
+  homeY,
+  cellSizeM,
+  glideRatio,
+  maxAlt,
+  homeAlt = 0,
+  losShortcut = 1,
+  originRunN = 0
+) {
+  const buf = new ArrayBuffer(48);
   const view = new DataView(buf);
   view.setUint32(0, width, true);
   view.setUint32(4, height, true);
@@ -361,6 +395,8 @@ function packParams(width, height, homeX, homeY, cellSizeM, glideRatio, maxAlt, 
   view.setFloat32(20, glideRatio, true);
   view.setFloat32(24, maxAlt, true);
   view.setFloat32(28, homeAlt, true);
+  view.setUint32(32, losShortcut, true);
+  view.setUint32(36, originRunN, true);
   return buf;
 }
 
@@ -459,13 +495,24 @@ export class GlideConeEngine {
         "read-only-storage",
         "storage",
       ]),
+      colorRed: await createPipeline(this.device, COLOR_SHADER_RED, [
+        "uniform",
+        "read-only-storage",
+        "read-only-storage",
+        "read-only-storage",
+        "storage",
+      ]),
     };
   }
 
-  async compute(dem, params) {
+  async compute(dem, params, options = {}) {
+    const { fullBresenham = false, overlayColor = "blue", imageOnly = false } = options;
     const { device, pipelines } = this;
     const { width, height, homeX, homeY, cellSizeM, elevation } = dem;
-    const { glideRatio, maxAltitude, circuitHeight } = params;
+    const { glideRatio, maxAltitude, circuitHeight, originRunN = 0 } = params;
+    const useFullBresenham = fullBresenham || originRunN === 0;
+    const losShortcut = useFullBresenham ? 0 : 1;
+    const shaderOriginRunN = originRunN === 0 ? 1 : originRunN;
     const count = width * height;
 
     const homeIdx = homeY * width + homeX;
@@ -497,7 +544,9 @@ export class GlideConeEngine {
       cellSizeM,
       glideRatio,
       maxAltitude,
-      homeAlt
+      homeAlt,
+      losShortcut,
+      shaderOriginRunN
     );
 
     const uniformBuffer = createBuffer(device, new Uint8Array(uniformParams), uniformUsage);
@@ -585,8 +634,12 @@ export class GlideConeEngine {
     }
 
     const colorUniform = createBuffer(device, new Uint8Array(uniformParams), uniformUsage);
+    const colorPipeline =
+      overlayColor === "red" ? pipelines.colorRed.pipeline : pipelines.color.pipeline;
+    const colorLayout =
+      overlayColor === "red" ? pipelines.colorRed.layout : pipelines.color.layout;
     const colorBind = device.createBindGroup({
-      layout: pipelines.color.layout,
+      layout: colorLayout,
       entries: [
         { binding: 0, resource: { buffer: colorUniform } },
         { binding: 1, resource: { buffer: altRead } },
@@ -598,7 +651,7 @@ export class GlideConeEngine {
 
     const colorEncoder = device.createCommandEncoder();
     const colorPass = colorEncoder.beginComputePass();
-    colorPass.setPipeline(pipelines.color.pipeline);
+    colorPass.setPipeline(colorPipeline);
     colorPass.setBindGroup(0, colorBind);
     colorPass.dispatchWorkgroups(wgX, wgY);
     colorPass.end();
@@ -614,6 +667,29 @@ export class GlideConeEngine {
     await readBuffer.mapAsync(GPUMapMode.READ);
     const packed = new Uint32Array(readBuffer.getMappedRange().slice(0));
     readBuffer.unmap();
+
+    const imageData = new ImageData(width, height);
+    for (let i = 0; i < count; i += 1) {
+      const p = packed[i];
+      const dst = i * 4;
+      imageData.data[dst] = p & 255;
+      imageData.data[dst + 1] = (p >> 8) & 255;
+      imageData.data[dst + 2] = (p >> 16) & 255;
+      imageData.data[dst + 3] = (p >> 24) & 255;
+    }
+
+    const baseResult = {
+      imageData,
+      width,
+      height,
+      homeAlt,
+      iterations,
+      elapsedMs: performance.now() - t0,
+    };
+
+    if (imageOnly) {
+      return baseResult;
+    }
 
     const altReadBuffer = device.createBuffer({
       size: count * 4,
@@ -659,29 +735,14 @@ export class GlideConeEngine {
     const groundOut = new Uint32Array(groundReadBuffer.getMappedRange().slice(0));
     groundReadBuffer.unmap();
 
-    const imageData = new ImageData(width, height);
-    for (let i = 0; i < count; i += 1) {
-      const p = packed[i];
-      const dst = i * 4;
-      imageData.data[dst] = p & 255;
-      imageData.data[dst + 1] = (p >> 8) & 255;
-      imageData.data[dst + 2] = (p >> 16) & 255;
-      imageData.data[dst + 3] = (p >> 24) & 255;
-    }
-
     return {
-      imageData,
+      ...baseResult,
       altitudes,
       originX: originXOut,
       originY: originYOut,
       parentX: parentXOut,
       parentY: parentYOut,
       ground: groundOut,
-      width,
-      height,
-      homeAlt,
-      iterations,
-      elapsedMs: performance.now() - t0,
     };
   }
 }

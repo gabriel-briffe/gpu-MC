@@ -124,6 +124,7 @@ export async function buildDemGrid(lng, lat, params) {
     tileCount: tiles.size,
     capped,
     requestedDim,
+    groundClearance,
   };
 }
 
