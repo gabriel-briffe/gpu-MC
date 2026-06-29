@@ -167,17 +167,6 @@ fn coneAlt(ox: i32, oy: i32, x: i32, y: i32) -> f32 {
   return altIn[oi] + sqrt(dx * dx + dy * dy) * params.cellSizeM / params.glideRatio;
 }
 
-fn tryOriginPick(ox: i32, oy: i32, x: i32, y: i32, best: Pick) -> Pick {
-  if (ox < 0 || oy < 0 || !inBounds(ox, oy)) {
-    return best;
-  }
-  let req = coneAlt(ox, oy, x, y);
-  if (req < best.req) {
-    return makePick(req, ox, oy);
-  }
-  return best;
-}
-
 fn tryNeighborPick(nx: i32, ny: i32, x: i32, y: i32, best: Pick) -> Pick {
   if (!inBounds(nx, ny)) {
     return best;
@@ -215,14 +204,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let curOrigin = originIn[i];
   if (curOrigin.x >= 0 && curOrigin.y >= 0) {
-    let elected = electedOrigin(x, y, curOrigin.x, curOrigin.y, x, y);
-    best = tryOriginPick(
-      elected.x,
-      elected.y,
-      x,
-      y,
-      makePick(params.maxAlt, curOrigin.x, curOrigin.y)
-    );
+    best = makePick(coneAlt(curOrigin.x, curOrigin.y, x, y), curOrigin.x, curOrigin.y);
   }
 
   best = tryNeighborPick(x, y - 1, x, y, best);
@@ -356,6 +338,92 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+const CHANGE_SHADER = /* wgsl */ `
+struct Params {
+  width: u32,
+  height: u32,
+};
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> originCur: array<vec2<i32>>;
+@group(0) @binding(2) var<storage, read> originPrev: array<vec2<i32>>;
+@group(0) @binding(3) var<storage, read> groundCur: array<u32>;
+@group(0) @binding(4) var<storage, read> groundPrev: array<u32>;
+@group(0) @binding(5) var<storage, read> altCur: array<f32>;
+@group(0) @binding(6) var<storage, read> altPrev: array<f32>;
+@group(0) @binding(7) var<storage, read_write> changeCount: array<atomic<u32>>;
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let x = i32(gid.x);
+  let y = i32(gid.y);
+  if (x >= i32(params.width) || y >= i32(params.height)) {
+    return;
+  }
+
+  let i = u32(y) * params.width + u32(x);
+  let oc = originCur[i];
+  let op = originPrev[i];
+  var changed = oc.x != op.x || oc.y != op.y;
+  changed = changed || groundCur[i] != groundPrev[i];
+  changed = changed || abs(altCur[i] - altPrev[i]) > 0.001;
+  if (changed) {
+    atomicAdd(&changeCount[0], 1u);
+  }
+}
+`;
+
+const COLOR_SHADER_RAW = /* wgsl */ `
+struct Params {
+  width: u32,
+  height: u32,
+  homeX: i32,
+  homeY: i32,
+  cellSizeM: f32,
+  glideRatio: f32,
+  maxAlt: f32,
+  homeAlt: f32,
+};
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> alt: array<f32>;
+@group(0) @binding(2) var<storage, read> origin: array<vec2<i32>>;
+@group(0) @binding(3) var<storage, read> ground: array<u32>;
+@group(0) @binding(4) var<storage, read_write> rgba: array<u32>;
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let x = i32(gid.x);
+  let y = i32(gid.y);
+  if (x >= i32(params.width) || y >= i32(params.height)) {
+    return;
+  }
+
+  let i = u32(y) * params.width + u32(x);
+  let o = origin[i];
+  let a = alt[i];
+
+  if (o.x < 0 || a >= params.maxAlt) {
+    rgba[i] = 0u;
+    return;
+  }
+
+  let band = i32(floor(a / 10.0));
+  let alpha = 170u;
+  if (band % 2 == 0) {
+    let r = 40u;
+    let g = 120u;
+    let b = 255u;
+    rgba[i] = r | (g << 8u) | (b << 16u) | (alpha << 24u);
+  } else {
+    let r = 48u;
+    let g = 200u;
+    let b = 72u;
+    rgba[i] = r | (g << 8u) | (b << 16u) | (alpha << 24u);
+  }
+}
+`;
+
 const COLOR_SHADER = /* wgsl */ `
 struct Params {
   width: u32,
@@ -386,7 +454,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let o = origin[i];
   let a = alt[i];
 
-  if (o.x < 0 || a >= params.maxAlt || ground[i] == 1u) {
+  if (ground[i] == 1u) {
+    if (o.x == x && o.y == y) {
+      let r = 255u;
+      let g = 48u;
+      let b = 48u;
+      let alpha = 220u;
+      rgba[i] = r | (g << 8u) | (b << 16u) | (alpha << 24u);
+    } else {
+      rgba[i] = 0u;
+    }
+    return;
+  }
+
+  if (o.x < 0 || a >= params.maxAlt) {
     rgba[i] = 0u;
     return;
   }
@@ -527,7 +608,24 @@ export class GlideConeEngine {
         "read-only-storage",
         "storage",
       ]),
+      change: await createPipeline(this.device, CHANGE_SHADER, [
+        "uniform",
+        "read-only-storage",
+        "read-only-storage",
+        "read-only-storage",
+        "read-only-storage",
+        "read-only-storage",
+        "read-only-storage",
+        "storage",
+      ]),
       color: await createPipeline(this.device, COLOR_SHADER, [
+        "uniform",
+        "read-only-storage",
+        "read-only-storage",
+        "read-only-storage",
+        "storage",
+      ]),
+      colorRaw: await createPipeline(this.device, COLOR_SHADER_RAW, [
         "uniform",
         "read-only-storage",
         "read-only-storage",
@@ -545,10 +643,17 @@ export class GlideConeEngine {
   }
 
   async compute(dem, params, options = {}) {
-    const { fullBresenham = false, overlayColor = "blue", imageOnly = false } = options;
+    const {
+      fullBresenham = false,
+      overlayColor = "blue",
+      imageOnly = false,
+      raw: rawOverride,
+    } = options;
     const { device, pipelines } = this;
     const { width, height, homeX, homeY, cellSizeM, elevation } = dem;
-    const { glideRatio, maxAltitude, circuitHeight, originRunN = 0 } = params;
+    const { glideRatio, maxAltitude, circuitHeight, originRunN = 0, raw: rawParam = true } =
+      params;
+    const raw = rawOverride !== undefined ? rawOverride : rawParam;
     const useFullBresenham = fullBresenham || originRunN === 0;
     const losShortcut = useFullBresenham ? 0 : 1;
     const shaderOriginRunN = originRunN === 0 ? 1 : originRunN;
@@ -594,13 +699,29 @@ export class GlideConeEngine {
     let groundWrite = createBuffer(device, new Uint8Array(ground.buffer), storageUsage);
     const rgbaBuffer = createBuffer(device, new Uint8Array(count * 4), storageUsage);
 
+    const pairBytes = count * 8;
+    const originSnap = createBuffer(device, new Uint8Array(pairBytes), storageUsage);
+    const groundSnap = createBuffer(device, new Uint8Array(count * 4), storageUsage);
+    const altSnap = createBuffer(device, new Uint8Array(count * 4), storageUsage);
+    const changeCountBuffer = createBuffer(device, new Uint32Array([0]), storageUsage);
+    const changeReadBuffer = device.createBuffer({
+      size: 4,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+
     const wgX = Math.ceil(width / 8);
     const wgY = Math.ceil(height / 8);
-    const iterations = (width + height) * 2;
+    const maxIterations = (width + height) * 2 * 3;
     const t0 = performance.now();
+    let actualIterations = 0;
 
-    for (let iter = 0; iter < iterations; iter += 1) {
+    for (let iter = 0; iter < maxIterations; iter += 1) {
+      actualIterations = iter + 1;
       const encoder = device.createCommandEncoder();
+
+      encoder.copyBufferToBuffer(originRead, 0, originSnap, 0, pairBytes);
+      encoder.copyBufferToBuffer(groundRead, 0, groundSnap, 0, count * 4);
+      encoder.copyBufferToBuffer(altRead, 0, altSnap, 0, count * 4);
 
       const originBind = device.createBindGroup({
         layout: pipelines.origin.layout,
@@ -642,31 +763,71 @@ export class GlideConeEngine {
 
       [altRead, altWrite] = [altWrite, altRead];
 
+      device.queue.writeBuffer(changeCountBuffer, 0, new Uint32Array([0]));
+
+      const changeBind = device.createBindGroup({
+        layout: pipelines.change.layout,
+        entries: [
+          { binding: 0, resource: { buffer: uniformBuffer } },
+          { binding: 1, resource: { buffer: originRead } },
+          { binding: 2, resource: { buffer: originSnap } },
+          { binding: 3, resource: { buffer: groundRead } },
+          { binding: 4, resource: { buffer: groundSnap } },
+          { binding: 5, resource: { buffer: altRead } },
+          { binding: 6, resource: { buffer: altSnap } },
+          { binding: 7, resource: { buffer: changeCountBuffer } },
+        ],
+      });
+      const passChange = encoder.beginComputePass();
+      passChange.setPipeline(pipelines.change.pipeline);
+      passChange.setBindGroup(0, changeBind);
+      passChange.dispatchWorkgroups(wgX, wgY);
+      passChange.end();
+
+      encoder.copyBufferToBuffer(changeCountBuffer, 0, changeReadBuffer, 0, 4);
       device.queue.submit([encoder.finish()]);
+
+      await changeReadBuffer.mapAsync(GPUMapMode.READ);
+      const changes = new Uint32Array(changeReadBuffer.getMappedRange().slice(0))[0];
+      changeReadBuffer.unmap();
+
+      if (changes === 0) {
+        break;
+      }
     }
 
-    const groundOriginBind = device.createBindGroup({
-      layout: pipelines.groundOrigin.layout,
-      entries: [
-        { binding: 0, resource: { buffer: uniformBuffer } },
-        { binding: 1, resource: { buffer: altRead } },
-        { binding: 2, resource: { buffer: groundRead } },
-        { binding: 3, resource: { buffer: originRead } },
-      ],
-    });
-    const groundOriginEncoder = device.createCommandEncoder();
-    const passGroundOrigin = groundOriginEncoder.beginComputePass();
-    passGroundOrigin.setPipeline(pipelines.groundOrigin.pipeline);
-    passGroundOrigin.setBindGroup(0, groundOriginBind);
-    passGroundOrigin.dispatchWorkgroups(wgX, wgY);
-    passGroundOrigin.end();
-    device.queue.submit([groundOriginEncoder.finish()]);
+    if (!raw) {
+      const groundOriginBind = device.createBindGroup({
+        layout: pipelines.groundOrigin.layout,
+        entries: [
+          { binding: 0, resource: { buffer: uniformBuffer } },
+          { binding: 1, resource: { buffer: altRead } },
+          { binding: 2, resource: { buffer: groundRead } },
+          { binding: 3, resource: { buffer: originRead } },
+        ],
+      });
+      const groundOriginEncoder = device.createCommandEncoder();
+      const passGroundOrigin = groundOriginEncoder.beginComputePass();
+      passGroundOrigin.setPipeline(pipelines.groundOrigin.pipeline);
+      passGroundOrigin.setBindGroup(0, groundOriginBind);
+      passGroundOrigin.dispatchWorkgroups(wgX, wgY);
+      passGroundOrigin.end();
+      device.queue.submit([groundOriginEncoder.finish()]);
+    }
 
     const colorUniform = createBuffer(device, new Uint8Array(uniformParams), uniformUsage);
-    const colorPipeline =
-      overlayColor === "red" ? pipelines.colorRed.pipeline : pipelines.color.pipeline;
-    const colorLayout =
-      overlayColor === "red" ? pipelines.colorRed.layout : pipelines.color.layout;
+    let colorPipeline;
+    let colorLayout;
+    if (overlayColor === "red") {
+      colorPipeline = pipelines.colorRed.pipeline;
+      colorLayout = pipelines.colorRed.layout;
+    } else if (raw) {
+      colorPipeline = pipelines.colorRaw.pipeline;
+      colorLayout = pipelines.colorRaw.layout;
+    } else {
+      colorPipeline = pipelines.color.pipeline;
+      colorLayout = pipelines.color.layout;
+    }
     const colorBind = device.createBindGroup({
       layout: colorLayout,
       entries: [
@@ -712,7 +873,8 @@ export class GlideConeEngine {
       width,
       height,
       homeAlt,
-      iterations,
+      iterations: actualIterations,
+      maxIterations,
       elapsedMs: performance.now() - t0,
     };
 
@@ -731,7 +893,6 @@ export class GlideConeEngine {
     const altitudes = new Float32Array(altReadBuffer.getMappedRange().slice(0));
     altReadBuffer.unmap();
 
-    const pairBytes = count * 8;
     const originBuffer = device.createBuffer({
       size: pairBytes,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,

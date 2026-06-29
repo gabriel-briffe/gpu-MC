@@ -48,6 +48,7 @@ function getGlideParams() {
   const groundClearance = Number.parseFloat(document.getElementById("clearance").value);
   const originRunN = Number.parseInt(document.getElementById("los-run").value, 10);
   const maxGridDim = Number.parseInt(document.getElementById("grid-max").value, 10);
+  const raw = document.getElementById("raw").checked;
 
   return {
     glideRatio: Number.isFinite(glideRatio) && glideRatio > 0 ? glideRatio : 20,
@@ -63,6 +64,7 @@ function getGlideParams() {
     maxGridDim:
       Number.isFinite(maxGridDim) && maxGridDim >= 64 ? maxGridDim : DEFAULT_GRID_MAX,
     maxAltitude: MAX_ALTITUDE,
+    raw,
   };
 }
 
@@ -148,7 +150,7 @@ function ensurePathLayer() {
   raisePathLayer();
 }
 
-function setConeState(dem, result) {
+function setConeState(dem, result, glideParams) {
   coneState = {
     dem,
     altitudes: result.altitudes,
@@ -157,6 +159,7 @@ function setConeState(dem, result) {
     ground: result.ground,
     imageData: result.imageData,
     maxAltitude: MAX_ALTITUDE,
+    raw: glideParams?.raw ?? true,
   };
 }
 
@@ -349,7 +352,7 @@ function sampleDemCell(lng, lat) {
     return null;
   }
 
-  const { dem, altitudes, ground, maxAltitude } = coneState;
+  const { dem, altitudes, ground, maxAltitude, originX, originY } = coneState;
   const { gi, gj } = gridIndexFromLngLat(lng, lat, dem);
 
   if (gi < 0 || gj < 0 || gi >= dem.width || gj >= dem.height) {
@@ -359,24 +362,29 @@ function sampleDemCell(lng, lat) {
   const idx = gj * dem.width + gi;
   const groundElev = dem.elevation[idx] - dem.groundClearance;
   const alt = altitudes[idx];
-  const isCone = Number.isFinite(alt) && alt < maxAltitude && ground[idx] !== 1;
+  const hasOrigin = originX[idx] >= 0 && originY[idx] >= 0;
+  const isGroundCell = ground[idx] === 1;
+  const isReachable = Number.isFinite(alt) && alt < maxAltitude && hasOrigin;
 
   return {
     gi,
     gj,
     idx,
     groundElev,
-    alt: isCone ? alt : null,
-    isCone,
+    alt: isReachable ? alt : null,
+    isReachable,
+    isGround: isGroundCell,
+    isCone: isReachable && !isGroundCell,
   };
 }
 
 function formatHoverTip(cell) {
-  const ground = `${Math.round(cell.groundElev)} m ground`;
-  if (cell.isCone) {
-    return `${Math.round(cell.alt)} m cone · ${ground}`;
+  const elev = `${Math.round(cell.groundElev)} m ground`;
+  if (cell.alt !== null) {
+    const kind = cell.isGround ? "ground" : "air";
+    return `${Math.round(cell.alt)} m alt · ${kind} · ${elev}`;
   }
-  return ground;
+  return elev;
 }
 
 function updateGlidePath(coordinates) {
@@ -460,7 +468,7 @@ map.on("mousemove", (event) => {
   hoverTip.style.top = `${event.point.y + 14}px`;
   hoverTip.textContent = formatHoverTip(cell);
 
-  if (cell.isCone) {
+  if (coneState.raw ? cell.isReachable : cell.isCone) {
     lastHoverCell = cell;
     refreshHoverPath(cell);
   } else {
@@ -478,6 +486,39 @@ map.on("mouseleave", () => {
 paramsForm.addEventListener("submit", (event) => {
   event.preventDefault();
 });
+
+document.getElementById("raw").addEventListener("change", () => {
+  if (coneState && !computing) {
+    recomputeFromConeState();
+  }
+});
+
+async function recomputeFromConeState() {
+  if (!coneState || computing) {
+    return;
+  }
+
+  computing = true;
+  clearGlidePath();
+  setStatus("Recomputing overlay…");
+
+  try {
+    const glideParams = getGlideParams();
+    const gpu = await ensureEngine();
+    const result = await gpu.compute(coneState.dem, glideParams);
+    setConeState(coneState.dem, result, glideParams);
+    updateOverlay(result.imageData, coneState.dem);
+    setStatus(
+      `Done — ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms GPU` +
+        (glideParams.raw ? " (raw)" : "")
+    );
+  } catch (error) {
+    setStatus(`Error: ${error.message}`);
+    console.error(error);
+  } finally {
+    computing = false;
+  }
+}
 
 compareLosBtn.addEventListener("click", () => {
   runFullBresenhamCompare();
@@ -498,6 +539,7 @@ async function runFullBresenhamCompare() {
       fullBresenham: true,
       overlayColor: "red",
       imageOnly: true,
+      raw: false,
     });
     updateCompareOverlay(result.imageData, coneState.dem);
     setStatus(
@@ -547,7 +589,7 @@ async function runComputation(lng, lat) {
     const gpu = await ensureEngine();
     const result = await gpu.compute(dem, glideParams);
 
-    setConeState(dem, result);
+    setConeState(dem, result, glideParams);
     setTerrainTileMaxZoom(dem.zoom);
     updateOverlay(result.imageData, dem);
     ensurePathLayer();

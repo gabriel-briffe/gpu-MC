@@ -85,6 +85,24 @@
         letter-spacing: 0.04em;
       }
 
+      #params input[type="checkbox"] {
+        width: 1rem;
+        height: 1rem;
+        margin: 0.2rem 0 0;
+        accent-color: #5a9fff;
+      }
+
+      #params label.checkbox-row {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.45rem;
+        text-transform: none;
+        letter-spacing: normal;
+        font-size: 0.82rem;
+        color: #d8dee9;
+        padding-top: 1.1rem;
+      }
+
       #params input {
         width: 5.5rem;
         padding: 0.35rem 0.5rem;
@@ -260,6 +278,10 @@
         <label>
           Grid max (px)
           <input id="grid-max" type="number" min="64" step="64" value="512" />
+        </label>
+        <label class="checkbox-row">
+          <input id="raw" type="checkbox" checked />
+          Raw
         </label>
         <button type="button" id="compare-los" hidden>Full Bresenham (red)</button>
       </form>
