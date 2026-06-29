@@ -245,6 +245,10 @@ function refreshHoverPath(cell) {
   if (coordinates.length >= 2) {
     updateGlidePath(coordinates);
     updatePathMeta(lastCell, stopReason);
+  } else if (coordinates.length === 1) {
+    const pt = coordinates[0];
+    updateGlidePath([pt, pt]);
+    updatePathMeta(lastCell, stopReason);
   } else {
     clearGlidePath();
   }
@@ -414,6 +418,7 @@ function updatePathMeta(lastCell, stopReason) {
   pathOriginEl.textContent = formatCellPair(lastCell.ox, lastCell.oy);
   const stopMessages = {
     loop: "stopped: loop",
+    stalled: "stopped: stalled",
     maxSteps: "stopped: max steps",
   };
   if (stopMessages[stopReason]) {
@@ -468,7 +473,7 @@ map.on("mousemove", (event) => {
   hoverTip.style.top = `${event.point.y + 14}px`;
   hoverTip.textContent = formatHoverTip(cell);
 
-  if (coneState.raw ? cell.isReachable : cell.isCone) {
+  if (cell.isReachable) {
     lastHoverCell = cell;
     refreshHoverPath(cell);
   } else {
