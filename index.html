@@ -158,6 +158,31 @@
         display: none;
       }
 
+      #stop-compute {
+        margin-left: auto;
+        padding: 0.35rem 0.65rem;
+        border: 1px solid rgba(255, 140, 80, 0.55);
+        border-radius: 0.4rem;
+        background: rgba(255, 120, 60, 0.18);
+        color: #ffe0cc;
+        font-size: 0.82rem;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      #stop-compute:hover:not(:disabled) {
+        background: rgba(255, 120, 60, 0.3);
+      }
+
+      #stop-compute:disabled {
+        opacity: 0.55;
+        cursor: wait;
+      }
+
+      #stop-compute[hidden] {
+        display: none;
+      }
+
       #hover-tip {
         position: fixed;
         z-index: 4;
@@ -241,11 +266,19 @@
         display: none;
       }
 
+      .status-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        padding-top: 0.4rem;
+      }
+
       #status {
         color: #b8c5d6;
         font-size: 0.8rem;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
-        padding-top: 0.4rem;
+        flex: 1;
+        min-width: 0;
       }
 
       @media (max-width: 640px) {
@@ -278,6 +311,17 @@
         <label>
           Grid max (px)
           <input id="grid-max" type="number" min="64" step="64" value="512" />
+        </label>
+        <label>
+          Update map (ms)
+          <input
+            id="update-map"
+            type="number"
+            min="0"
+            step="50"
+            value="100"
+            title="0 = final frame only"
+          />
         </label>
         <label class="checkbox-row">
           <input id="raw" type="checkbox" checked />
@@ -314,7 +358,10 @@
         </span>
         <span class="field" id="path-stop" hidden>stopped: loop</span>
       </div>
-      <div id="status">Loading WebGPU…</div>
+      <div class="row status-row">
+        <div id="status">Loading WebGPU…</div>
+        <button type="button" id="stop-compute" hidden>Stop</button>
+      </div>
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>

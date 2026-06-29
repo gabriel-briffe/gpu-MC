@@ -33,14 +33,48 @@ const pathStopEl = document.getElementById("path-stop");
 const hoverTip = document.getElementById("hover-tip");
 const paramsForm = document.getElementById("params");
 const compareLosBtn = document.getElementById("compare-los");
+const stopComputeBtn = document.getElementById("stop-compute");
 
 let engine = null;
 let computing = false;
+let computeShouldStop = false;
 let overlayCanvas = null;
 let compareOverlayCanvas = null;
 let coneState = null;
 let pathLayerReady = false;
 let lastHoverCell = null;
+
+function startComputeSession() {
+  computeShouldStop = false;
+  computing = true;
+  stopComputeBtn.hidden = false;
+  stopComputeBtn.disabled = false;
+}
+
+function endComputeSession() {
+  computing = false;
+  computeShouldStop = false;
+  stopComputeBtn.hidden = true;
+  stopComputeBtn.disabled = false;
+}
+
+function requestStopCompute() {
+  computeShouldStop = true;
+  stopComputeBtn.disabled = true;
+  setStatus("Stopping after current GPU step…");
+}
+
+function formatComputeDone(result, extra = "") {
+  const suffix = result.stopped ? " (stopped)" : "";
+  return `Done — ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms GPU${suffix}${extra}`;
+}
+
+function makeComputeOptions(dem) {
+  return {
+    onProgress: makeComputeProgressHandler(dem),
+    shouldStop: () => computeShouldStop,
+  };
+}
 
 function getGlideParams() {
   const glideRatio = Number.parseFloat(document.getElementById("ld").value);
@@ -48,6 +82,7 @@ function getGlideParams() {
   const groundClearance = Number.parseFloat(document.getElementById("clearance").value);
   const originRunN = Number.parseInt(document.getElementById("los-run").value, 10);
   const maxGridDim = Number.parseInt(document.getElementById("grid-max").value, 10);
+  const updateMapMs = Number.parseInt(document.getElementById("update-map").value, 10);
   const raw = document.getElementById("raw").checked;
 
   return {
@@ -65,6 +100,8 @@ function getGlideParams() {
       Number.isFinite(maxGridDim) && maxGridDim >= 64 ? maxGridDim : DEFAULT_GRID_MAX,
     maxAltitude: MAX_ALTITUDE,
     raw,
+    updateMapMs:
+      Number.isFinite(updateMapMs) && updateMapMs >= 0 ? updateMapMs : 100,
   };
 }
 
@@ -438,6 +475,14 @@ function clearGlidePath() {
   clearPathMeta();
 }
 
+function makeComputeProgressHandler(dem) {
+  return ({ imageData, iteration, elapsedMs }) => {
+    updateOverlay(imageData, dem);
+    setTerrainTileMaxZoom(dem.zoom);
+    setStatus(`Computing… iter ${iteration}, ${elapsedMs.toFixed(0)} ms GPU`);
+  };
+}
+
 async function ensureEngine() {
   if (!engine) {
     engine = new GlideConeEngine();
@@ -498,30 +543,35 @@ document.getElementById("raw").addEventListener("change", () => {
   }
 });
 
+stopComputeBtn.addEventListener("click", () => {
+  if (computing) {
+    requestStopCompute();
+  }
+});
+
 async function recomputeFromConeState() {
   if (!coneState || computing) {
     return;
   }
 
-  computing = true;
+  startComputeSession();
   clearGlidePath();
   setStatus("Recomputing overlay…");
 
   try {
     const glideParams = getGlideParams();
     const gpu = await ensureEngine();
-    const result = await gpu.compute(coneState.dem, glideParams);
+    const result = await gpu.compute(coneState.dem, glideParams, makeComputeOptions(coneState.dem));
     setConeState(coneState.dem, result, glideParams);
     updateOverlay(result.imageData, coneState.dem);
     setStatus(
-      `Done — ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms GPU` +
-        (glideParams.raw ? " (raw)" : "")
+      formatComputeDone(result, glideParams.raw ? " (raw)" : "")
     );
   } catch (error) {
     setStatus(`Error: ${error.message}`);
     console.error(error);
   } finally {
-    computing = false;
+    endComputeSession();
   }
 }
 
@@ -534,7 +584,7 @@ async function runFullBresenhamCompare() {
     return;
   }
 
-  computing = true;
+  startComputeSession();
   compareLosBtn.disabled = true;
   setStatus("Running full Bresenham on current grid…");
 
@@ -545,16 +595,15 @@ async function runFullBresenhamCompare() {
       overlayColor: "red",
       imageOnly: true,
       raw: false,
+      shouldStop: () => computeShouldStop,
     });
     updateCompareOverlay(result.imageData, coneState.dem);
-    setStatus(
-      `Full Bresenham overlay — ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms GPU`
-    );
+    setStatus(formatComputeDone(result));
   } catch (error) {
     setStatus(`Error: ${error.message}`);
     console.error(error);
   } finally {
-    computing = false;
+    endComputeSession();
     compareLosBtn.disabled = false;
   }
 }
@@ -575,7 +624,7 @@ async function runComputation(lng, lat) {
   clearCompareOverlay();
   setCompareButtonVisible(false);
 
-  computing = true;
+  startComputeSession();
 
   try {
     const terrainZ = pickTerrainZoom(lat);
@@ -588,11 +637,16 @@ async function runComputation(lng, lat) {
     );
     const dem = await buildDemGrid(lng, lat, glideParams);
 
+    if (computeShouldStop) {
+      setStatus("Stopped before GPU compute");
+      return;
+    }
+
     setStatus(
       `Computing ${dem.width}×${dem.height} grid (${dem.tileCount} tiles) on GPU…`
     );
     const gpu = await ensureEngine();
-    const result = await gpu.compute(dem, glideParams);
+    const result = await gpu.compute(dem, glideParams, makeComputeOptions(dem));
 
     setConeState(dem, result, glideParams);
     setTerrainTileMaxZoom(dem.zoom);
@@ -601,14 +655,17 @@ async function runComputation(lng, lat) {
     setCompareButtonVisible(true);
 
     setStatus(
-      `Done — z${dem.zoom}, ${Math.round(dem.cellSizeM)} m, ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms GPU` +
-        (dem.capped ? ` (grid capped at ${dem.width}px)` : "")
+      formatComputeDone(
+        result,
+        ` — z${dem.zoom}, ${Math.round(dem.cellSizeM)} m` +
+          (dem.capped ? ` (grid capped at ${dem.width}px)` : "")
+      )
     );
   } catch (error) {
     setStatus(`Error: ${error.message}`);
     console.error(error);
   } finally {
-    computing = false;
+    endComputeSession();
   }
 }
 

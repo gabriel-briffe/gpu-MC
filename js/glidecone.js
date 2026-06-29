@@ -495,6 +495,76 @@ const COLOR_SHADER_RED = COLOR_SHADER.replace(
   "let r = 255u;"
 ).replace("let g = 120u;", "let g = 48u;").replace("let b = 255u;", "let b = 48u;");
 
+function pickColorPipeline(pipelines, overlayColor, raw) {
+  if (overlayColor === "red") {
+    return { pipeline: pipelines.colorRed.pipeline, layout: pipelines.colorRed.layout };
+  }
+  if (raw) {
+    return { pipeline: pipelines.colorRaw.pipeline, layout: pipelines.colorRaw.layout };
+  }
+  return { pipeline: pipelines.color.pipeline, layout: pipelines.color.layout };
+}
+
+function packedRgbaToImageData(packed, width, height) {
+  const imageData = new ImageData(width, height);
+  for (let i = 0; i < packed.length; i += 1) {
+    const p = packed[i];
+    const dst = i * 4;
+    imageData.data[dst] = p & 255;
+    imageData.data[dst + 1] = (p >> 8) & 255;
+    imageData.data[dst + 2] = (p >> 16) & 255;
+    imageData.data[dst + 3] = (p >> 24) & 255;
+  }
+  return imageData;
+}
+
+async function renderColorFrame(
+  device,
+  {
+    pipelines,
+    colorPipeline,
+    colorLayout,
+    colorUniform,
+    altRead,
+    originRead,
+    groundRead,
+    rgbaBuffer,
+    readBuffer,
+    wgX,
+    wgY,
+    width,
+    height,
+    count,
+  }
+) {
+  const colorBind = device.createBindGroup({
+    layout: colorLayout,
+    entries: [
+      { binding: 0, resource: { buffer: colorUniform } },
+      { binding: 1, resource: { buffer: altRead } },
+      { binding: 2, resource: { buffer: originRead } },
+      { binding: 3, resource: { buffer: groundRead } },
+      { binding: 4, resource: { buffer: rgbaBuffer } },
+    ],
+  });
+
+  const colorEncoder = device.createCommandEncoder();
+  const colorPass = colorEncoder.beginComputePass();
+  colorPass.setPipeline(colorPipeline);
+  colorPass.setBindGroup(0, colorBind);
+  colorPass.dispatchWorkgroups(wgX, wgY);
+  colorPass.end();
+
+  const copyEncoder = device.createCommandEncoder();
+  copyEncoder.copyBufferToBuffer(rgbaBuffer, 0, readBuffer, 0, count * 4);
+  device.queue.submit([colorEncoder.finish(), copyEncoder.finish()]);
+
+  await readBuffer.mapAsync(GPUMapMode.READ);
+  const packed = new Uint32Array(readBuffer.getMappedRange().slice(0));
+  readBuffer.unmap();
+  return packedRgbaToImageData(packed, width, height);
+}
+
 function packParams(
   width,
   height,
@@ -648,11 +718,19 @@ export class GlideConeEngine {
       overlayColor = "blue",
       imageOnly = false,
       raw: rawOverride,
+      onProgress = null,
+      shouldStop = null,
     } = options;
     const { device, pipelines } = this;
     const { width, height, homeX, homeY, cellSizeM, elevation } = dem;
-    const { glideRatio, maxAltitude, circuitHeight, originRunN = 0, raw: rawParam = true } =
-      params;
+    const {
+      glideRatio,
+      maxAltitude,
+      circuitHeight,
+      originRunN = 0,
+      raw: rawParam = true,
+      updateMapMs = 100,
+    } = params;
     const raw = rawOverride !== undefined ? rawOverride : rawParam;
     const useFullBresenham = fullBresenham || originRunN === 0;
     const losShortcut = useFullBresenham ? 0 : 1;
@@ -711,12 +789,66 @@ export class GlideConeEngine {
 
     const wgX = Math.ceil(width / 8);
     const wgY = Math.ceil(height / 8);
-    const maxIterations = (width + height) * 2 * 3;
     const t0 = performance.now();
     let actualIterations = 0;
+    let stopReason = "converged";
 
-    for (let iter = 0; iter < maxIterations; iter += 1) {
-      actualIterations = iter + 1;
+    const colorUniform = createBuffer(device, new Uint8Array(uniformParams), uniformUsage);
+    const { pipeline: colorPipeline, layout: colorLayout } = pickColorPipeline(
+      pipelines,
+      overlayColor,
+      raw
+    );
+    const readBuffer = device.createBuffer({
+      size: count * 4,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+    const livePreview =
+      !imageOnly && onProgress && Number.isFinite(updateMapMs) && updateMapMs > 0;
+    let lastMapUpdate = 0;
+
+    const frameArgs = {
+      pipelines,
+      colorPipeline,
+      colorLayout,
+      colorUniform,
+      altRead,
+      originRead,
+      groundRead,
+      rgbaBuffer,
+      readBuffer,
+      wgX,
+      wgY,
+      width,
+      height,
+      count,
+    };
+
+    const maybeEmitProgress = async (force = false) => {
+      if (!livePreview) {
+        return;
+      }
+      const now = performance.now();
+      if (!force && now - lastMapUpdate < updateMapMs) {
+        return;
+      }
+      lastMapUpdate = now;
+      const imageData = await renderColorFrame(device, frameArgs);
+      onProgress({
+        imageData,
+        iteration: actualIterations,
+        elapsedMs: now - t0,
+        stopReason,
+      });
+    };
+
+    for (;;) {
+      if (shouldStop?.()) {
+        stopReason = "stopped";
+        break;
+      }
+
+      actualIterations += 1;
       const encoder = device.createCommandEncoder();
 
       encoder.copyBufferToBuffer(originRead, 0, originSnap, 0, pairBytes);
@@ -794,6 +926,13 @@ export class GlideConeEngine {
       if (changes === 0) {
         break;
       }
+
+      if (shouldStop?.()) {
+        stopReason = "stopped";
+        break;
+      }
+
+      await maybeEmitProgress();
     }
 
     if (!raw) {
@@ -815,58 +954,7 @@ export class GlideConeEngine {
       device.queue.submit([groundOriginEncoder.finish()]);
     }
 
-    const colorUniform = createBuffer(device, new Uint8Array(uniformParams), uniformUsage);
-    let colorPipeline;
-    let colorLayout;
-    if (overlayColor === "red") {
-      colorPipeline = pipelines.colorRed.pipeline;
-      colorLayout = pipelines.colorRed.layout;
-    } else if (raw) {
-      colorPipeline = pipelines.colorRaw.pipeline;
-      colorLayout = pipelines.colorRaw.layout;
-    } else {
-      colorPipeline = pipelines.color.pipeline;
-      colorLayout = pipelines.color.layout;
-    }
-    const colorBind = device.createBindGroup({
-      layout: colorLayout,
-      entries: [
-        { binding: 0, resource: { buffer: colorUniform } },
-        { binding: 1, resource: { buffer: altRead } },
-        { binding: 2, resource: { buffer: originRead } },
-        { binding: 3, resource: { buffer: groundRead } },
-        { binding: 4, resource: { buffer: rgbaBuffer } },
-      ],
-    });
-
-    const colorEncoder = device.createCommandEncoder();
-    const colorPass = colorEncoder.beginComputePass();
-    colorPass.setPipeline(colorPipeline);
-    colorPass.setBindGroup(0, colorBind);
-    colorPass.dispatchWorkgroups(wgX, wgY);
-    colorPass.end();
-    device.queue.submit([colorEncoder.finish()]);
-
-    const readBuffer = device.createBuffer({
-      size: count * 4,
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-    });
-    const copyEncoder = device.createCommandEncoder();
-    copyEncoder.copyBufferToBuffer(rgbaBuffer, 0, readBuffer, 0, count * 4);
-    device.queue.submit([copyEncoder.finish()]);
-    await readBuffer.mapAsync(GPUMapMode.READ);
-    const packed = new Uint32Array(readBuffer.getMappedRange().slice(0));
-    readBuffer.unmap();
-
-    const imageData = new ImageData(width, height);
-    for (let i = 0; i < count; i += 1) {
-      const p = packed[i];
-      const dst = i * 4;
-      imageData.data[dst] = p & 255;
-      imageData.data[dst + 1] = (p >> 8) & 255;
-      imageData.data[dst + 2] = (p >> 16) & 255;
-      imageData.data[dst + 3] = (p >> 24) & 255;
-    }
+    const imageData = await renderColorFrame(device, frameArgs);
 
     const baseResult = {
       imageData,
@@ -874,7 +962,8 @@ export class GlideConeEngine {
       height,
       homeAlt,
       iterations: actualIterations,
-      maxIterations,
+      stopReason,
+      stopped: stopReason === "stopped",
       elapsedMs: performance.now() - t0,
     };
 
