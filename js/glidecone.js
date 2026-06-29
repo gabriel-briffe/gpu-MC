@@ -18,27 +18,21 @@ struct Params {
 @group(0) @binding(1) var<storage, read> elev: array<f32>;
 @group(0) @binding(2) var<storage, read> altIn: array<f32>;
 @group(0) @binding(3) var<storage, read> originIn: array<vec2<i32>>;
-@group(0) @binding(4) var<storage, read> parentIn: array<vec2<i32>>;
-@group(0) @binding(5) var<storage, read> groundIn: array<u32>;
-@group(0) @binding(6) var<storage, read_write> originOut: array<vec2<i32>>;
-@group(0) @binding(7) var<storage, read_write> parentOut: array<vec2<i32>>;
-@group(0) @binding(8) var<storage, read_write> groundOut: array<u32>;
+@group(0) @binding(4) var<storage, read> groundIn: array<u32>;
+@group(0) @binding(5) var<storage, read_write> originOut: array<vec2<i32>>;
+@group(0) @binding(6) var<storage, read_write> groundOut: array<u32>;
 
 struct Pick {
   req: f32,
   ox: i32,
   oy: i32,
-  px: i32,
-  py: i32,
 };
 
-fn makePick(req: f32, ox: i32, oy: i32, px: i32, py: i32) -> Pick {
+fn makePick(req: f32, ox: i32, oy: i32) -> Pick {
   var p: Pick;
   p.req = req;
   p.ox = ox;
   p.oy = oy;
-  p.px = px;
-  p.py = py;
   return p;
 }
 
@@ -179,7 +173,7 @@ fn tryOriginPick(ox: i32, oy: i32, x: i32, y: i32, best: Pick) -> Pick {
   }
   let req = coneAlt(ox, oy, x, y);
   if (req < best.req) {
-    return makePick(req, ox, oy, best.px, best.py);
+    return makePick(req, ox, oy);
   }
   return best;
 }
@@ -196,7 +190,7 @@ fn tryNeighborPick(nx: i32, ny: i32, x: i32, y: i32, best: Pick) -> Pick {
   let elected = electedOrigin(x, y, norigin.x, norigin.y, nx, ny);
   let req = coneAlt(elected.x, elected.y, x, y);
   if (req < best.req) {
-    return makePick(req, elected.x, elected.y, nx, ny);
+    return makePick(req, elected.x, elected.y);
   }
   return best;
 }
@@ -213,23 +207,21 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   if (groundIn[i] == 1u) {
     originOut[i] = originIn[i];
-    parentOut[i] = parentIn[i];
     groundOut[i] = 1u;
     return;
   }
 
-  var best = makePick(params.maxAlt, -1, -1, -1, -1);
+  var best = makePick(params.maxAlt, -1, -1);
 
   let curOrigin = originIn[i];
   if (curOrigin.x >= 0 && curOrigin.y >= 0) {
     let elected = electedOrigin(x, y, curOrigin.x, curOrigin.y, x, y);
-    let curParent = parentIn[i];
     best = tryOriginPick(
       elected.x,
       elected.y,
       x,
       y,
-      makePick(params.maxAlt, curOrigin.x, curOrigin.y, curParent.x, curParent.y)
+      makePick(params.maxAlt, curOrigin.x, curOrigin.y)
     );
   }
 
@@ -239,7 +231,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   best = tryNeighborPick(x + 1, y, x, y, best);
 
   originOut[i] = vec2<i32>(best.ox, best.oy);
-  parentOut[i] = vec2<i32>(best.px, best.py);
   if (best.ox >= 0 && best.req <= elev[i]) {
     groundOut[i] = 1u;
   } else {
@@ -519,8 +510,6 @@ export class GlideConeEngine {
         "read-only-storage",
         "read-only-storage",
         "read-only-storage",
-        "read-only-storage",
-        "storage",
         "storage",
         "storage",
       ]),
@@ -571,17 +560,12 @@ export class GlideConeEngine {
     const alt = new Float32Array(count).fill(maxAltitude);
     const originX = new Int32Array(count).fill(-1);
     const originY = new Int32Array(count).fill(-1);
-    const parentX = new Int32Array(count).fill(-1);
-    const parentY = new Int32Array(count).fill(-1);
     const ground = new Uint32Array(count);
     alt[homeIdx] = homeAlt;
     originX[homeIdx] = homeX;
     originY[homeIdx] = homeY;
-    parentX[homeIdx] = homeX;
-    parentY[homeIdx] = homeY;
 
     const originPairs = packXY(originX, originY);
-    const parentPairs = packXY(parentX, parentY);
 
     const uniformUsage = GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST;
     const storageUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
@@ -606,8 +590,6 @@ export class GlideConeEngine {
     let altWrite = createBuffer(device, new Uint8Array(alt.buffer), storageUsage);
     let originRead = createBuffer(device, new Uint8Array(originPairs.buffer), storageUsage);
     let originWrite = createBuffer(device, new Uint8Array(originPairs.buffer), storageUsage);
-    let parentRead = createBuffer(device, new Uint8Array(parentPairs.buffer), storageUsage);
-    let parentWrite = createBuffer(device, new Uint8Array(parentPairs.buffer), storageUsage);
     let groundRead = createBuffer(device, new Uint8Array(ground.buffer), storageUsage);
     let groundWrite = createBuffer(device, new Uint8Array(ground.buffer), storageUsage);
     const rgbaBuffer = createBuffer(device, new Uint8Array(count * 4), storageUsage);
@@ -627,11 +609,9 @@ export class GlideConeEngine {
           { binding: 1, resource: { buffer: elevBuffer } },
           { binding: 2, resource: { buffer: altRead } },
           { binding: 3, resource: { buffer: originRead } },
-          { binding: 4, resource: { buffer: parentRead } },
-          { binding: 5, resource: { buffer: groundRead } },
-          { binding: 6, resource: { buffer: originWrite } },
-          { binding: 7, resource: { buffer: parentWrite } },
-          { binding: 8, resource: { buffer: groundWrite } },
+          { binding: 4, resource: { buffer: groundRead } },
+          { binding: 5, resource: { buffer: originWrite } },
+          { binding: 6, resource: { buffer: groundWrite } },
         ],
       });
       const passOrigin = encoder.beginComputePass();
@@ -641,7 +621,6 @@ export class GlideConeEngine {
       passOrigin.end();
 
       [originRead, originWrite] = [originWrite, originRead];
-      [parentRead, parentWrite] = [parentWrite, parentRead];
       [groundRead, groundWrite] = [groundWrite, groundRead];
 
       const altBind = device.createBindGroup({
@@ -757,22 +736,13 @@ export class GlideConeEngine {
       size: pairBytes,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
-    const parentBuffer = device.createBuffer({
-      size: pairBytes,
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-    });
     const originCopyEncoder = device.createCommandEncoder();
     originCopyEncoder.copyBufferToBuffer(originRead, 0, originBuffer, 0, pairBytes);
-    originCopyEncoder.copyBufferToBuffer(parentRead, 0, parentBuffer, 0, pairBytes);
     device.queue.submit([originCopyEncoder.finish()]);
     await originBuffer.mapAsync(GPUMapMode.READ);
-    await parentBuffer.mapAsync(GPUMapMode.READ);
     const originPairsOut = new Int32Array(originBuffer.getMappedRange().slice(0));
-    const parentPairsOut = new Int32Array(parentBuffer.getMappedRange().slice(0));
     originBuffer.unmap();
-    parentBuffer.unmap();
     const { xArr: originXOut, yArr: originYOut } = unpackXY(originPairsOut);
-    const { xArr: parentXOut, yArr: parentYOut } = unpackXY(parentPairsOut);
 
     const groundReadBuffer = device.createBuffer({
       size: count * 4,
@@ -790,8 +760,6 @@ export class GlideConeEngine {
       altitudes,
       originX: originXOut,
       originY: originYOut,
-      parentX: parentXOut,
-      parentY: parentYOut,
       ground: groundOut,
     };
   }

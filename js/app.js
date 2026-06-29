@@ -154,8 +154,6 @@ function setConeState(dem, result) {
     altitudes: result.altitudes,
     originX: result.originX,
     originY: result.originY,
-    parentX: result.parentX,
-    parentY: result.parentY,
     ground: result.ground,
     imageData: result.imageData,
     maxAltitude: MAX_ALTITUDE,
@@ -187,7 +185,7 @@ function formatCellPair(x, y) {
 }
 
 function traceGlidePath(gi, gj) {
-  const { dem, originX, originY, parentX, parentY } = coneState;
+  const { dem, originX, originY } = coneState;
   const coordinates = [];
   const visited = new Set();
   let x = gi;
@@ -235,8 +233,6 @@ function traceGlidePath(gi, gj) {
       y,
       ox: originX[lastIdx],
       oy: originY[lastIdx],
-      px: parentX[lastIdx],
-      py: parentY[lastIdx],
     },
   };
 }
