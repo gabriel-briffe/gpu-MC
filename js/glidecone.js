@@ -722,7 +722,7 @@ export class GlideConeEngine {
       shouldStop = null,
     } = options;
     const { device, pipelines } = this;
-    const { width, height, homeX, homeY, cellSizeM, elevation } = dem;
+    const { width, height, homeX, homeY, cellSizeM, elevation, groundClearance } = dem;
     const {
       glideRatio,
       maxAltitude,
@@ -738,7 +738,7 @@ export class GlideConeEngine {
     const count = width * height;
 
     const homeIdx = homeY * width + homeX;
-    const homeAlt = elevation[homeIdx] + circuitHeight;
+    const homeAlt = elevation[homeIdx] + circuitHeight - groundClearance;
 
     const alt = new Float32Array(count).fill(maxAltitude);
     const originX = new Int32Array(count).fill(-1);

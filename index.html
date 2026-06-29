@@ -195,8 +195,16 @@
         font-size: 0.82rem;
         font-variant-numeric: tabular-nums;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-        white-space: nowrap;
+        white-space: pre-line;
         line-height: 1.35;
+      }
+
+      #hover-tip .delta-pos {
+        color: #6dd96d;
+      }
+
+      #hover-tip .delta-neg {
+        color: #f07070;
       }
 
       #info {
@@ -305,12 +313,19 @@
           <input id="clearance" type="number" min="0" step="10" value="100" />
         </label>
         <label>
-          LOS run N
-          <input id="los-run" type="number" min="0" step="1" value="0" title="0 = full Bresenham" />
+          Max altitude (m)
+          <input
+            id="max-alt"
+            type="number"
+            min="1"
+            step="50"
+            value="4050"
+            title="Grid radius = max altitude × L/D on flat terrain"
+          />
         </label>
         <label>
-          Grid max (px)
-          <input id="grid-max" type="number" min="64" step="64" value="512" />
+          LOS run N
+          <input id="los-run" type="number" min="0" step="1" value="0" title="0 = full Bresenham" />
         </label>
         <label>
           Update map (ms)

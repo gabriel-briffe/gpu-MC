@@ -1,6 +1,7 @@
 import {
   formatCoord,
   gridBoundsLngLat,
+  gridCellDistanceM,
   gridCellToLngLat,
   gridIndexFromLngLat,
   pickTerrainZoom,
@@ -9,8 +10,7 @@ import {
 import { buildDemGrid, sampleElevationAt } from "./dem.js";
 import { GlideConeEngine } from "./glidecone.js";
 
-const MAX_ALTITUDE = 4200;
-const DEFAULT_GRID_MAX = 512;
+const DEFAULT_MAX_ALTITUDE = 4050;
 const MAP_CENTER = { lng: 9.0788, lat: 47.1194 };
 const INITIAL_TERRAIN_Z = pickTerrainZoom(MAP_CENTER.lat);
 const MAP_MAX_ZOOM = 22;
@@ -80,8 +80,8 @@ function getGlideParams() {
   const glideRatio = Number.parseFloat(document.getElementById("ld").value);
   const circuitHeight = Number.parseFloat(document.getElementById("circuit").value);
   const groundClearance = Number.parseFloat(document.getElementById("clearance").value);
+  const maxAltitude = Number.parseFloat(document.getElementById("max-alt").value);
   const originRunN = Number.parseInt(document.getElementById("los-run").value, 10);
-  const maxGridDim = Number.parseInt(document.getElementById("grid-max").value, 10);
   const updateMapMs = Number.parseInt(document.getElementById("update-map").value, 10);
   const raw = document.getElementById("raw").checked;
 
@@ -90,15 +90,14 @@ function getGlideParams() {
     circuitHeight: Number.isFinite(circuitHeight) && circuitHeight >= 0 ? circuitHeight : 250,
     groundClearance:
       Number.isFinite(groundClearance) && groundClearance >= 0 ? groundClearance : 100,
+    maxAltitude:
+      Number.isFinite(maxAltitude) && maxAltitude > 0 ? maxAltitude : DEFAULT_MAX_ALTITUDE,
     originRunN:
       Number.isFinite(originRunN) && originRunN === 0
         ? 0
         : Number.isFinite(originRunN) && originRunN >= 1
           ? originRunN
           : 0,
-    maxGridDim:
-      Number.isFinite(maxGridDim) && maxGridDim >= 64 ? maxGridDim : DEFAULT_GRID_MAX,
-    maxAltitude: MAX_ALTITUDE,
     raw,
     updateMapMs:
       Number.isFinite(updateMapMs) && updateMapMs >= 0 ? updateMapMs : 100,
@@ -195,8 +194,68 @@ function setConeState(dem, result, glideParams) {
     originY: result.originY,
     ground: result.ground,
     imageData: result.imageData,
-    maxAltitude: MAX_ALTITUDE,
+    maxAltitude: glideParams?.maxAltitude ?? DEFAULT_MAX_ALTITUDE,
     raw: glideParams?.raw ?? true,
+    glideRatio: glideParams?.glideRatio ?? 20,
+    circuitHeight: glideParams?.circuitHeight ?? 250,
+  };
+}
+
+function traceOriginRelayPath(x, y, dem, originX, originY) {
+  let totalDistM = 0;
+  let cx = x;
+  let cy = y;
+  const visited = new Set();
+  const maxSteps = dem.width + dem.height;
+
+  for (let step = 0; step < maxSteps; step += 1) {
+    const key = cellKey(cx, cy);
+    if (visited.has(key)) {
+      return { distanceM: totalDistM, seedX: cx, seedY: cy, complete: false };
+    }
+    visited.add(key);
+
+    const idx = cellIndex(cx, cy, dem);
+    const ox = originX[idx];
+    const oy = originY[idx];
+    if (ox < 0 || oy < 0) {
+      return null;
+    }
+
+    totalDistM += gridCellDistanceM(cx, cy, ox, oy, dem);
+
+    if (ox === cx && oy === cy) {
+      return { distanceM: totalDistM, seedX: cx, seedY: cy, complete: true };
+    }
+
+    cx = ox;
+    cy = oy;
+  }
+
+  return { distanceM: totalDistM, seedX: cx, seedY: cy, complete: false };
+}
+
+function seedAltitudeAt(dem, seedIdx, circuitHeight) {
+  return dem.elevation[seedIdx] - dem.groundClearance + circuitHeight;
+}
+
+function seedPathMetrics(cell) {
+  const { dem, originX, originY, ground, glideRatio, circuitHeight } = coneState;
+  const path = traceOriginRelayPath(cell.gi, cell.gj, dem, originX, originY);
+  if (!path) {
+    return null;
+  }
+
+  const seedIdx = cellIndex(path.seedX, path.seedY, dem);
+  const seedAlt = seedAltitudeAt(dem, seedIdx, circuitHeight);
+  const requiredAlt = seedAlt + path.distanceM / glideRatio;
+
+  return {
+    distanceM: path.distanceM,
+    requiredAlt,
+    seedAlt,
+    isGroundSeed: ground[seedIdx] === 1,
+    complete: path.complete,
   };
 }
 
@@ -419,13 +478,35 @@ function sampleDemCell(lng, lat) {
   };
 }
 
+function formatDistanceKm(distanceM) {
+  return `${(distanceM / 1000).toFixed(1)} km`;
+}
+
 function formatHoverTip(cell) {
-  const elev = `${Math.round(cell.groundElev)} m ground`;
-  if (cell.alt !== null) {
-    const kind = cell.isGround ? "ground" : "air";
-    return `${Math.round(cell.alt)} m alt · ${kind} · ${elev}`;
+  const minAltVal = cell.alt;
+  const minAlt = minAltVal !== null ? `${Math.round(minAltVal)} m` : "—";
+  const groundElev = `${Math.round(cell.groundElev)} m`;
+  const metrics = seedPathMetrics(cell);
+  const distanceLine =
+    metrics !== null ? formatDistanceKm(metrics.distanceM) : "—";
+  const requiredLine =
+    metrics !== null ? `${Math.round(metrics.requiredAlt)} m` : "—";
+
+  let deltaLine = "—";
+  if (minAltVal !== null && metrics !== null) {
+    const delta = Math.round(minAltVal - metrics.requiredAlt);
+    const sign = delta > 0 ? "+" : "";
+    const cls = delta >= 0 ? "delta-pos" : "delta-neg";
+    deltaLine = `<span class="${cls}">${sign}${delta} m</span>`;
   }
-  return elev;
+
+  return (
+    `minimum alt: ${minAlt}\n` +
+    `ground elevation: ${groundElev}\n` +
+    `distance to seed: ${distanceLine}\n` +
+    `required alt: ${requiredLine}\n` +
+    `delta: ${deltaLine}`
+  );
 }
 
 function updateGlidePath(coordinates) {
@@ -516,7 +597,7 @@ map.on("mousemove", (event) => {
   hoverTip.style.display = "block";
   hoverTip.style.left = `${event.point.x + 14}px`;
   hoverTip.style.top = `${event.point.y + 14}px`;
-  hoverTip.textContent = formatHoverTip(cell);
+  hoverTip.innerHTML = formatHoverTip(cell);
 
   if (cell.isReachable) {
     lastHoverCell = cell;
@@ -633,7 +714,7 @@ async function runComputation(lng, lat) {
     elevationEl.textContent = `${Math.round(pointElev)} m`;
 
     setStatus(
-      `Fetching DEM z${terrainZ} (~${Math.round(cellSizeM)} m) — L/D ${glideParams.glideRatio}, circuit ${glideParams.circuitHeight} m, ground ${glideParams.groundClearance} m, grid max ${glideParams.maxGridDim} px…`
+      `Fetching DEM z${terrainZ} (~${Math.round(cellSizeM)} m) — L/D ${glideParams.glideRatio}, circuit ${glideParams.circuitHeight} m, ground ${glideParams.groundClearance} m, max alt ${glideParams.maxAltitude} m…`
     );
     const dem = await buildDemGrid(lng, lat, glideParams);
 
@@ -657,8 +738,7 @@ async function runComputation(lng, lat) {
     setStatus(
       formatComputeDone(
         result,
-        ` — z${dem.zoom}, ${Math.round(dem.cellSizeM)} m` +
-          (dem.capped ? ` (grid capped at ${dem.width}px)` : "")
+        ` — z${dem.zoom}, ${Math.round(dem.cellSizeM)} m`
       )
     );
   } catch (error) {

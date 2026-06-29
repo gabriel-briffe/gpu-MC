@@ -64,3 +64,16 @@ export function formatCoord(value, isLat) {
 export function terrariumElevation(r, g, b) {
   return r * 256 + g + b / 256 - 32768;
 }
+
+export function distanceMetres(lat1, lng1, lat2, lng2) {
+  const latMidRad = (((lat1 + lat2) / 2) * Math.PI) / 180;
+  const dLatM = (((lat2 - lat1) * Math.PI) / 180) * 6_371_000;
+  const dLngM = (((lng2 - lng1) * Math.PI) / 180) * 6_371_000 * Math.cos(latMidRad);
+  return Math.hypot(dLatM, dLngM);
+}
+
+export function gridCellDistanceM(gi, gj, gi2, gj2, dem) {
+  const p1 = gridCellToLngLat(gi, gj, dem);
+  const p2 = gridCellToLngLat(gi2, gj2, dem);
+  return distanceMetres(p1.lat, p1.lng, p2.lat, p2.lng);
+}

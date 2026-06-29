@@ -56,18 +56,11 @@ function sampleGlobalPixel(tiles, gx, gy, z) {
  * Option A: build a DEM grid aligned to terrain tile pixels at the chosen zoom.
  */
 export async function buildDemGrid(lng, lat, params) {
-  const { glideRatio, maxAltitude, groundClearance, maxGridDim } = params;
+  const { glideRatio, maxAltitude, groundClearance } = params;
   const z = pickTerrainZoom(lat);
   const cellSizeM = metersPerPixel(lat, z);
   const radiusM = maxAltitude * glideRatio;
-  let radiusPx = Math.ceil(radiusM / cellSizeM);
-  const requestedDim = radiusPx * 2 + 1;
-  let capped = false;
-
-  if (requestedDim > maxGridDim) {
-    radiusPx = Math.floor((maxGridDim - 1) / 2);
-    capped = true;
-  }
+  const radiusPx = Math.ceil(radiusM / cellSizeM);
 
   const { gx: clickGx, gy: clickGy } = lngLatToGlobalPixel(lng, lat, z);
   const homeGx = Math.floor(clickGx);
@@ -122,8 +115,6 @@ export async function buildDemGrid(lng, lat, params) {
     gx0,
     gy0,
     tileCount: tiles.size,
-    capped,
-    requestedDim,
     groundClearance,
   };
 }
