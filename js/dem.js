@@ -52,23 +52,83 @@ function sampleGlobalPixel(tiles, gx, gy, z) {
   return tile.elevation[localY * TILE_SIZE + localX];
 }
 
+function computeGridExtents(seedPixels, radiusPx, maxWindowPx) {
+  let minGx = Infinity;
+  let maxGx = -Infinity;
+  let minGy = Infinity;
+  let maxGy = -Infinity;
+
+  for (const seed of seedPixels) {
+    minGx = Math.min(minGx, seed.gx);
+    maxGx = Math.max(maxGx, seed.gx);
+    minGy = Math.min(minGy, seed.gy);
+    maxGy = Math.max(maxGy, seed.gy);
+  }
+
+  const spanGx = maxGx - minGx;
+  const spanGy = maxGy - minGy;
+  let effectiveRadiusPx = radiusPx;
+  let width = spanGx + 2 * effectiveRadiusPx + 1;
+  let height = spanGy + 2 * effectiveRadiusPx + 1;
+
+  if (maxWindowPx && Math.max(width, height) > maxWindowPx) {
+    const allowedRadius = Math.floor((maxWindowPx - 1 - Math.max(spanGx, spanGy)) / 2);
+    if (allowedRadius < 1) {
+      throw new Error(
+        `Seeds span ${Math.max(spanGx, spanGy) + 1}px — move seeds closer or raise max window`
+      );
+    }
+    effectiveRadiusPx = allowedRadius;
+    width = spanGx + 2 * effectiveRadiusPx + 1;
+    height = spanGy + 2 * effectiveRadiusPx + 1;
+  }
+
+  return {
+    minGx,
+    minGy,
+    width,
+    height,
+    radiusPx: effectiveRadiusPx,
+    radiusCapped: effectiveRadiusPx < radiusPx,
+  };
+}
+
 /**
- * Option A: build a DEM grid aligned to terrain tile pixels at the chosen zoom.
+ * Build a DEM grid large enough for every seed, with glide radius on each side.
  */
-export async function buildDemGrid(lng, lat, params) {
-  const { glideRatio, maxAltitude, groundClearance } = params;
-  const z = pickTerrainZoom(lat);
-  const cellSizeM = metersPerPixel(lat, z);
+export async function buildDemGrid(seeds, params) {
+  if (!Array.isArray(seeds) || seeds.length === 0) {
+    throw new Error("At least one seed is required");
+  }
+
+  const { glideRatio, maxAltitude, groundClearance, maxWindowPx } = params;
+  const centerLat = seeds.reduce((sum, seed) => sum + seed.lat, 0) / seeds.length;
+  const z = pickTerrainZoom(centerLat);
+  const cellSizeM = metersPerPixel(centerLat, z);
   const radiusM = maxAltitude * glideRatio;
   const radiusPx = Math.ceil(radiusM / cellSizeM);
 
-  const { gx: clickGx, gy: clickGy } = lngLatToGlobalPixel(lng, lat, z);
-  const homeGx = Math.floor(clickGx);
-  const homeGy = Math.floor(clickGy);
-  const gx0 = homeGx - radiusPx;
-  const gy0 = homeGy - radiusPx;
-  const width = radiusPx * 2 + 1;
-  const height = radiusPx * 2 + 1;
+  const seedPixels = seeds.map((seed) => {
+    const { gx, gy } = lngLatToGlobalPixel(seed.lng, seed.lat, z);
+    return {
+      gx: Math.floor(gx),
+      gy: Math.floor(gy),
+      lng: seed.lng,
+      lat: seed.lat,
+    };
+  });
+
+  const {
+    minGx,
+    minGy,
+    width,
+    height,
+    radiusPx: effectiveRadiusPx,
+    radiusCapped,
+  } = computeGridExtents(seedPixels, radiusPx, maxWindowPx);
+
+  const gx0 = minGx - effectiveRadiusPx;
+  const gy0 = minGy - effectiveRadiusPx;
 
   const minTileX = Math.floor(gx0 / TILE_SIZE);
   const maxTileX = Math.floor((gx0 + width - 1) / TILE_SIZE);
@@ -101,21 +161,28 @@ export async function buildDemGrid(lng, lat, params) {
     }
   }
 
-  const homeX = homeGx - gx0;
-  const homeY = homeGy - gy0;
+  const gridSeeds = seedPixels.map((seed) => ({
+    x: seed.gx - gx0,
+    y: seed.gy - gy0,
+    lng: seed.lng,
+    lat: seed.lat,
+  }));
 
   return {
     elevation,
     width,
     height,
-    homeX,
-    homeY,
+    seeds: gridSeeds,
+    homeX: gridSeeds[0].x,
+    homeY: gridSeeds[0].y,
     cellSizeM,
     zoom: z,
     gx0,
     gy0,
     tileCount: tiles.size,
     groundClearance,
+    radiusPx: effectiveRadiusPx,
+    radiusCapped,
   };
 }
 

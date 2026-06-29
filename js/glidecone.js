@@ -278,13 +278,18 @@ struct Params {
   cellSizeM: f32,
   glideRatio: f32,
   maxAlt: f32,
-  _pad: f32,
+  homeAlt: f32,
+  losShortcut: u32,
+  originRunN: u32,
+  seedCount: u32,
+  _pad: u32,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> alt: array<f32>;
 @group(0) @binding(2) var<storage, read> ground: array<u32>;
 @group(0) @binding(3) var<storage, read_write> origin: array<vec2<i32>>;
+@group(0) @binding(4) var<storage, read> seeds: array<vec2<i32>>;
 
 fn idx(x: i32, y: i32) -> u32 {
   return u32(y) * params.width + u32(x);
@@ -294,6 +299,16 @@ fn inBounds(x: i32, y: i32) -> bool {
   return x >= 0 && y >= 0 && x < i32(params.width) && y < i32(params.height);
 }
 
+fn isSeedCell(x: i32, y: i32) -> bool {
+  for (var s = 0u; s < params.seedCount; s = s + 1u) {
+    let p = seeds[s];
+    if (p.x == x && p.y == y) {
+      return true;
+    }
+  }
+  return false;
+}
+
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let x = i32(gid.x);
@@ -301,7 +316,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (!inBounds(x, y)) {
     return;
   }
-  if (x == params.homeX && y == params.homeY) {
+  if (isSeedCell(x, y)) {
     return;
   }
 
@@ -575,7 +590,8 @@ function packParams(
   maxAlt,
   homeAlt = 0,
   losShortcut = 1,
-  originRunN = 0
+  originRunN = 0,
+  seedCount = 1
 ) {
   const buf = new ArrayBuffer(48);
   const view = new DataView(buf);
@@ -589,7 +605,17 @@ function packParams(
   view.setFloat32(28, homeAlt, true);
   view.setUint32(32, losShortcut, true);
   view.setUint32(36, originRunN, true);
+  view.setUint32(40, seedCount, true);
   return buf;
+}
+
+function packSeedPairs(seeds) {
+  const pairs = new Int32Array(seeds.length * 2);
+  for (let i = 0; i < seeds.length; i += 1) {
+    pairs[i * 2] = seeds[i].x;
+    pairs[i * 2 + 1] = seeds[i].y;
+  }
+  return pairs;
 }
 
 function createBuffer(device, bytes, usage) {
@@ -677,6 +703,7 @@ export class GlideConeEngine {
         "read-only-storage",
         "read-only-storage",
         "storage",
+        "read-only-storage",
       ]),
       change: await createPipeline(this.device, CHANGE_SHADER, [
         "uniform",
@@ -722,7 +749,10 @@ export class GlideConeEngine {
       shouldStop = null,
     } = options;
     const { device, pipelines } = this;
-    const { width, height, homeX, homeY, cellSizeM, elevation, groundClearance } = dem;
+    const { width, height, homeX, homeY, cellSizeM, elevation, groundClearance, seeds: demSeeds } =
+      dem;
+    const seeds =
+      demSeeds?.length > 0 ? demSeeds : [{ x: homeX, y: homeY }];
     const {
       glideRatio,
       maxAltitude,
@@ -737,18 +767,25 @@ export class GlideConeEngine {
     const shaderOriginRunN = originRunN === 0 ? 1 : originRunN;
     const count = width * height;
 
-    const homeIdx = homeY * width + homeX;
-    const homeAlt = elevation[homeIdx] + circuitHeight - groundClearance;
-
     const alt = new Float32Array(count).fill(maxAltitude);
     const originX = new Int32Array(count).fill(-1);
     const originY = new Int32Array(count).fill(-1);
     const ground = new Uint32Array(count);
-    alt[homeIdx] = homeAlt;
-    originX[homeIdx] = homeX;
-    originY[homeIdx] = homeY;
+
+    let homeAlt = maxAltitude;
+    for (const seed of seeds) {
+      const seedIdx = seed.y * width + seed.x;
+      const seedAlt = elevation[seedIdx] + circuitHeight - groundClearance;
+      alt[seedIdx] = seedAlt;
+      originX[seedIdx] = seed.x;
+      originY[seedIdx] = seed.y;
+      if (homeAlt === maxAltitude || seedAlt < homeAlt) {
+        homeAlt = seedAlt;
+      }
+    }
 
     const originPairs = packXY(originX, originY);
+    const seedPairs = packSeedPairs(seeds);
 
     const uniformUsage = GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST;
     const storageUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
@@ -763,11 +800,13 @@ export class GlideConeEngine {
       maxAltitude,
       homeAlt,
       losShortcut,
-      shaderOriginRunN
+      shaderOriginRunN,
+      seeds.length
     );
 
     const uniformBuffer = createBuffer(device, new Uint8Array(uniformParams), uniformUsage);
     const elevBuffer = createBuffer(device, new Uint8Array(elevation.buffer), storageUsage);
+    const seedBuffer = createBuffer(device, new Uint8Array(seedPairs.buffer), storageUsage);
 
     let altRead = createBuffer(device, new Uint8Array(alt.buffer), storageUsage);
     let altWrite = createBuffer(device, new Uint8Array(alt.buffer), storageUsage);
@@ -943,6 +982,7 @@ export class GlideConeEngine {
           { binding: 1, resource: { buffer: altRead } },
           { binding: 2, resource: { buffer: groundRead } },
           { binding: 3, resource: { buffer: originRead } },
+          { binding: 4, resource: { buffer: seedBuffer } },
         ],
       });
       const groundOriginEncoder = device.createCommandEncoder();

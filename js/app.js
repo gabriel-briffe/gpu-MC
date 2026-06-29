@@ -9,8 +9,11 @@ import {
 } from "./geo.js";
 import { buildDemGrid, sampleElevationAt } from "./dem.js";
 import { GlideConeEngine } from "./glidecone.js";
+import { initAirportsPanel } from "./airports.js";
 
 const DEFAULT_MAX_ALTITUDE = 4050;
+const DEFAULT_MAX_WINDOW_PX = 1024;
+const MIN_SEEDS = 2;
 const MAP_CENTER = { lng: 9.0788, lat: 47.1194 };
 const INITIAL_TERRAIN_Z = pickTerrainZoom(MAP_CENTER.lat);
 const MAP_MAX_ZOOM = 22;
@@ -34,6 +37,8 @@ const hoverTip = document.getElementById("hover-tip");
 const paramsForm = document.getElementById("params");
 const compareLosBtn = document.getElementById("compare-los");
 const stopComputeBtn = document.getElementById("stop-compute");
+const runComputeBtn = document.getElementById("run-compute");
+const clearSeedsBtn = document.getElementById("clear-seeds");
 
 let engine = null;
 let computing = false;
@@ -43,12 +48,17 @@ let compareOverlayCanvas = null;
 let coneState = null;
 let pathLayerReady = false;
 let lastHoverCell = null;
+let pendingSeeds = [];
+let seedLayersReady = false;
 
 function startComputeSession() {
   computeShouldStop = false;
   computing = true;
   stopComputeBtn.hidden = false;
   stopComputeBtn.disabled = false;
+  if (runComputeBtn) {
+    runComputeBtn.disabled = true;
+  }
 }
 
 function endComputeSession() {
@@ -56,6 +66,7 @@ function endComputeSession() {
   computeShouldStop = false;
   stopComputeBtn.hidden = true;
   stopComputeBtn.disabled = false;
+  updateSeedMarkers();
 }
 
 function requestStopCompute() {
@@ -81,6 +92,7 @@ function getGlideParams() {
   const circuitHeight = Number.parseFloat(document.getElementById("circuit").value);
   const groundClearance = Number.parseFloat(document.getElementById("clearance").value);
   const maxAltitude = Number.parseFloat(document.getElementById("max-alt").value);
+  const maxWindowPx = Number.parseInt(document.getElementById("max-window").value, 10);
   const originRunN = Number.parseInt(document.getElementById("los-run").value, 10);
   const updateMapMs = Number.parseInt(document.getElementById("update-map").value, 10);
   const raw = document.getElementById("raw").checked;
@@ -92,6 +104,8 @@ function getGlideParams() {
       Number.isFinite(groundClearance) && groundClearance >= 0 ? groundClearance : 100,
     maxAltitude:
       Number.isFinite(maxAltitude) && maxAltitude > 0 ? maxAltitude : DEFAULT_MAX_ALTITUDE,
+    maxWindowPx:
+      Number.isFinite(maxWindowPx) && maxWindowPx >= 64 ? maxWindowPx : DEFAULT_MAX_WINDOW_PX,
     originRunN:
       Number.isFinite(originRunN) && originRunN === 0
         ? 0
@@ -112,6 +126,7 @@ const map = new maplibregl.Map({
   center: [MAP_CENTER.lng, MAP_CENTER.lat],
   style: {
     version: 8,
+    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
     sources: {
       hillshadeSource: {
         type: "raster-dem",
@@ -139,6 +154,8 @@ const map = new maplibregl.Map({
 
 map.addControl(new maplibregl.NavigationControl(), "top-right");
 
+initAirportsPanel(map, { onStatus: setStatus });
+
 function setStatus(text) {
   statusEl.textContent = text;
 }
@@ -156,6 +173,108 @@ function setTerrainTileMaxZoom(zoom) {
     cache._source.maxzoom = zoom;
     cache.reload();
   }
+}
+
+function isSeedCell(x, y, dem) {
+  if (dem.seeds?.length) {
+    return dem.seeds.some((seed) => seed.x === x && seed.y === y);
+  }
+  return x === dem.homeX && y === dem.homeY;
+}
+
+function ensureSeedLayers() {
+  if (seedLayersReady) {
+    return;
+  }
+
+  map.addSource("seeds", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: "seeds-circle",
+    type: "circle",
+    source: "seeds",
+    paint: {
+      "circle-radius": 7,
+      "circle-color": "#ffcc00",
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#ffffff",
+    },
+  });
+
+  map.addLayer({
+    id: "seeds-label",
+    type: "symbol",
+    source: "seeds",
+    layout: {
+      "text-field": ["get", "label"],
+      "text-font": ["Open Sans Regular"],
+      "text-size": 12,
+      "text-offset": [0, -1.4],
+      "text-anchor": "bottom",
+    },
+    paint: {
+      "text-color": "#fff8dc",
+      "text-halo-color": "rgba(18, 22, 28, 0.92)",
+      "text-halo-width": 2,
+    },
+  });
+
+  seedLayersReady = true;
+}
+
+function updateSeedMarkers() {
+  ensureSeedLayers();
+  const features = pendingSeeds.map((seed, index) => ({
+    type: "Feature",
+    geometry: {
+      type: "Point",
+      coordinates: [seed.lng, seed.lat],
+    },
+    properties: {
+      label: String(index + 1),
+    },
+  }));
+
+  map.getSource("seeds").setData({
+    type: "FeatureCollection",
+    features,
+  });
+
+  if (runComputeBtn) {
+    runComputeBtn.disabled = pendingSeeds.length < MIN_SEEDS || computing;
+  }
+}
+
+function addPendingSeed(lng, lat) {
+  pendingSeeds.push({ lng, lat });
+  updateSeedMarkers();
+  latEl.textContent = formatCoord(lat, true);
+  lngEl.textContent = formatCoord(lng, false);
+  elevationEl.textContent = "…";
+  sampleElevationAt(lng, lat)
+    .then((elev) => {
+      elevationEl.textContent = `${Math.round(elev)} m`;
+    })
+    .catch(() => {
+      elevationEl.textContent = "—";
+    });
+  const remaining = MIN_SEEDS - pendingSeeds.length;
+  if (remaining > 0) {
+    setStatus(
+      `${pendingSeeds.length} seed${pendingSeeds.length === 1 ? "" : "s"} — add ${remaining} more, then Run`
+    );
+  } else {
+    setStatus(`${pendingSeeds.length} seeds ready — click Run`);
+  }
+}
+
+function clearPendingSeeds() {
+  pendingSeeds = [];
+  updateSeedMarkers();
+  setStatus("Seeds cleared — click the map to place seeds");
 }
 
 function raisePathLayer() {
@@ -302,7 +421,7 @@ function traceGlidePath(gi, gj) {
 
     pushPathPoint(coordinates, x, y, dem);
 
-    if (x === dem.homeX && y === dem.homeY) {
+    if (isSeedCell(x, y, dem)) {
       stopReason = "home";
       break;
     }
@@ -576,9 +695,11 @@ map.on("load", async () => {
   setTerrainTileMaxZoom(INITIAL_TERRAIN_Z);
   info.classList.add("visible");
   ensurePathLayer();
+  ensureSeedLayers();
+  updateSeedMarkers();
   try {
     await ensureEngine();
-    setStatus("WebGPU ready — click the map to compute a glide cone");
+    setStatus("WebGPU ready — click the map to place seeds (min 2), then Run");
   } catch (error) {
     setStatus(error.message);
     console.error(error);
@@ -689,16 +810,19 @@ async function runFullBresenhamCompare() {
   }
 }
 
-async function runComputation(lng, lat) {
+async function runComputation() {
   if (computing) {
     return;
   }
 
+  if (pendingSeeds.length < MIN_SEEDS) {
+    setStatus(`Place at least ${MIN_SEEDS} seeds on the map before running`);
+    return;
+  }
+
+  const seeds = pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
   const glideParams = getGlideParams();
   info.classList.add("visible");
-  latEl.textContent = formatCoord(lat, true);
-  lngEl.textContent = formatCoord(lng, false);
-  elevationEl.textContent = "…";
   setStatus("Sampling terrain…");
   hoverTip.style.display = "none";
   clearGlidePath();
@@ -708,23 +832,23 @@ async function runComputation(lng, lat) {
   startComputeSession();
 
   try {
-    const terrainZ = pickTerrainZoom(lat);
-    const cellSizeM = metersPerPixel(lat, terrainZ);
-    const pointElev = await sampleElevationAt(lng, lat);
-    elevationEl.textContent = `${Math.round(pointElev)} m`;
+    const centerLat = seeds.reduce((sum, seed) => sum + seed.lat, 0) / seeds.length;
+    const terrainZ = pickTerrainZoom(centerLat);
+    const cellSizeM = metersPerPixel(centerLat, terrainZ);
 
     setStatus(
-      `Fetching DEM z${terrainZ} (~${Math.round(cellSizeM)} m) — L/D ${glideParams.glideRatio}, circuit ${glideParams.circuitHeight} m, ground ${glideParams.groundClearance} m, max alt ${glideParams.maxAltitude} m…`
+      `Fetching DEM z${terrainZ} (~${Math.round(cellSizeM)} m) — ${seeds.length} seeds, L/D ${glideParams.glideRatio}, max alt ${glideParams.maxAltitude} m, max window ${glideParams.maxWindowPx} px…`
     );
-    const dem = await buildDemGrid(lng, lat, glideParams);
+    const dem = await buildDemGrid(seeds, glideParams);
 
     if (computeShouldStop) {
       setStatus("Stopped before GPU compute");
       return;
     }
 
+    const cappedNote = dem.radiusCapped ? " (radius capped to fit window)" : "";
     setStatus(
-      `Computing ${dem.width}×${dem.height} grid (${dem.tileCount} tiles) on GPU…`
+      `Computing ${dem.width}×${dem.height} grid (${dem.tileCount} tiles) on GPU…${cappedNote}`
     );
     const gpu = await ensureEngine();
     const result = await gpu.compute(dem, glideParams, makeComputeOptions(dem));
@@ -738,7 +862,7 @@ async function runComputation(lng, lat) {
     setStatus(
       formatComputeDone(
         result,
-        ` — z${dem.zoom}, ${Math.round(dem.cellSizeM)} m`
+        ` — z${dem.zoom}, ${dem.width}×${dem.height}, ${seeds.length} seeds`
       )
     );
   } catch (error) {
@@ -750,5 +874,19 @@ async function runComputation(lng, lat) {
 }
 
 map.on("click", (event) => {
-  runComputation(event.lngLat.lng, event.lngLat.lat);
+  if (computing) {
+    return;
+  }
+  addPendingSeed(event.lngLat.lng, event.lngLat.lat);
+});
+
+runComputeBtn?.addEventListener("click", () => {
+  runComputation();
+});
+
+clearSeedsBtn?.addEventListener("click", () => {
+  if (computing) {
+    return;
+  }
+  clearPendingSeeds();
 });
