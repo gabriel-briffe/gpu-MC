@@ -22,6 +22,7 @@ struct Params {
 @group(0) @binding(5) var<storage, read> groundIn: array<u32>;
 @group(0) @binding(6) var<storage, read_write> originOut: array<vec2<i32>>;
 @group(0) @binding(7) var<storage, read_write> parentOut: array<vec2<i32>>;
+@group(0) @binding(8) var<storage, read_write> groundOut: array<u32>;
 
 struct Pick {
   req: f32,
@@ -209,6 +210,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   let i = idx(x, y);
+
+  if (groundIn[i] == 1u) {
+    originOut[i] = originIn[i];
+    parentOut[i] = parentIn[i];
+    groundOut[i] = 1u;
+    return;
+  }
+
   var best = makePick(params.maxAlt, -1, -1, -1, -1);
 
   let curOrigin = originIn[i];
@@ -231,6 +240,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   originOut[i] = vec2<i32>(best.ox, best.oy);
   parentOut[i] = vec2<i32>(best.px, best.py);
+  if (best.ox >= 0 && best.req <= elev[i]) {
+    groundOut[i] = 1u;
+  } else {
+    groundOut[i] = groundIn[i];
+  }
 }
 `;
 
@@ -250,7 +264,8 @@ struct Params {
 @group(0) @binding(1) var<storage, read> elev: array<f32>;
 @group(0) @binding(2) var<storage, read> origin: array<vec2<i32>>;
 @group(0) @binding(3) var<storage, read> altIn: array<f32>;
-@group(0) @binding(4) var<storage, read_write> altOut: array<f32>;
+@group(0) @binding(4) var<storage, read> ground: array<u32>;
+@group(0) @binding(5) var<storage, read_write> altOut: array<f32>;
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -261,6 +276,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   let i = u32(y) * params.width + u32(x);
+  if (ground[i] == 1u) {
+    altOut[i] = elev[i];
+    return;
+  }
+
   let o = origin[i];
   if (o.x < 0 || o.y < 0) {
     altOut[i] = params.maxAlt;
@@ -276,7 +296,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
-const GROUND_SHADER = /* wgsl */ `
+const GROUND_ORIGIN_SHADER = /* wgsl */ `
 struct Params {
   width: u32,
   height: u32,
@@ -289,29 +309,59 @@ struct Params {
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> elev: array<f32>;
-@group(0) @binding(2) var<storage, read> altIn: array<f32>;
-@group(0) @binding(3) var<storage, read_write> altOut: array<f32>;
-@group(0) @binding(4) var<storage, read_write> origin: array<vec2<i32>>;
-@group(0) @binding(5) var<storage, read_write> groundOut: array<u32>;
+@group(0) @binding(1) var<storage, read> alt: array<f32>;
+@group(0) @binding(2) var<storage, read> ground: array<u32>;
+@group(0) @binding(3) var<storage, read_write> origin: array<vec2<i32>>;
+
+fn idx(x: i32, y: i32) -> u32 {
+  return u32(y) * params.width + u32(x);
+}
+
+fn inBounds(x: i32, y: i32) -> bool {
+  return x >= 0 && y >= 0 && x < i32(params.width) && y < i32(params.height);
+}
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let x = i32(gid.x);
   let y = i32(gid.y);
-  if (x >= i32(params.width) || y >= i32(params.height)) {
+  if (!inBounds(x, y)) {
+    return;
+  }
+  if (x == params.homeX && y == params.homeY) {
     return;
   }
 
-  let i = u32(y) * params.width + u32(x);
-  if (altIn[i] <= elev[i] + 0.01) {
-    groundOut[i] = 1u;
-    origin[i] = vec2<i32>(x, y);
-    altOut[i] = elev[i];
-  } else {
-    groundOut[i] = 0u;
-    altOut[i] = altIn[i];
+  let i = idx(x, y);
+  if (ground[i] != 1u) {
+    return;
   }
+
+  var bestAlt = params.maxAlt;
+  var bestOx = x;
+  var bestOy = y;
+
+  let offsets = array<vec2<i32>, 8>(
+    vec2<i32>(-1, -1), vec2<i32>(0, -1), vec2<i32>(1, -1),
+    vec2<i32>(-1, 0), vec2<i32>(1, 0),
+    vec2<i32>(-1, 1), vec2<i32>(0, 1), vec2<i32>(1, 1)
+  );
+
+  for (var k = 0; k < 8; k = k + 1) {
+    let nx = x + offsets[k].x;
+    let ny = y + offsets[k].y;
+    if (!inBounds(nx, ny)) {
+      continue;
+    }
+    let na = alt[idx(nx, ny)];
+    if (na < bestAlt) {
+      bestAlt = na;
+      bestOx = nx;
+      bestOy = ny;
+    }
+  }
+
+  origin[i] = vec2<i32>(bestOx, bestOy);
 }
 `;
 
@@ -472,20 +522,20 @@ export class GlideConeEngine {
         "read-only-storage",
         "storage",
         "storage",
+        "storage",
       ]),
       alt: await createPipeline(this.device, ALT_SHADER, [
         "uniform",
         "read-only-storage",
         "read-only-storage",
         "read-only-storage",
+        "read-only-storage",
         "storage",
       ]),
-      ground: await createPipeline(this.device, GROUND_SHADER, [
+      groundOrigin: await createPipeline(this.device, GROUND_ORIGIN_SHADER, [
         "uniform",
         "read-only-storage",
         "read-only-storage",
-        "storage",
-        "storage",
         "storage",
       ]),
       color: await createPipeline(this.device, COLOR_SHADER, [
@@ -581,6 +631,7 @@ export class GlideConeEngine {
           { binding: 5, resource: { buffer: groundRead } },
           { binding: 6, resource: { buffer: originWrite } },
           { binding: 7, resource: { buffer: parentWrite } },
+          { binding: 8, resource: { buffer: groundWrite } },
         ],
       });
       const passOrigin = encoder.beginComputePass();
@@ -591,6 +642,7 @@ export class GlideConeEngine {
 
       [originRead, originWrite] = [originWrite, originRead];
       [parentRead, parentWrite] = [parentWrite, parentRead];
+      [groundRead, groundWrite] = [groundWrite, groundRead];
 
       const altBind = device.createBindGroup({
         layout: pipelines.alt.layout,
@@ -599,7 +651,8 @@ export class GlideConeEngine {
           { binding: 1, resource: { buffer: elevBuffer } },
           { binding: 2, resource: { buffer: originRead } },
           { binding: 3, resource: { buffer: altRead } },
-          { binding: 4, resource: { buffer: altWrite } },
+          { binding: 4, resource: { buffer: groundRead } },
+          { binding: 5, resource: { buffer: altWrite } },
         ],
       });
       const passAlt = encoder.beginComputePass();
@@ -610,28 +663,25 @@ export class GlideConeEngine {
 
       [altRead, altWrite] = [altWrite, altRead];
 
-      const groundBind = device.createBindGroup({
-        layout: pipelines.ground.layout,
-        entries: [
-          { binding: 0, resource: { buffer: uniformBuffer } },
-          { binding: 1, resource: { buffer: elevBuffer } },
-          { binding: 2, resource: { buffer: altRead } },
-          { binding: 3, resource: { buffer: altWrite } },
-          { binding: 4, resource: { buffer: originRead } },
-          { binding: 5, resource: { buffer: groundWrite } },
-        ],
-      });
-      const passGround = encoder.beginComputePass();
-      passGround.setPipeline(pipelines.ground.pipeline);
-      passGround.setBindGroup(0, groundBind);
-      passGround.dispatchWorkgroups(wgX, wgY);
-      passGround.end();
-
-      [altRead, altWrite] = [altWrite, altRead];
-      [groundRead, groundWrite] = [groundWrite, groundRead];
-
       device.queue.submit([encoder.finish()]);
     }
+
+    const groundOriginBind = device.createBindGroup({
+      layout: pipelines.groundOrigin.layout,
+      entries: [
+        { binding: 0, resource: { buffer: uniformBuffer } },
+        { binding: 1, resource: { buffer: altRead } },
+        { binding: 2, resource: { buffer: groundRead } },
+        { binding: 3, resource: { buffer: originRead } },
+      ],
+    });
+    const groundOriginEncoder = device.createCommandEncoder();
+    const passGroundOrigin = groundOriginEncoder.beginComputePass();
+    passGroundOrigin.setPipeline(pipelines.groundOrigin.pipeline);
+    passGroundOrigin.setBindGroup(0, groundOriginBind);
+    passGroundOrigin.dispatchWorkgroups(wgX, wgY);
+    passGroundOrigin.end();
+    device.queue.submit([groundOriginEncoder.finish()]);
 
     const colorUniform = createBuffer(device, new Uint8Array(uniformParams), uniformUsage);
     const colorPipeline =

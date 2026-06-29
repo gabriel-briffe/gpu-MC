@@ -261,13 +261,6 @@
           Grid max (px)
           <input id="grid-max" type="number" min="64" step="64" value="512" />
         </label>
-        <label>
-          Ground path
-          <select id="path-mode" aria-label="Ground path mode">
-            <option value="parent">Parent for ground cells</option>
-            <option value="lowest" selected>Lowest neighbour for ground cells</option>
-          </select>
-        </label>
         <button type="button" id="compare-los" hidden>Full Bresenham (red)</button>
       </form>
     </details>
@@ -296,14 +289,6 @@
         <span class="field">
           <span class="label">Orig</span>
           <span class="value" id="path-origin">—</span>
-        </span>
-        <span class="field">
-          <span class="label">Parent</span>
-          <span class="value" id="path-parent">—</span>
-        </span>
-        <span class="field">
-          <span class="label">Lowest</span>
-          <span class="value" id="path-lowest">—</span>
         </span>
         <span class="field" id="path-stop" hidden>stopped: loop</span>
       </div>

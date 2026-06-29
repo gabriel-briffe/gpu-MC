@@ -29,24 +29,10 @@ const statusEl = document.getElementById("status");
 const pathMetaEl = document.getElementById("path-meta");
 const pathCellEl = document.getElementById("path-cell");
 const pathOriginEl = document.getElementById("path-origin");
-const pathParentEl = document.getElementById("path-parent");
-const pathLowestEl = document.getElementById("path-lowest");
 const pathStopEl = document.getElementById("path-stop");
 const hoverTip = document.getElementById("hover-tip");
 const paramsForm = document.getElementById("params");
 const compareLosBtn = document.getElementById("compare-los");
-const pathModeEl = document.getElementById("path-mode");
-
-const NEIGHBORS_8 = [
-  [-1, -1],
-  [0, -1],
-  [1, -1],
-  [-1, 0],
-  [1, 0],
-  [-1, 1],
-  [0, 1],
-  [1, 1],
-];
 
 let engine = null;
 let computing = false;
@@ -200,87 +186,8 @@ function formatCellPair(x, y) {
   return `${x}, ${y}`;
 }
 
-function formatLowestNeighbor(neighbor) {
-  if (!neighbor) {
-    return "—";
-  }
-  const kind = neighbor.isAir ? "air" : "ground";
-  return `${neighbor.x}, ${neighbor.y} · ${kind}`;
-}
-
-function getPathMode() {
-  return pathModeEl.value === "lowest" ? "lowest" : "parent";
-}
-
-function distToHomeSq(x, y, dem) {
-  const dx = x - dem.homeX;
-  const dy = y - dem.homeY;
-  return dx * dx + dy * dy;
-}
-
-function isReachableCell(x, y) {
-  const { dem, altitudes, ground, originX, originY, maxAltitude } = coneState;
-  if (x < 0 || y < 0 || x >= dem.width || y >= dem.height) {
-    return false;
-  }
-
-  const idx = cellIndex(x, y, dem);
-  const alt = altitudes[idx];
-  if (!Number.isFinite(alt) || alt >= maxAltitude) {
-    return false;
-  }
-
-  if (ground[idx] === 1) {
-    return true;
-  }
-
-  return originX[idx] >= 0 && originY[idx] >= 0;
-}
-
-function pickLowestGroundNeighbor(x, y) {
-  const { dem, altitudes, ground } = coneState;
-  const idx = cellIndex(x, y, dem);
-  const currentAlt = altitudes[idx];
-  const candidates = [];
-
-  for (const [dx, dy] of NEIGHBORS_8) {
-    const nx = x + dx;
-    const ny = y + dy;
-    if (!isReachableCell(nx, ny)) {
-      continue;
-    }
-
-    const nIdx = cellIndex(nx, ny, dem);
-    candidates.push({
-      x: nx,
-      y: ny,
-      alt: altitudes[nIdx],
-      isAir: ground[nIdx] !== 1,
-    });
-  }
-
-  if (candidates.length === 0) {
-    return null;
-  }
-
-  candidates.sort((a, b) => {
-    if (a.alt !== b.alt) {
-      return a.alt - b.alt;
-    }
-    return distToHomeSq(a.x, a.y, dem) - distToHomeSq(b.x, b.y, dem);
-  });
-
-  const lowest = candidates[0];
-  if (lowest.alt > currentAlt + 0.01) {
-    return null;
-  }
-
-  return lowest;
-}
-
 function traceGlidePath(gi, gj) {
-  const { dem, originX, originY, parentX, parentY, ground } = coneState;
-  const pathMode = getPathMode();
+  const { dem, originX, originY, parentX, parentY } = coneState;
   const coordinates = [];
   const visited = new Set();
   let x = gi;
@@ -304,33 +211,11 @@ function traceGlidePath(gi, gj) {
     }
 
     const idx = cellIndex(x, y, dem);
-    let nx;
-    let ny;
-
-    if (ground[idx] === 1) {
-      if (pathMode === "lowest") {
-        const next = pickLowestGroundNeighbor(x, y);
-        if (!next) {
-          stopReason = "stalled";
-          break;
-        }
-        nx = next.x;
-        ny = next.y;
-      } else {
-        nx = parentX[idx];
-        ny = parentY[idx];
-        if (nx < 0 || ny < 0 || (nx === x && ny === y)) {
-          stopReason = "stalled";
-          break;
-        }
-      }
-    } else {
-      nx = originX[idx];
-      ny = originY[idx];
-      if (nx < 0 || ny < 0 || (nx === x && ny === y)) {
-        stopReason = "stalled";
-        break;
-      }
+    const nx = originX[idx];
+    const ny = originY[idx];
+    if (nx < 0 || ny < 0 || (nx === x && ny === y)) {
+      stopReason = "stalled";
+      break;
     }
 
     x = nx;
@@ -342,11 +227,9 @@ function traceGlidePath(gi, gj) {
   }
 
   const lastIdx = cellIndex(x, y, dem);
-  const lowestNeighbor = pickLowestGroundNeighbor(x, y);
   return {
     coordinates,
     stopReason,
-    lowestNeighbor,
     lastCell: {
       x,
       y,
@@ -359,10 +242,10 @@ function traceGlidePath(gi, gj) {
 }
 
 function refreshHoverPath(cell) {
-  const { coordinates, lastCell, stopReason, lowestNeighbor } = traceGlidePath(cell.gi, cell.gj);
+  const { coordinates, lastCell, stopReason } = traceGlidePath(cell.gi, cell.gj);
   if (coordinates.length >= 2) {
     updateGlidePath(coordinates);
-    updatePathMeta(lastCell, stopReason, lowestNeighbor);
+    updatePathMeta(lastCell, stopReason);
   } else {
     clearGlidePath();
   }
@@ -517,18 +400,14 @@ function clearPathMeta() {
   pathMetaEl.hidden = true;
   pathCellEl.textContent = "—";
   pathOriginEl.textContent = "—";
-  pathParentEl.textContent = "—";
-  pathLowestEl.textContent = "—";
   pathStopEl.hidden = true;
   pathStopEl.textContent = "";
 }
 
-function updatePathMeta(lastCell, stopReason, lowestNeighbor) {
+function updatePathMeta(lastCell, stopReason) {
   pathMetaEl.hidden = false;
   pathCellEl.textContent = formatCellPair(lastCell.x, lastCell.y);
   pathOriginEl.textContent = formatCellPair(lastCell.ox, lastCell.oy);
-  pathParentEl.textContent = formatCellPair(lastCell.px, lastCell.py);
-  pathLowestEl.textContent = formatLowestNeighbor(lowestNeighbor);
   const stopMessages = {
     loop: "stopped: loop",
     maxSteps: "stopped: max steps",
@@ -602,12 +481,6 @@ map.on("mouseleave", () => {
 
 paramsForm.addEventListener("submit", (event) => {
   event.preventDefault();
-});
-
-pathModeEl.addEventListener("change", () => {
-  if (lastHoverCell) {
-    refreshHoverPath(lastHoverCell);
-  }
 });
 
 compareLosBtn.addEventListener("click", () => {
