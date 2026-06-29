@@ -167,13 +167,16 @@ fn coneAlt(ox: i32, oy: i32, x: i32, y: i32) -> f32 {
   return altIn[oi] + sqrt(dx * dx + dy * dy) * params.cellSizeM / params.glideRatio;
 }
 
-fn tryNeighborPick(nx: i32, ny: i32, x: i32, y: i32, best: Pick) -> Pick {
+fn tryNeighborPick(nx: i32, ny: i32, x: i32, y: i32, best: Pick, curOx: i32, curOy: i32) -> Pick {
   if (!inBounds(nx, ny)) {
     return best;
   }
   let ni = idx(nx, ny);
   let norigin = originIn[ni];
   if (norigin.x < 0 || norigin.y < 0) {
+    return best;
+  }
+  if (norigin.x == curOx && norigin.y == curOy) {
     return best;
   }
   let elected = electedOrigin(x, y, norigin.x, norigin.y, nx, ny);
@@ -207,10 +210,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     best = makePick(coneAlt(curOrigin.x, curOrigin.y, x, y), curOrigin.x, curOrigin.y);
   }
 
-  best = tryNeighborPick(x, y - 1, x, y, best);
-  best = tryNeighborPick(x, y + 1, x, y, best);
-  best = tryNeighborPick(x - 1, y, x, y, best);
-  best = tryNeighborPick(x + 1, y, x, y, best);
+  best = tryNeighborPick(x, y - 1, x, y, best, curOrigin.x, curOrigin.y);
+  best = tryNeighborPick(x, y + 1, x, y, best, curOrigin.x, curOrigin.y);
+  best = tryNeighborPick(x - 1, y, x, y, best, curOrigin.x, curOrigin.y);
+  best = tryNeighborPick(x + 1, y, x, y, best, curOrigin.x, curOrigin.y);
 
   originOut[i] = vec2<i32>(best.ox, best.oy);
   if (best.ox >= 0 && best.req <= elev[i]) {

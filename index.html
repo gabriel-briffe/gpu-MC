@@ -273,6 +273,16 @@
         background: rgba(90, 159, 255, 0.32);
       }
 
+      #run-viewport-airports {
+        border-color: rgba(120, 200, 140, 0.55);
+        background: rgba(80, 180, 110, 0.18);
+        color: #d8ffe3;
+      }
+
+      #run-viewport-airports:hover:not(:disabled) {
+        background: rgba(80, 180, 110, 0.3);
+      }
+
       #clear-seeds {
         border-color: rgba(255, 255, 255, 0.2);
         background: rgba(255, 255, 255, 0.08);
@@ -469,17 +479,6 @@
           />
         </label>
         <label>
-          Max window (px)
-          <input
-            id="max-window"
-            type="number"
-            min="64"
-            step="64"
-            value="1024"
-            title="Max grid dimension; shrinks glide radius if seeds are far apart"
-          />
-        </label>
-        <label>
           LOS run N
           <input id="los-run" type="number" min="0" step="1" value="0" title="0 = full Bresenham" />
         </label>
@@ -499,6 +498,7 @@
           Raw
         </label>
         <button type="button" id="run-compute" disabled>Run</button>
+        <button type="button" id="run-viewport-airports" disabled>Run viewport airports</button>
         <button type="button" id="clear-seeds">Clear seeds</button>
         <button type="button" id="compare-los" hidden>Full Bresenham (red)</button>
       </form>

@@ -52,7 +52,7 @@ function sampleGlobalPixel(tiles, gx, gy, z) {
   return tile.elevation[localY * TILE_SIZE + localX];
 }
 
-function computeGridExtents(seedPixels, radiusPx, maxWindowPx) {
+function computeGridExtents(seedPixels, radiusPx) {
   let minGx = Infinity;
   let maxGx = -Infinity;
   let minGy = Infinity;
@@ -67,29 +67,15 @@ function computeGridExtents(seedPixels, radiusPx, maxWindowPx) {
 
   const spanGx = maxGx - minGx;
   const spanGy = maxGy - minGy;
-  let effectiveRadiusPx = radiusPx;
-  let width = spanGx + 2 * effectiveRadiusPx + 1;
-  let height = spanGy + 2 * effectiveRadiusPx + 1;
-
-  if (maxWindowPx && Math.max(width, height) > maxWindowPx) {
-    const allowedRadius = Math.floor((maxWindowPx - 1 - Math.max(spanGx, spanGy)) / 2);
-    if (allowedRadius < 1) {
-      throw new Error(
-        `Seeds span ${Math.max(spanGx, spanGy) + 1}px — move seeds closer or raise max window`
-      );
-    }
-    effectiveRadiusPx = allowedRadius;
-    width = spanGx + 2 * effectiveRadiusPx + 1;
-    height = spanGy + 2 * effectiveRadiusPx + 1;
-  }
+  const width = spanGx + 2 * radiusPx + 1;
+  const height = spanGy + 2 * radiusPx + 1;
 
   return {
     minGx,
     minGy,
     width,
     height,
-    radiusPx: effectiveRadiusPx,
-    radiusCapped: effectiveRadiusPx < radiusPx,
+    radiusPx,
   };
 }
 
@@ -101,7 +87,7 @@ export async function buildDemGrid(seeds, params) {
     throw new Error("At least one seed is required");
   }
 
-  const { glideRatio, maxAltitude, groundClearance, maxWindowPx } = params;
+  const { glideRatio, maxAltitude, groundClearance } = params;
   const centerLat = seeds.reduce((sum, seed) => sum + seed.lat, 0) / seeds.length;
   const z = pickTerrainZoom(centerLat);
   const cellSizeM = metersPerPixel(centerLat, z);
@@ -118,17 +104,13 @@ export async function buildDemGrid(seeds, params) {
     };
   });
 
-  const {
-    minGx,
-    minGy,
-    width,
-    height,
-    radiusPx: effectiveRadiusPx,
-    radiusCapped,
-  } = computeGridExtents(seedPixels, radiusPx, maxWindowPx);
+  const { minGx, minGy, width, height, radiusPx: gridRadiusPx } = computeGridExtents(
+    seedPixels,
+    radiusPx
+  );
 
-  const gx0 = minGx - effectiveRadiusPx;
-  const gy0 = minGy - effectiveRadiusPx;
+  const gx0 = minGx - gridRadiusPx;
+  const gy0 = minGy - gridRadiusPx;
 
   const minTileX = Math.floor(gx0 / TILE_SIZE);
   const maxTileX = Math.floor((gx0 + width - 1) / TILE_SIZE);
@@ -181,8 +163,7 @@ export async function buildDemGrid(seeds, params) {
     gy0,
     tileCount: tiles.size,
     groundClearance,
-    radiusPx: effectiveRadiusPx,
-    radiusCapped,
+    radiusPx: gridRadiusPx,
   };
 }
 

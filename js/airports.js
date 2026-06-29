@@ -126,7 +126,7 @@ export function ensureAirportLayers(map) {
     minzoom: 9,
     layout: {
       "text-field": ["coalesce", ["get", "icaoCode"], ["get", "name"]],
-      "text-font": ["Open Sans Regular"],
+      "text-font": ["Noto Sans Regular"],
       "text-size": 11,
       "text-offset": [0, -1.2],
       "text-anchor": "bottom",

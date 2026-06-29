@@ -10,10 +10,14 @@ import {
 import { buildDemGrid, sampleElevationAt } from "./dem.js";
 import { GlideConeEngine } from "./glidecone.js";
 import { initAirportsPanel } from "./airports.js";
+import {
+  initOpenAipTiles,
+  pickOpenAipAirport,
+  getViewportOpenAipAirports,
+} from "./openaip-tiles.js";
 
 const DEFAULT_MAX_ALTITUDE = 4050;
-const DEFAULT_MAX_WINDOW_PX = 1024;
-const MIN_SEEDS = 2;
+const MIN_SEEDS = 1;
 const MAP_CENTER = { lng: 9.0788, lat: 47.1194 };
 const INITIAL_TERRAIN_Z = pickTerrainZoom(MAP_CENTER.lat);
 const MAP_MAX_ZOOM = 22;
@@ -38,6 +42,7 @@ const paramsForm = document.getElementById("params");
 const compareLosBtn = document.getElementById("compare-los");
 const stopComputeBtn = document.getElementById("stop-compute");
 const runComputeBtn = document.getElementById("run-compute");
+const runViewportAirportsBtn = document.getElementById("run-viewport-airports");
 const clearSeedsBtn = document.getElementById("clear-seeds");
 
 let engine = null;
@@ -58,6 +63,9 @@ function startComputeSession() {
   stopComputeBtn.disabled = false;
   if (runComputeBtn) {
     runComputeBtn.disabled = true;
+  }
+  if (runViewportAirportsBtn) {
+    runViewportAirportsBtn.disabled = true;
   }
 }
 
@@ -92,7 +100,6 @@ function getGlideParams() {
   const circuitHeight = Number.parseFloat(document.getElementById("circuit").value);
   const groundClearance = Number.parseFloat(document.getElementById("clearance").value);
   const maxAltitude = Number.parseFloat(document.getElementById("max-alt").value);
-  const maxWindowPx = Number.parseInt(document.getElementById("max-window").value, 10);
   const originRunN = Number.parseInt(document.getElementById("los-run").value, 10);
   const updateMapMs = Number.parseInt(document.getElementById("update-map").value, 10);
   const raw = document.getElementById("raw").checked;
@@ -104,8 +111,6 @@ function getGlideParams() {
       Number.isFinite(groundClearance) && groundClearance >= 0 ? groundClearance : 100,
     maxAltitude:
       Number.isFinite(maxAltitude) && maxAltitude > 0 ? maxAltitude : DEFAULT_MAX_ALTITUDE,
-    maxWindowPx:
-      Number.isFinite(maxWindowPx) && maxWindowPx >= 64 ? maxWindowPx : DEFAULT_MAX_WINDOW_PX,
     originRunN:
       Number.isFinite(originRunN) && originRunN === 0
         ? 0
@@ -210,7 +215,7 @@ function ensureSeedLayers() {
     source: "seeds",
     layout: {
       "text-field": ["get", "label"],
-      "text-font": ["Open Sans Regular"],
+      "text-font": ["Noto Sans Regular"],
       "text-size": 12,
       "text-offset": [0, -1.4],
       "text-anchor": "bottom",
@@ -246,6 +251,9 @@ function updateSeedMarkers() {
   if (runComputeBtn) {
     runComputeBtn.disabled = pendingSeeds.length < MIN_SEEDS || computing;
   }
+  if (runViewportAirportsBtn) {
+    runViewportAirportsBtn.disabled = computing || !map.getSource("openaip");
+  }
 }
 
 function addPendingSeed(lng, lat) {
@@ -267,7 +275,9 @@ function addPendingSeed(lng, lat) {
       `${pendingSeeds.length} seed${pendingSeeds.length === 1 ? "" : "s"} — add ${remaining} more, then Run`
     );
   } else {
-    setStatus(`${pendingSeeds.length} seeds ready — click Run`);
+    setStatus(
+      `${pendingSeeds.length} seed${pendingSeeds.length === 1 ? "" : "s"} ready — click Run`
+    );
   }
 }
 
@@ -695,11 +705,24 @@ map.on("load", async () => {
   setTerrainTileMaxZoom(INITIAL_TERRAIN_Z);
   info.classList.add("visible");
   ensurePathLayer();
+
+  try {
+    const { OPENAIP_API_KEY } = await import("./openaip-config.js");
+    if (initOpenAipTiles(map, OPENAIP_API_KEY)) {
+      console.info("OpenAIP vector tiles enabled");
+      updateSeedMarkers();
+    }
+  } catch (error) {
+    console.warn(
+      "OpenAIP vector tiles disabled — copy js/openaip-config.example.js to js/openaip-config.js"
+    );
+  }
+
   ensureSeedLayers();
   updateSeedMarkers();
   try {
     await ensureEngine();
-    setStatus("WebGPU ready — click the map to place seeds (min 2), then Run");
+    setStatus("WebGPU ready — click the map to place a seed, then Run");
   } catch (error) {
     setStatus(error.message);
     console.error(error);
@@ -810,17 +833,18 @@ async function runFullBresenhamCompare() {
   }
 }
 
-async function runComputation() {
+async function runComputation(seedsOverride = null) {
   if (computing) {
     return;
   }
 
-  if (pendingSeeds.length < MIN_SEEDS) {
-    setStatus(`Place at least ${MIN_SEEDS} seeds on the map before running`);
+  const seeds =
+    seedsOverride ?? pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
+
+  if (seeds.length < MIN_SEEDS) {
+    setStatus(`Place at least ${MIN_SEEDS} seed on the map before running`);
     return;
   }
-
-  const seeds = pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
   const glideParams = getGlideParams();
   info.classList.add("visible");
   setStatus("Sampling terrain…");
@@ -837,7 +861,7 @@ async function runComputation() {
     const cellSizeM = metersPerPixel(centerLat, terrainZ);
 
     setStatus(
-      `Fetching DEM z${terrainZ} (~${Math.round(cellSizeM)} m) — ${seeds.length} seeds, L/D ${glideParams.glideRatio}, max alt ${glideParams.maxAltitude} m, max window ${glideParams.maxWindowPx} px…`
+      `Fetching DEM z${terrainZ} (~${Math.round(cellSizeM)} m) — ${seeds.length} seeds, L/D ${glideParams.glideRatio}, max alt ${glideParams.maxAltitude} m…`
     );
     const dem = await buildDemGrid(seeds, glideParams);
 
@@ -846,9 +870,8 @@ async function runComputation() {
       return;
     }
 
-    const cappedNote = dem.radiusCapped ? " (radius capped to fit window)" : "";
     setStatus(
-      `Computing ${dem.width}×${dem.height} grid (${dem.tileCount} tiles) on GPU…${cappedNote}`
+      `Computing ${dem.width}×${dem.height} grid (${dem.tileCount} tiles) on GPU…`
     );
     const gpu = await ensureEngine();
     const result = await gpu.compute(dem, glideParams, makeComputeOptions(dem));
@@ -877,11 +900,39 @@ map.on("click", (event) => {
   if (computing) {
     return;
   }
+
+  const airportFeature = pickOpenAipAirport(map, event.point);
+  if (airportFeature) {
+    console.log(airportFeature);
+    return;
+  }
+
   addPendingSeed(event.lngLat.lng, event.lngLat.lat);
 });
 
 runComputeBtn?.addEventListener("click", () => {
   runComputation();
+});
+
+runViewportAirportsBtn?.addEventListener("click", async () => {
+  if (computing) {
+    return;
+  }
+
+  const airports = getViewportOpenAipAirports(map);
+  if (airports.length === 0) {
+    setStatus("No airports in viewport — zoom in until OpenAIP tiles load");
+    return;
+  }
+
+  pendingSeeds = airports.map((airport) => ({
+    lng: airport.lng,
+    lat: airport.lat,
+  }));
+  updateSeedMarkers();
+  await runComputation(
+    airports.map((airport) => ({ lng: airport.lng, lat: airport.lat }))
+  );
 });
 
 clearSeedsBtn?.addEventListener("click", () => {

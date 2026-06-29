@@ -118,7 +118,7 @@ export function ensureSeedLayers(map) {
     layout: {
       "text-field": ["to-string", ["get", "index"]],
       "text-size": 11,
-      "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+      "text-font": ["Noto Sans Bold"],
     },
     paint: {
       "text-color": "#12161c",
