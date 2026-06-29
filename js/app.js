@@ -1,5 +1,4 @@
 import {
-  formatCoord,
   gridBoundsLngLat,
   gridCellDistanceM,
   gridCellToLngLat,
@@ -7,13 +6,15 @@ import {
   pickTerrainZoom,
   metersPerPixel,
 } from "./geo.js";
-import { buildDemGrid, sampleElevationAt } from "./dem.js";
+import { buildDemGrid } from "./dem.js";
 import { GlideConeEngine } from "./glidecone.js";
 import { initAirportsPanel } from "./airports.js";
 import {
   initOpenAipTiles,
   pickOpenAipAirport,
   getViewportOpenAipAirports,
+  queryOpenAipAirspacesAt,
+  airspaceFeatureKey,
 } from "./openaip-tiles.js";
 
 const DEFAULT_MAX_ALTITUDE = 4050;
@@ -29,14 +30,8 @@ const EMPTY_PATH = {
 };
 
 const info = document.getElementById("info");
-const latEl = document.getElementById("lat");
-const lngEl = document.getElementById("lng");
-const elevationEl = document.getElementById("elevation");
+const airspaceInfoEl = document.getElementById("airspace-info");
 const statusEl = document.getElementById("status");
-const pathMetaEl = document.getElementById("path-meta");
-const pathCellEl = document.getElementById("path-cell");
-const pathOriginEl = document.getElementById("path-origin");
-const pathStopEl = document.getElementById("path-stop");
 const hoverTip = document.getElementById("hover-tip");
 const paramsForm = document.getElementById("params");
 const compareLosBtn = document.getElementById("compare-los");
@@ -55,6 +50,7 @@ let pathLayerReady = false;
 let lastHoverCell = null;
 let pendingSeeds = [];
 let seedLayersReady = false;
+let openAipApiKey = null;
 
 function startComputeSession() {
   computeShouldStop = false;
@@ -161,6 +157,42 @@ map.addControl(new maplibregl.NavigationControl(), "top-right");
 
 initAirportsPanel(map, { onStatus: setStatus });
 
+function updateAirspaceInfo(lng, lat) {
+  const openKeys = new Set();
+  for (const el of airspaceInfoEl.querySelectorAll("details[open]")) {
+    if (el.dataset.key) {
+      openKeys.add(el.dataset.key);
+    }
+  }
+
+  const features = queryOpenAipAirspacesAt(map, lng, lat);
+  airspaceInfoEl.replaceChildren();
+
+  if (!features.length) {
+    airspaceInfoEl.textContent = "—";
+    return;
+  }
+
+  for (const feature of features) {
+    const key = airspaceFeatureKey(feature);
+    const details = document.createElement("details");
+    details.dataset.key = key;
+    if (openKeys.has(key)) {
+      details.open = true;
+    }
+
+    const summary = document.createElement("summary");
+    const props = feature.properties ?? {};
+    summary.textContent = props.name ?? props.icao_code ?? props.type ?? key;
+
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(props, null, 2);
+
+    details.append(summary, pre);
+    airspaceInfoEl.append(details);
+  }
+}
+
 function setStatus(text) {
   statusEl.textContent = text;
 }
@@ -259,16 +291,7 @@ function updateSeedMarkers() {
 function addPendingSeed(lng, lat) {
   pendingSeeds.push({ lng, lat });
   updateSeedMarkers();
-  latEl.textContent = formatCoord(lat, true);
-  lngEl.textContent = formatCoord(lng, false);
-  elevationEl.textContent = "…";
-  sampleElevationAt(lng, lat)
-    .then((elev) => {
-      elevationEl.textContent = `${Math.round(elev)} m`;
-    })
-    .catch(() => {
-      elevationEl.textContent = "—";
-    });
+  updateAirspaceInfo(lng, lat);
   const remaining = MIN_SEEDS - pendingSeeds.length;
   if (remaining > 0) {
     setStatus(
@@ -365,7 +388,10 @@ function traceOriginRelayPath(x, y, dem, originX, originY) {
 }
 
 function seedAltitudeAt(dem, seedIdx, circuitHeight) {
-  return dem.elevation[seedIdx] - dem.groundClearance + circuitHeight;
+  const terrain = dem.terrainMsl
+    ? dem.terrainMsl[seedIdx]
+    : dem.elevation[seedIdx] - dem.groundClearance;
+  return terrain + circuitHeight;
 }
 
 function seedPathMetrics(cell) {
@@ -405,26 +431,17 @@ function pushPathPoint(coordinates, x, y, dem) {
   coordinates.push([pt.lng, pt.lat]);
 }
 
-function formatCellPair(x, y) {
-  if (x < 0 || y < 0) {
-    return "—";
-  }
-  return `${x}, ${y}`;
-}
-
 function traceGlidePath(gi, gj) {
   const { dem, originX, originY } = coneState;
   const coordinates = [];
   const visited = new Set();
   let x = gi;
   let y = gj;
-  let stopReason = null;
   const maxSteps = (dem.width + dem.height) * 2;
 
   for (let step = 0; step < maxSteps; step += 1) {
     const key = cellKey(x, y);
     if (visited.has(key)) {
-      stopReason = "loop";
       break;
     }
     visited.add(key);
@@ -432,7 +449,6 @@ function traceGlidePath(gi, gj) {
     pushPathPoint(coordinates, x, y, dem);
 
     if (isSeedCell(x, y, dem)) {
-      stopReason = "home";
       break;
     }
 
@@ -440,7 +456,6 @@ function traceGlidePath(gi, gj) {
     const nx = originX[idx];
     const ny = originY[idx];
     if (nx < 0 || ny < 0 || (nx === x && ny === y)) {
-      stopReason = "stalled";
       break;
     }
 
@@ -448,32 +463,16 @@ function traceGlidePath(gi, gj) {
     y = ny;
   }
 
-  if (stopReason === null) {
-    stopReason = "maxSteps";
-  }
-
-  const lastIdx = cellIndex(x, y, dem);
-  return {
-    coordinates,
-    stopReason,
-    lastCell: {
-      x,
-      y,
-      ox: originX[lastIdx],
-      oy: originY[lastIdx],
-    },
-  };
+  return { coordinates };
 }
 
 function refreshHoverPath(cell) {
-  const { coordinates, lastCell, stopReason } = traceGlidePath(cell.gi, cell.gj);
+  const { coordinates } = traceGlidePath(cell.gi, cell.gj);
   if (coordinates.length >= 2) {
     updateGlidePath(coordinates);
-    updatePathMeta(lastCell, stopReason);
   } else if (coordinates.length === 1) {
     const pt = coordinates[0];
     updateGlidePath([pt, pt]);
-    updatePathMeta(lastCell, stopReason);
   } else {
     clearGlidePath();
   }
@@ -589,7 +588,9 @@ function sampleDemCell(lng, lat) {
   }
 
   const idx = gj * dem.width + gi;
-  const groundElev = dem.elevation[idx] - dem.groundClearance;
+  const groundElev = dem.terrainMsl
+    ? dem.terrainMsl[idx]
+    : dem.elevation[idx] - dem.groundClearance;
   const alt = altitudes[idx];
   const hasOrigin = originX[idx] >= 0 && originY[idx] >= 0;
   const isGroundCell = ground[idx] === 1;
@@ -651,38 +652,11 @@ function updateGlidePath(coordinates) {
   raisePathLayer();
 }
 
-function clearPathMeta() {
-  pathMetaEl.hidden = true;
-  pathCellEl.textContent = "—";
-  pathOriginEl.textContent = "—";
-  pathStopEl.hidden = true;
-  pathStopEl.textContent = "";
-}
-
-function updatePathMeta(lastCell, stopReason) {
-  pathMetaEl.hidden = false;
-  pathCellEl.textContent = formatCellPair(lastCell.x, lastCell.y);
-  pathOriginEl.textContent = formatCellPair(lastCell.ox, lastCell.oy);
-  const stopMessages = {
-    loop: "stopped: loop",
-    stalled: "stopped: stalled",
-    maxSteps: "stopped: max steps",
-  };
-  if (stopMessages[stopReason]) {
-    pathStopEl.hidden = false;
-    pathStopEl.textContent = stopMessages[stopReason];
-  } else {
-    pathStopEl.hidden = true;
-    pathStopEl.textContent = "";
-  }
-}
-
 function clearGlidePath() {
   if (!pathLayerReady) {
     return;
   }
   map.getSource("glide-path").setData(EMPTY_PATH);
-  clearPathMeta();
 }
 
 function makeComputeProgressHandler(dem) {
@@ -708,6 +682,7 @@ map.on("load", async () => {
 
   try {
     const { OPENAIP_API_KEY } = await import("./openaip-config.js");
+    openAipApiKey = OPENAIP_API_KEY;
     if (initOpenAipTiles(map, OPENAIP_API_KEY)) {
       console.info("OpenAIP vector tiles enabled");
       updateSeedMarkers();
@@ -730,6 +705,8 @@ map.on("load", async () => {
 });
 
 map.on("mousemove", (event) => {
+  updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
+
   const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
   if (cell === null) {
     hoverTip.style.display = "none";
@@ -863,15 +840,23 @@ async function runComputation(seedsOverride = null) {
     setStatus(
       `Fetching DEM z${terrainZ} (~${Math.round(cellSizeM)} m) — ${seeds.length} seeds, L/D ${glideParams.glideRatio}, max alt ${glideParams.maxAltitude} m…`
     );
-    const dem = await buildDemGrid(seeds, glideParams);
+    const dem = await buildDemGrid(seeds, {
+      ...glideParams,
+      openAipApiKey,
+    });
 
     if (computeShouldStop) {
       setStatus("Stopped before GPU compute");
       return;
     }
 
+    const airspaceNote =
+      dem.airspaces.length > 0
+        ? `, ${dem.airspaces.length} airspace volumes (${dem.airspaceAffectedCells} cells capped)`
+        : "";
+
     setStatus(
-      `Computing ${dem.width}×${dem.height} grid (${dem.tileCount} tiles) on GPU…`
+      `Computing ${dem.width}×${dem.height} grid (${dem.tileCount} tiles) on GPU${airspaceNote}…`
     );
     const gpu = await ensureEngine();
     const result = await gpu.compute(dem, glideParams, makeComputeOptions(dem));

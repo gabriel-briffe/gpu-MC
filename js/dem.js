@@ -5,6 +5,7 @@ import {
   metersPerPixel,
   terrariumElevation,
 } from "./geo.js";
+import { applyAirspaceToDem, demBbox, fetchOverlayAirspaces } from "./airspace.js";
 
 const tileCache = new Map();
 
@@ -130,6 +131,7 @@ export async function buildDemGrid(seeds, params) {
   }
   await Promise.all(fetches);
 
+  const terrainMsl = new Float32Array(width * height);
   const elevation = new Float32Array(width * height);
   for (let j = 0; j < height; j += 1) {
     for (let i = 0; i < width; i += 1) {
@@ -139,8 +141,18 @@ export async function buildDemGrid(seeds, params) {
       if (Number.isNaN(elev)) {
         elev = params.maxAltitude + 1000;
       }
+      terrainMsl[j * width + i] = elev;
       elevation[j * width + i] = elev + groundClearance;
     }
+  }
+
+  let airspaces = [];
+  let airspaceAffectedCells = 0;
+  if (params.openAipApiKey) {
+    airspaces = await fetchOverlayAirspaces(
+      demBbox({ gx0, gy0, width, height, zoom: z }),
+      params.openAipApiKey
+    );
   }
 
   const gridSeeds = seedPixels.map((seed) => ({
@@ -150,8 +162,9 @@ export async function buildDemGrid(seeds, params) {
     lat: seed.lat,
   }));
 
-  return {
+  const dem = {
     elevation,
+    terrainMsl,
     width,
     height,
     seeds: gridSeeds,
@@ -164,7 +177,16 @@ export async function buildDemGrid(seeds, params) {
     tileCount: tiles.size,
     groundClearance,
     radiusPx: gridRadiusPx,
+    airspaces,
+    airspaceAffectedCells,
   };
+
+  if (airspaces.length) {
+    airspaceAffectedCells = applyAirspaceToDem(dem, airspaces);
+    dem.airspaceAffectedCells = airspaceAffectedCells;
+  }
+
+  return dem;
 }
 
 export async function sampleElevationAt(lng, lat) {

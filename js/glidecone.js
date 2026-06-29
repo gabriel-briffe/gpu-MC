@@ -752,7 +752,7 @@ export class GlideConeEngine {
       shouldStop = null,
     } = options;
     const { device, pipelines } = this;
-    const { width, height, homeX, homeY, cellSizeM, elevation, groundClearance, seeds: demSeeds } =
+    const { width, height, homeX, homeY, cellSizeM, elevation, terrainMsl, groundClearance, seeds: demSeeds } =
       dem;
     const seeds =
       demSeeds?.length > 0 ? demSeeds : [{ x: homeX, y: homeY }];
@@ -778,7 +778,10 @@ export class GlideConeEngine {
     let homeAlt = maxAltitude;
     for (const seed of seeds) {
       const seedIdx = seed.y * width + seed.x;
-      const seedAlt = elevation[seedIdx] + circuitHeight - groundClearance;
+      const terrain = terrainMsl
+        ? terrainMsl[seedIdx]
+        : elevation[seedIdx] - groundClearance;
+      const seedAlt = terrain + circuitHeight;
       alt[seedIdx] = seedAlt;
       originX[seedIdx] = seed.x;
       originY[seedIdx] = seed.y;

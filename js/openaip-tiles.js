@@ -1,6 +1,8 @@
 const TILE_URL =
   "https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.pbf";
 
+import { pointInGeoJson } from "./airspace.js";
+
 const AIRSPACE_TYPE_COLOR = [
   "match",
   ["get", "type"],
@@ -46,6 +48,7 @@ const AIRPORT_FILTER = [
 ];
 
 export const OPENAIP_AIRPORT_LAYERS = ["openaip-airports", "openaip-airport-labels"];
+export const OPENAIP_AIRSPACE_LAYER = "openaip-airspaces-line";
 
 export function isIncludedAirportType(type) {
   return type != null && !EXCLUDED_AIRPORT_TYPES.includes(type);
@@ -104,6 +107,45 @@ export function pickOpenAipAirport(map, point) {
   return features[0] ?? null;
 }
 
+export function airspaceFeatureKey(feature) {
+  const props = feature.properties ?? {};
+  return (
+    props.source_id ??
+    props.id ??
+    props.icaoCode ??
+    props.icao_code ??
+    `${props.name ?? "?"}@${props.type ?? "?"}`
+  );
+}
+
+/** All OpenAIP airspace vector features whose polygon contains lng/lat. */
+export function queryOpenAipAirspacesAt(map, lng, lat) {
+  if (!map.getSource("openaip")) {
+    return [];
+  }
+
+  const features = map.querySourceFeatures("openaip", {
+    sourceLayer: "airspaces",
+  });
+
+  const seen = new Set();
+  const matches = [];
+
+  for (const feature of features) {
+    if (!pointInGeoJson(lng, lat, feature.geometry)) {
+      continue;
+    }
+    const key = airspaceFeatureKey(feature);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    matches.push(feature);
+  }
+
+  return matches;
+}
+
 export function initOpenAipTiles(map, apiKey) {
   if (!apiKey) {
     return false;
@@ -125,7 +167,7 @@ export function initOpenAipTiles(map, apiKey) {
   });
 
   map.addLayer({
-    id: "openaip-airspaces-line",
+    id: OPENAIP_AIRSPACE_LAYER,
     type: "line",
     source: "openaip",
     "source-layer": "airspaces",
