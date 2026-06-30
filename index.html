@@ -430,7 +430,8 @@
         transform: translateX(-50%);
         z-index: 2;
         display: none;
-        min-width: min(92vw, 36rem);
+        width: min(92vw, 36rem);
+        max-width: min(92vw, 36rem);
         padding: 0.55rem 0.75rem;
         border-radius: 0.75rem;
         background: rgba(18, 22, 28, 0.92);
@@ -439,6 +440,8 @@
         backdrop-filter: blur(8px);
         font-size: 0.82rem;
         line-height: 1.35;
+        overflow: hidden;
+        box-sizing: border-box;
       }
 
       #info.visible {
@@ -480,6 +483,8 @@
         align-items: stretch;
         white-space: normal;
         width: 100%;
+        min-width: 0;
+        max-width: 100%;
       }
 
       #airspace-info {
@@ -487,8 +492,13 @@
         flex-direction: column;
         gap: 0.2rem;
         width: 100%;
+        min-width: 0;
+        max-width: 100%;
         max-height: 9rem;
+        overflow-x: hidden;
         overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
       }
 
       #airspace-info details {
@@ -496,6 +506,8 @@
         border-radius: 0.35rem;
         padding: 0.1rem 0.35rem;
         background: rgba(255, 255, 255, 0.03);
+        min-width: 0;
+        max-width: 100%;
       }
 
       #airspace-info summary {
@@ -504,11 +516,20 @@
         font-size: 0.74rem;
         line-height: 1.35;
         list-style-position: outside;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
 
       #airspace-info pre {
         margin: 0.3rem 0 0.1rem;
+        max-width: 100%;
+        max-height: 9rem;
+        overflow: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
         white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         font-size: 0.68rem;
         line-height: 1.35;
@@ -527,6 +548,21 @@
 
         #params-scroll {
           max-height: min(55dvh, calc(100dvh - 9.5rem));
+        }
+
+        #info {
+          width: calc(100vw - 1rem);
+          max-width: calc(100vw - 1rem);
+          left: 50%;
+          bottom: 0.75rem;
+        }
+
+        #airspace-info {
+          max-height: min(40dvh, 12rem);
+        }
+
+        #airspace-info pre {
+          max-height: min(28dvh, 8rem);
         }
 
         #info .row {
