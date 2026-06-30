@@ -621,7 +621,15 @@ function ensureSeedLayers() {
     type: "circle",
     source: "seeds",
     paint: {
-      "circle-radius": 7,
+      "circle-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        OPENAIP_AIRPORT_MIN_ZOOM,
+        4,
+        14,
+        10,
+      ],
       "circle-color": "#ffcc00",
       "circle-stroke-width": 2,
       "circle-stroke-color": "#ffffff",
@@ -1206,7 +1214,7 @@ function ensurePathLayer() {
     type: "line",
     source: "glide-path",
     paint: {
-      "line-color": "#ffcc00",
+      "line-color": "#8b1515",
       "line-width": 3,
       "line-opacity": 0.95,
     },
