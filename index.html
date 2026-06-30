@@ -184,6 +184,28 @@
         line-height: 1.35;
       }
 
+      .param-check {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.45rem;
+        font-size: 0.82rem;
+        color: #e8ecf1;
+        line-height: 1.35;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .param-check input {
+        margin-top: 0.15rem;
+        flex-shrink: 0;
+        accent-color: #5a9fd4;
+      }
+
+      .param-check-detail {
+        color: #8b96a8;
+        font-size: 0.72rem;
+      }
+
       .params-actions {
         display: flex;
         flex-wrap: wrap;
@@ -302,6 +324,18 @@
 
       #cell-info .delta-neg {
         color: #f07070;
+      }
+
+      #cell-info .path-info-heading {
+        display: block;
+        font-weight: 700;
+        margin-bottom: 0.15rem;
+      }
+
+      #cell-info .path-info-note {
+        display: block;
+        margin-top: 0.2rem;
+        color: #9aa4b2;
       }
 
       #params button.action-btn.btn-blue {
@@ -641,9 +675,28 @@
                       <span class="param-label">Terrain zoom</span>
                       <button type="button" class="param-help" data-help="terrain-zoom" aria-label="Help: terrain zoom">ⓘ</button>
                     </div>
-                    <input id="terrain-zoom" type="number" min="7" max="10" step="1" value="10" />
+                    <input id="terrain-zoom" type="number" min="7" max="10" step="1" value="8" />
                   </div>
                   <span id="terrain-resolution-hint" class="param-resolution-hint">Resolution: —</span>
+                </div>
+              </div>
+              <div class="param-field param-field-full">
+                <div class="param-label-row">
+                  <label class="param-check" for="include-airspace">
+                    <input id="include-airspace" type="checkbox" />
+                    <span>
+                      Include prohibited airspace
+                      <span class="param-check-detail">(prohibited, overflight restriction)</span>
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    class="param-help"
+                    data-help="include-airspace"
+                    aria-label="Help: include prohibited airspace"
+                  >
+                    ⓘ
+                  </button>
                 </div>
               </div>
               <div class="param-field">
@@ -651,7 +704,7 @@
                   <span class="param-label">LOS run N</span>
                   <button type="button" class="param-help" data-help="los-run" aria-label="Help: LOS run N">ⓘ</button>
                 </div>
-                <input id="los-run" type="number" min="0" step="1" value="0" />
+                <input id="los-run" type="number" min="0" step="1" value="6" />
               </div>
             </div>
           </div>

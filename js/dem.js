@@ -150,7 +150,11 @@ export async function buildDemGrid(seeds, params) {
 
   let airspaces = [];
   let airspaceAffectedCells = 0;
-  if (params.openAipConfig && openAipConfigured(params.openAipConfig)) {
+  if (
+    params.includeAirspace &&
+    params.openAipConfig &&
+    openAipConfigured(params.openAipConfig)
+  ) {
     airspaces = await fetchOverlayAirspaces(
       demBbox({ gx0, gy0, width, height, zoom: z }),
       params.openAipConfig

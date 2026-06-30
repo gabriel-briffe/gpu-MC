@@ -15,6 +15,7 @@ import {
   getViewportOpenAipAirports,
   queryOpenAipAirspacesAt,
   airspaceFeatureKey,
+  setOpenAipAirspaceVisible,
 } from "./openaip-tiles.js";
 import { loadOpenAipConfig } from "./openaip-client.js";
 
@@ -43,6 +44,7 @@ const vizHintEl = document.getElementById("viz-hint");
 const gridRadiusHintEl = document.getElementById("grid-radius-hint");
 const terrainZoomInput = document.getElementById("terrain-zoom");
 const terrainResolutionHintEl = document.getElementById("terrain-resolution-hint");
+const includeAirspaceInput = document.getElementById("include-airspace");
 const paramHelpPopover = document.getElementById("param-help-popover");
 const compareLosBtn = document.getElementById("compare-los");
 const compareLosRow = document.getElementById("compare-los-row");
@@ -231,6 +233,8 @@ const PARAM_HELP = {
     "Ceiling for the simulation. Unreachable cells stay at this value. With L/D, it caps how large the computed grid can be.",
   "terrain-zoom":
     "Mapterhorn DEM tile zoom (7–10). Higher zoom = finer cell resolution and larger grids. Resolution shown is the ground distance per DEM cell at the map centre.",
+  "include-airspace":
+    "Show airspace on the map and cap the DEM under prohibited volumes and overflight-restriction areas (OpenAIP types: prohibited, overflight restriction). Airports stay visible either way.",
   "los-run":
     "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate, but slower.\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source. Faster, and often accurate enough.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule). Fast, but usually not accurate enough.\n\nFor N>=1, use stripes overlay, and after computation return to the parameter box and click Full Bresenham to compare with fully accurate calculation",
   "viz-mode":
@@ -263,6 +267,22 @@ function syncParamVisibility() {
   }
   if (vizHintEl) {
     vizHintEl.textContent = VIZ_HINTS[mode] ?? "";
+  }
+}
+
+function isIncludeAirspaceEnabled() {
+  return includeAirspaceInput?.checked ?? false;
+}
+
+function syncAirspaceUi() {
+  setOpenAipAirspaceVisible(map, isIncludeAirspaceEnabled());
+  if (isIncludeAirspaceEnabled()) {
+    info.classList.add("visible");
+  } else {
+    info.classList.remove("visible");
+    if (airspaceInfoEl) {
+      airspaceInfoEl.textContent = "—";
+    }
   }
 }
 
@@ -335,9 +355,6 @@ function openParamHelp(button) {
 function initParamPanel() {
   syncParamVisibility();
   updateGridRadiusHint();
-  if (terrainZoomInput) {
-    terrainZoomInput.value = String(clampTerrainZoom(pickTerrainZoom(MAP_CENTER.lat)));
-  }
   updateTerrainResolutionHint();
 
   for (const button of document.querySelectorAll(".param-help")) {
@@ -370,6 +387,14 @@ function initParamPanel() {
 
   terrainZoomInput?.addEventListener("input", onTerrainZoomChange);
 
+  includeAirspaceInput?.addEventListener("change", () => {
+    syncAirspaceUi();
+    if (isIncludeAirspaceEnabled() && map) {
+      const center = map.getCenter();
+      updateAirspaceInfo(center.lng, center.lat);
+    }
+  });
+
   document.getElementById("los-run")?.addEventListener("input", syncCompareLosButton);
   detectInteractionMode();
   for (const query of ["(pointer: coarse)", "(pointer: fine)", "(hover: hover)"]) {
@@ -390,6 +415,7 @@ function getGlideParams() {
   const terrainZoom = clampTerrainZoom(
     Number.parseInt(document.getElementById("terrain-zoom")?.value ?? "", 10)
   );
+  const includeAirspace = isIncludeAirspaceEnabled();
   const updateMapMs = Number.parseInt(document.getElementById("update-map").value, 10);
   const { raw, contours } = parseVizMode();
 
@@ -401,6 +427,7 @@ function getGlideParams() {
     maxAltitude:
       Number.isFinite(maxAltitude) && maxAltitude > 0 ? maxAltitude : DEFAULT_MAX_ALTITUDE,
     terrainZoom,
+    includeAirspace,
     originRunN:
       Number.isFinite(originRunN) && originRunN === 0
         ? 0
@@ -451,6 +478,10 @@ map = new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl(), "top-right");
 
 function updateAirspaceInfo(lng, lat) {
+  if (!isIncludeAirspaceEnabled()) {
+    return;
+  }
+
   const openKeys = new Set();
   for (const el of airspaceInfoEl.querySelectorAll("details[open]")) {
     if (el.dataset.key) {
@@ -1173,7 +1204,7 @@ function formatHoverTip(cell) {
   const minAlt = minAltVal !== null ? `${Math.round(minAltVal)} m` : "—";
   const groundElev = `${Math.round(cell.groundElev)} m`;
   const metrics = seedPathMetrics(cell);
-  const distanceLine =
+  const pathLengthLine =
     metrics !== null ? formatDistanceKm(metrics.distanceM) : "—";
   const requiredLine =
     metrics !== null ? `${Math.round(metrics.requiredAlt)} m` : "—";
@@ -1189,9 +1220,11 @@ function formatHoverTip(cell) {
   return (
     `minimum alt: ${minAlt}\n` +
     `ground elevation: ${groundElev}\n` +
-    `distance to seed: ${distanceLine}\n` +
+    `<span class="path-info-heading">comparison with measured path length (haversine):</span>\n` +
+    `path length: ${pathLengthLine}\n` +
     `required alt: ${requiredLine}\n` +
-    `delta: ${deltaLine}`
+    `delta: ${deltaLine}\n` +
+    `<span class="path-info-note">delta heavily positive might mean path went over a saddle, or starts from a mountain well above glide, no issue in that case. use this on flatland at your latitude to check for unacceptable errors</span>`
   );
 }
 
@@ -1235,7 +1268,6 @@ async function ensureEngine() {
 
 map.on("load", async () => {
   syncTerrainTileMaxZoom();
-  info.classList.add("visible");
   ensurePathLayer();
   map.on("moveend", updateTerrainResolutionHint);
 
@@ -1243,6 +1275,7 @@ map.on("load", async () => {
     openAipConfig = await loadOpenAipConfig();
     if (initOpenAipTiles(map, openAipConfig)) {
       console.info("OpenAIP vector tiles enabled");
+      syncAirspaceUi();
       updateSeedMarkers();
     }
   } catch (error) {
@@ -1432,8 +1465,6 @@ async function runComputation(seedsOverride = null) {
     return;
   }
   const glideParams = getGlideParams();
-  info.classList.add("visible");
-  setStatus("Sampling terrain…");
   clearCellInspect();
   clearGlidePath();
   clearCompareOverlay();

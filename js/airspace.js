@@ -9,6 +9,9 @@ export const OVERLAY_AIRSPACE_TYPES = new Set([
   AIRSPACE_TYPE_ADVISORY,
 ]);
 
+/** Vector-tile `type` strings for {@link OVERLAY_AIRSPACE_TYPES} (3 prohibited, 29 advisory). */
+export const OVERLAY_AIRSPACE_TILE_TYPES = ["prohibited", "overflight_restriction"];
+
 const TYPE_PREFIX = {
   [AIRSPACE_TYPE_PROHIBITED]: "P",
   [AIRSPACE_TYPE_ADVISORY]: "A",

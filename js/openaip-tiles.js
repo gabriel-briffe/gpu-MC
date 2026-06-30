@@ -1,4 +1,4 @@
-import { pointInGeoJson } from "./airspace.js";
+import { OVERLAY_AIRSPACE_TILE_TYPES, pointInGeoJson } from "./airspace.js";
 import { openAipConfigured, openAipTileUrls } from "./openaip-client.js";
 
 const AIRSPACE_TYPE_COLOR = [
@@ -46,7 +46,9 @@ const AIRPORT_FILTER = [
 ];
 
 export const OPENAIP_AIRPORT_LAYERS = ["openaip-airports", "openaip-airport-labels"];
+export const OPENAIP_AIRSPACE_FILL_LAYER = "openaip-airspaces-fill";
 export const OPENAIP_AIRSPACE_LAYER = "openaip-airspaces-line";
+export const OPENAIP_AIRSPACE_LAYERS = [OPENAIP_AIRSPACE_FILL_LAYER, OPENAIP_AIRSPACE_LAYER];
 
 export function isIncludedAirportType(type) {
   return type != null && !EXCLUDED_AIRPORT_TYPES.includes(type);
@@ -156,11 +158,26 @@ export function initOpenAipTiles(map, config) {
   });
 
   map.addLayer({
+    id: OPENAIP_AIRSPACE_FILL_LAYER,
+    type: "fill",
+    source: "openaip",
+    "source-layer": "airspaces",
+    minzoom: 6,
+    layout: { visibility: "none" },
+    filter: ["in", ["get", "type"], ["literal", OVERLAY_AIRSPACE_TILE_TYPES]],
+    paint: {
+      "fill-color": "#c62828",
+      "fill-opacity": 0.28,
+    },
+  });
+
+  map.addLayer({
     id: OPENAIP_AIRSPACE_LAYER,
     type: "line",
     source: "openaip",
     "source-layer": "airspaces",
     minzoom: 6,
+    layout: { visibility: "none" },
     paint: {
       "line-color": AIRSPACE_TYPE_COLOR,
       "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 12, 2],
@@ -206,4 +223,13 @@ export function initOpenAipTiles(map, config) {
   });
 
   return true;
+}
+
+export function setOpenAipAirspaceVisible(map, visible) {
+  const visibility = visible ? "visible" : "none";
+  for (const layerId of OPENAIP_AIRSPACE_LAYERS) {
+    if (map.getLayer(layerId)) {
+      map.setLayoutProperty(layerId, "visibility", visibility);
+    }
+  }
 }
