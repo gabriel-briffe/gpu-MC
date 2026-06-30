@@ -81,6 +81,32 @@ export function distanceMetres(lat1, lng1, lat2, lng2) {
   return Math.hypot(dLatM, dLngM);
 }
 
+/** Axis-aligned box with ±radiusKm from centre (total width/height = 2 × radiusKm). */
+export function kmBoxAroundLngLat(lng, lat, radiusKm) {
+  const latRad = (lat * Math.PI) / 180;
+  const latDelta = ((radiusKm * 1000) / 6_371_000) * (180 / Math.PI);
+  const cosLat = Math.cos(latRad);
+  const lngDelta = cosLat > 1e-6 ? latDelta / cosLat : latDelta;
+  return {
+    west: lng - lngDelta,
+    east: lng + lngDelta,
+    south: lat - latDelta,
+    north: lat + latDelta,
+  };
+}
+
+/** True when lng/lat is within maxOffsetFromCenterFraction of half-span from box centre. */
+export function isInsideKmBoxInnerZone(lng, lat, box, maxOffsetFromCenterFraction = 0.25) {
+  const centerLng = (box.west + box.east) / 2;
+  const centerLat = (box.south + box.north) / 2;
+  const halfLng = (box.east - box.west) / 2;
+  const halfLat = (box.north - box.south) / 2;
+  return (
+    Math.abs(lng - centerLng) <= halfLng * maxOffsetFromCenterFraction &&
+    Math.abs(lat - centerLat) <= halfLat * maxOffsetFromCenterFraction
+  );
+}
+
 export function gridCellDistanceM(gi, gj, gi2, gj2, dem) {
   const p1 = gridCellToLngLat(gi, gj, dem);
   const p2 = gridCellToLngLat(gi2, gj2, dem);

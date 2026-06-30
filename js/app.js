@@ -6,6 +6,8 @@ import {
   pickTerrainZoom,
   clampTerrainZoom,
   metersPerPixel,
+  kmBoxAroundLngLat,
+  isInsideKmBoxInnerZone,
 } from "./geo.js";
 import { buildDemGrid } from "./dem.js";
 import { buildAltitudeContours } from "./contours.js";
@@ -23,6 +25,10 @@ import { loadOpenAipConfig } from "./openaip-client.js";
 
 const DEFAULT_MAX_ALTITUDE = 3050;
 const MIN_SEEDS = 1;
+const AUTO_WINDOW_SIZE_DEFAULT_KM = 100;
+const AUTO_MAX_OFFSET_FROM_CENTER = 0.25;
+const AUTO_PARAM_DEBOUNCE_MS = 100;
+const AUTO_MAP_IDLE_TIMEOUT_MS = 3000;
 const AIRPORT_RECT_MIN_DEG = 1e-5;
 const AIRPORT_HANDLE_HIT_PX = 12;
 const AIRPORT_HANDLE_CURSORS = {
@@ -56,6 +62,7 @@ const vizHintEl = document.getElementById("viz-hint");
 const gridRadiusHintEl = document.getElementById("grid-radius-hint");
 const terrainZoomInput = document.getElementById("terrain-zoom");
 const terrainResolutionHintEl = document.getElementById("terrain-resolution-hint");
+const autoWindowSizeInput = document.getElementById("auto-window-size");
 const includeAirspaceInput = document.getElementById("include-airspace");
 const paramHelpPopover = document.getElementById("param-help-popover");
 const compareLosBtn = document.getElementById("compare-los");
@@ -107,6 +114,9 @@ let seedLayersReady = false;
 let openAipConfig = null;
 let touchHandledRecently = false;
 let footerStatusText = "Loading WebGPU…";
+let autoComputePending = false;
+let autoComputeDebounceTimer = null;
+let autoComputeRegion = null;
 let statusClearTimer = null;
 
 const COMPUTE_DONE_STATUS_CLEAR_MS = 10000;
@@ -436,6 +446,9 @@ function endComputeSession() {
   stopComputeBtn.disabled = false;
   updateSeedMarkers();
   syncCompareLosButton();
+  if (isAutoParamsMode() && autoComputePending) {
+    void flushAutoCompute();
+  }
 }
 
 function requestStopCompute() {
@@ -468,6 +481,8 @@ const PARAM_HELP = {
     "Ceiling for the simulation. Unreachable cells stay at this value. With L/D, it caps how large the computed grid can be.",
   "terrain-zoom":
     "Mapterhorn DEM tile zoom (7–10). Higher zoom = finer cell resolution and larger grids. Resolution shown is the ground distance per DEM cell at the map centre.",
+  "auto-window-size":
+    "Half-width of the airport search box in Auto mode (km from map centre to each edge). A value of 100 loads all airfields in a 200 km-wide square centred on the map.",
   "include-airspace":
     "Show airspace on the map and cap the DEM under prohibited volumes and overflight-restriction areas (OpenAIP types: prohibited, overflight restriction). Airports stay visible either way.",
   "los-run":
@@ -532,7 +547,126 @@ function setParamsMode(mode) {
         closeParamHelp();
       }
     }
+    scheduleAutoCompute();
+  } else {
+    clearTimeout(autoComputeDebounceTimer);
+    autoComputeDebounceTimer = null;
+    autoComputePending = false;
+    autoComputeRegion = null;
   }
+}
+
+function getAutoWindowSizeKm() {
+  const value = Number.parseFloat(autoWindowSizeInput?.value ?? "");
+  return Number.isFinite(value) && value > 0 ? value : AUTO_WINDOW_SIZE_DEFAULT_KM;
+}
+
+function waitForMapIdle(timeoutMs = AUTO_MAP_IDLE_TIMEOUT_MS) {
+  if (!map) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve();
+    };
+    const timer = window.setTimeout(finish, timeoutMs);
+    map.once("idle", () => {
+      window.clearTimeout(timer);
+      finish();
+    });
+  });
+}
+
+function scheduleAutoCompute({ debounce = false } = {}) {
+  if (!isAutoParamsMode()) {
+    return;
+  }
+  autoComputePending = true;
+  if (computing) {
+    computeShouldStop = true;
+    return;
+  }
+  clearTimeout(autoComputeDebounceTimer);
+  if (debounce) {
+    autoComputeDebounceTimer = window.setTimeout(() => {
+      autoComputeDebounceTimer = null;
+      void flushAutoCompute();
+    }, AUTO_PARAM_DEBOUNCE_MS);
+    return;
+  }
+  void flushAutoCompute();
+}
+
+async function flushAutoCompute() {
+  if (!autoComputePending || !isAutoParamsMode() || computing) {
+    return;
+  }
+  autoComputePending = false;
+  await runAutoComputation();
+}
+
+function onAutoModeMapMoveEnd() {
+  if (!isAutoParamsMode() || !autoComputeRegion || computing) {
+    return;
+  }
+  const center = map.getCenter();
+  if (
+    isInsideKmBoxInnerZone(
+      center.lng,
+      center.lat,
+      autoComputeRegion,
+      AUTO_MAX_OFFSET_FROM_CENTER
+    )
+  ) {
+    return;
+  }
+  scheduleAutoCompute();
+}
+
+async function runAutoComputation() {
+  if (!isAutoParamsMode() || !map?.getSource("openaip")) {
+    if (isAutoParamsMode()) {
+      setStatus("Auto mode needs OpenAIP tiles — check configuration");
+    }
+    return;
+  }
+
+  const windowSizeKm = getAutoWindowSizeKm();
+  const center = map.getCenter();
+  const bounds = kmBoxAroundLngLat(center.lng, center.lat, windowSizeKm);
+  autoComputeRegion = { ...bounds, windowSizeKm };
+
+  await waitForMapIdle();
+
+  const airports = getOpenAipAirportsInBounds(
+    map,
+    bounds.west,
+    bounds.south,
+    bounds.east,
+    bounds.north
+  );
+
+  if (airports.length < MIN_SEEDS) {
+    setStatus(
+      `Auto: no airports in ${windowSizeKm * 2} km window — pan or zoom to z${OPENAIP_AIRPORT_MIN_ZOOM}+`
+    );
+    return;
+  }
+
+  pendingSeeds = airports.map((airport) => ({
+    lng: airport.lng,
+    lat: airport.lat,
+    label: formatAirportLabel(airport),
+    source: "airport",
+  }));
+  updateSeedMarkers();
+
+  await runComputation(pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat })));
 }
 
 function isDebugMode() {
@@ -631,6 +765,9 @@ function syncTerrainTileMaxZoom() {
 function onTerrainZoomChange() {
   updateTerrainResolutionHint();
   syncTerrainTileMaxZoom();
+  if (isAutoParamsMode()) {
+    scheduleAutoCompute({ debounce: true });
+  }
 }
 
 function closeParamHelp() {
@@ -661,7 +798,7 @@ function openParamHelp(button) {
 
 function initParamPanel() {
   syncParamVisibility();
-  setParamsMode("manual");
+  setParamsMode("auto");
   updateGridRadiusHint();
   updateTerrainResolutionHint();
 
@@ -693,7 +830,20 @@ function initParamPanel() {
   });
 
   for (const id of ["ld", "max-alt"]) {
-    document.getElementById(id)?.addEventListener("input", updateGridRadiusHint);
+    document.getElementById(id)?.addEventListener("input", () => {
+      updateGridRadiusHint();
+      if (isAutoParamsMode()) {
+        scheduleAutoCompute({ debounce: true });
+      }
+    });
+  }
+
+  for (const id of ["circuit", "clearance", "auto-window-size"]) {
+    document.getElementById(id)?.addEventListener("input", () => {
+      if (isAutoParamsMode()) {
+        scheduleAutoCompute({ debounce: true });
+      }
+    });
   }
 
   terrainZoomInput?.addEventListener("input", onTerrainZoomChange);
@@ -703,6 +853,9 @@ function initParamPanel() {
     if (isIncludeAirspaceEnabled() && map) {
       const center = map.getCenter();
       updateAirspaceInfo(center.lng, center.lat);
+    }
+    if (isAutoParamsMode()) {
+      scheduleAutoCompute();
     }
   });
 
@@ -714,6 +867,9 @@ function initParamPanel() {
     }
     if (isGeoTrackingOn()) {
       updateGeoLocationPath();
+    }
+    if (isAutoParamsMode()) {
+      scheduleAutoCompute();
     }
   });
 
@@ -2549,7 +2705,10 @@ async function ensureEngine() {
 map.on("load", async () => {
   syncTerrainTileMaxZoom();
   ensurePathLayer();
-  map.on("moveend", updateTerrainResolutionHint);
+  map.on("moveend", () => {
+    updateTerrainResolutionHint();
+    onAutoModeMapMoveEnd();
+  });
   map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);
 
@@ -2560,6 +2719,9 @@ map.on("load", async () => {
       syncAirspaceUi();
       raisePathLayer();
       updateSeedMarkers();
+      if (isAutoParamsMode()) {
+        scheduleAutoCompute();
+      }
     }
   } catch (error) {
     console.warn(

@@ -136,6 +136,14 @@
         display: none !important;
       }
 
+      .params-auto-only {
+        display: none !important;
+      }
+
+      #params-shell.auto-mode .params-auto-only {
+        display: flex !important;
+      }
+
       #params {
         display: flex;
         flex-direction: column;
@@ -799,14 +807,14 @@
     </style>
   </head>
   <body>
-    <div id="params-shell">
+    <div id="params-shell" class="auto-mode">
       <details id="params-panel">
         <summary>Parameters</summary>
         <div class="params-mode-bar" role="group" aria-label="Parameter mode">
-          <button type="button" class="params-mode-btn" id="params-mode-auto" aria-pressed="false">
+          <button type="button" class="params-mode-btn" id="params-mode-auto" aria-pressed="true">
             Auto
           </button>
-          <button type="button" class="params-mode-btn" id="params-mode-manual" aria-pressed="true">
+          <button type="button" class="params-mode-btn" id="params-mode-manual" aria-pressed="false">
             Manual
           </button>
         </div>
@@ -855,6 +863,21 @@
                   </div>
                   <span id="terrain-resolution-hint" class="param-resolution-hint">Resolution: —</span>
                 </div>
+              </div>
+              <div class="param-field param-field-full params-auto-only">
+                <div class="param-label-row">
+                  <span class="param-label">Window size (km)</span>
+                  <button
+                    type="button"
+                    class="param-help"
+                    data-help="auto-window-size"
+                    aria-label="Help: window size"
+                  >
+                    ⓘ
+                  </button>
+                </div>
+                <input id="auto-window-size" type="number" min="10" step="10" value="100" />
+                <span class="param-hint">± from map centre (total width ×2)</span>
               </div>
               <div class="param-field param-field-full">
                 <div class="param-label-row">
