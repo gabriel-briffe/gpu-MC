@@ -128,7 +128,7 @@ function stitchSegments(segments) {
           continue;
         }
         next = cand.seg;
-        nextEnd = cand.end === 0 ? 1 : 0;
+        nextEnd = cand.end;
         break;
       }
       seg = next;

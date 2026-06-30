@@ -628,24 +628,6 @@ function ensureSeedLayers() {
     },
   });
 
-  map.addLayer({
-    id: "seeds-label",
-    type: "symbol",
-    source: "seeds",
-    layout: {
-      "text-field": ["get", "label"],
-      "text-font": ["Noto Sans Regular"],
-      "text-size": 12,
-      "text-offset": [0, -1.4],
-      "text-anchor": "bottom",
-    },
-    paint: {
-      "text-color": "#fff8dc",
-      "text-halo-color": "rgba(18, 22, 28, 0.92)",
-      "text-halo-width": 2,
-    },
-  });
-
   seedLayersReady = true;
 }
 
@@ -1116,15 +1098,13 @@ function removePendingSeed(index) {
 
 function updateSeedMarkers() {
   ensureSeedLayers();
-  const features = pendingSeeds.map((seed, index) => ({
+  const features = pendingSeeds.map((seed) => ({
     type: "Feature",
     geometry: {
       type: "Point",
       coordinates: [seed.lng, seed.lat],
     },
-    properties: {
-      label: String(index + 1),
-    },
+    properties: {},
   }));
 
   map.getSource("seeds").setData({
@@ -1196,12 +1176,20 @@ function clearPendingSeeds() {
 }
 
 function raisePathLayer() {
-  if (pathLayerReady && map.getLayer("glide-path")) {
-    map.moveLayer("glide-path");
-  }
-  if (contourLayersReady && map.getLayer("glide-contours-label")) {
+  if (contourLayersReady && map.getLayer("glide-contours-line")) {
     map.moveLayer("glide-contours-line");
     map.moveLayer("glide-contours-label");
+  }
+  for (const layerId of ["openaip-airports", "openaip-airport-labels"]) {
+    if (map.getLayer(layerId)) {
+      map.moveLayer(layerId);
+    }
+  }
+  if (seedLayersReady && map.getLayer("seeds-circle")) {
+    map.moveLayer("seeds-circle");
+  }
+  if (pathLayerReady && map.getLayer("glide-path")) {
+    map.moveLayer("glide-path");
   }
 }
 
@@ -1540,6 +1528,8 @@ function ensureContourLayers() {
       "text-max-angle": 25,
       "symbol-spacing": contourLabelSymbolSpacing(),
       "text-keep-upright": true,
+      "symbol-sort-key": 100,
+      "text-optional": true,
     },
     paint: {
       "text-color": "#a8c8ff",
@@ -1755,6 +1745,7 @@ map.on("load", async () => {
     if (initOpenAipTiles(map, openAipConfig)) {
       console.info("OpenAIP vector tiles enabled");
       syncAirspaceUi();
+      raisePathLayer();
       updateSeedMarkers();
     }
   } catch (error) {

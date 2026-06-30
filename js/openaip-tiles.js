@@ -239,6 +239,8 @@ export function initOpenAipTiles(map, config) {
       "text-offset": [0, -1.2],
       "text-anchor": "bottom",
       "text-max-width": 10,
+      "symbol-sort-key": 0,
+      "text-optional": false,
     },
     paint: {
       "text-color": "#f5f7fa",
