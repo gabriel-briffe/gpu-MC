@@ -279,7 +279,7 @@ const VIZ_HINTS = {
 };
 
 function parseVizMode() {
-  const mode = vizModeSelect?.value ?? "stripes";
+  const mode = vizModeSelect?.value ?? "contours";
   return {
     mode,
     raw: mode === "raw",

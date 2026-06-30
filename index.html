@@ -347,33 +347,33 @@
         color: #9aa4b2;
       }
 
-      #params button.action-btn.btn-blue {
+      #params-shell button.action-btn.btn-blue {
         border-color: rgba(90, 159, 255, 0.55);
         background: rgba(90, 159, 255, 0.2);
         color: #d8e8ff;
       }
 
-      #params button.action-btn.btn-blue:hover:not(:disabled) {
+      #params-shell button.action-btn.btn-blue:hover:not(:disabled) {
         background: rgba(90, 159, 255, 0.32);
       }
 
-      #params button.action-btn.btn-green {
+      #params-shell button.action-btn.btn-green {
         border-color: rgba(100, 210, 120, 0.6);
         background: rgba(70, 190, 100, 0.22);
         color: #d8ffe3;
       }
 
-      #params button.action-btn.btn-green:hover:not(:disabled) {
+      #params-shell button.action-btn.btn-green:hover:not(:disabled) {
         background: rgba(70, 190, 100, 0.36);
       }
 
-      #params button.action-btn.btn-red {
+      #params-shell button.action-btn.btn-red {
         border-color: rgba(255, 120, 120, 0.55);
         background: rgba(255, 80, 80, 0.18);
         color: #ffd6d6;
       }
 
-      #params button.action-btn.btn-red:hover:not(:disabled) {
+      #params-shell button.action-btn.btn-red:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.32);
       }
 
@@ -442,7 +442,7 @@
         display: none;
       }
 
-      #params button.action-btn {
+      #params-shell button.action-btn {
         padding: 0.45rem 0.75rem;
         border: 1px solid rgba(255, 120, 120, 0.45);
         border-radius: 0.4rem;
@@ -453,16 +453,16 @@
         white-space: nowrap;
       }
 
-      #params button.action-btn:hover:not(:disabled) {
+      #params-shell button.action-btn:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.24);
       }
 
-      #params button.action-btn:disabled {
+      #params-shell button.action-btn:disabled {
         opacity: 0.55;
         cursor: wait;
       }
 
-      #params button.action-btn[hidden] {
+      #params-shell button.action-btn[hidden] {
         display: none;
       }
 
@@ -684,7 +684,7 @@
                       <span class="param-label">Terrain zoom</span>
                       <button type="button" class="param-help" data-help="terrain-zoom" aria-label="Help: terrain zoom">ⓘ</button>
                     </div>
-                    <input id="terrain-zoom" type="number" min="7" max="10" step="1" value="8" />
+                    <input id="terrain-zoom" type="number" min="7" max="10" step="1" value="7" />
                   </div>
                   <span id="terrain-resolution-hint" class="param-resolution-hint">Resolution: —</span>
                 </div>
@@ -713,7 +713,7 @@
                   <span class="param-label">LOS run N</span>
                   <button type="button" class="param-help" data-help="los-run" aria-label="Help: LOS run N">ⓘ</button>
                 </div>
-                <input id="los-run" type="number" min="0" step="1" value="6" />
+                <input id="los-run" type="number" min="0" step="1" value="0" />
               </div>
             </div>
           </div>
@@ -727,9 +727,9 @@
                   <button type="button" class="param-help" data-help="viz-mode" aria-label="Help: overlay mode">ⓘ</button>
                 </div>
                 <select id="viz-mode">
-                  <option value="stripes" selected>Stripes</option>
+                  <option value="stripes">Stripes</option>
                   <option value="raw">Raw raster</option>
-                  <option value="contours">Contours</option>
+                  <option value="contours" selected>Contours</option>
                 </select>
                 <span class="param-hint" id="viz-hint"></span>
               </div>
@@ -761,7 +761,7 @@
             </div>
             <div id="seed-list" class="seed-list" aria-label="Selected seeds"></div>
             <div class="params-actions">
-              <button type="button" class="action-btn btn-blue" id="run-compute" disabled>Run</button>
+              <button type="button" class="action-btn btn-green" id="run-compute" disabled>Run</button>
             </div>
             <div class="params-actions params-actions-secondary">
               <button type="button" class="action-btn btn-green" id="download-contours" hidden disabled>
@@ -795,10 +795,10 @@
           <button type="button" class="action-btn btn-blue" id="add-airport-area" disabled>
             Add new area
           </button>
-          <button type="button" class="action-btn" id="clear-airport-areas" disabled>
+          <button type="button" class="action-btn btn-red" id="clear-airport-areas" disabled>
             Clear areas
           </button>
-          <button type="button" class="action-btn btn-blue" id="add-airports-from-areas" disabled>
+          <button type="button" class="action-btn btn-green" id="add-airports-from-areas" disabled>
             Add airports from areas
           </button>
         </div>
