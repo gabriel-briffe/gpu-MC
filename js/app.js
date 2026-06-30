@@ -13,30 +13,37 @@ import { buildDemGrid } from "./dem.js";
 import { buildAltitudeContours } from "./contours.js";
 import { GlideConeEngine } from "./glidecone.js";
 import {
-  initOpenAipTiles,
-  getOpenAipAirportsInBounds,
+  initOpenAipAirspaceTiles,
+  removeOpenAipVectorTiles,
   queryOpenAipAirspacesAt,
   airspaceFeatureKey,
   setOpenAipAirspaceVisible,
   OPENAIP_AIRPORT_MIN_ZOOM,
   OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
+  OPENAIP_AIRPORT_FILTER,
   OPENAIP_AIRSPACE_FILL_LAYER,
   OPENAIP_AIRSPACE_LAYER,
 } from "./openaip-tiles.js";
-import { OPENAIP_CACHE_AIRPORT_FILTER } from "./openaip-airport-types.js";
-import { loadOpenAipConfig } from "./openaip-client.js";
+import { loadOpenAipConfig, openAipConfigured } from "./openaip-client.js";
 import {
   registerTerrainTileProtocol,
   TERRAIN_TILE_URL_TEMPLATE,
 } from "./terrain-tiles.js";
-import { buildCacheBundle, cacheCellKey, ensureAirportCellsCachedForBbox, getLastCachedCellKeysForSelection, mergedCachedAirportsToGeoJsonFeatures } from "./cache-area.js";
+import {
+  buildCacheBundle,
+  cacheCellKey,
+  cachedAirportsToGeoJsonFeatures,
+  ensureAirportCellsCachedForBbox,
+  getCachedAirportsInBounds,
+  getLastCachedCellKeysForSelection,
+  mergedCachedAirportsToGeoJsonFeatures,
+} from "./cache-area.js";
 
 const DEFAULT_MAX_ALTITUDE = 3050;
 const MIN_SEEDS = 1;
 const AUTO_WINDOW_SIZE_DEFAULT_KM = 100;
 const AUTO_MAX_OFFSET_FROM_CENTER = 0.25;
 const AUTO_COMPUTE_DEBOUNCE_MS = 400;
-const AUTO_OPENAIP_TILES_MAX_WAIT_MS = 2000;
 const AIRPORT_RECT_MIN_DEG = 1e-5;
 const AIRPORT_HANDLE_HIT_PX = 12;
 const AIRPORT_HANDLE_CURSORS = {
@@ -117,8 +124,8 @@ const CACHE_HIDDEN_LAYER_IDS = [
   "glide-cone-full",
   "glide-contours-line",
   "glide-contours-label",
-  "openaip-airports",
-  "openaip-airport-labels",
+  "airports-cached",
+  "airports-cached-labels",
   OPENAIP_AIRSPACE_FILL_LAYER,
   OPENAIP_AIRSPACE_LAYER,
   "seeds-circle",
@@ -174,6 +181,7 @@ let manualTouchStart = null;
 let cacheSelectMode = false;
 let cacheGridReady = false;
 let cacheAirportsReady = false;
+let cachedAirportMapReady = false;
 let cacheDownloadInProgress = false;
 let overlayVisibilityBeforeCache = null;
 const selectedCacheCells = new Set();
@@ -524,7 +532,7 @@ const PARAM_HELP = {
   "auto-window-size":
     "Half-width of the airport search box in Auto mode (km from map centre to each edge). A value of 100 loads all airfields in a 200 km-wide square centred on the map.",
   "include-airspace":
-    "Show airspace on the map and cap the DEM under prohibited volumes and overflight-restriction areas (OpenAIP types: prohibited, overflight restriction). Airports stay visible either way.",
+    "Show airspace on the map (OpenAIP vector tiles) and cap the DEM under prohibited volumes and overflight-restriction areas. Airports use cached REST data, not vector tiles.",
   "los-run":
     "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate, but slower.\n\nANYTHING ELSE THAN N=0 IS EXPERIMENTAL, MIGHT INTRODUCE MISTAKES, BUGS, PATH ENDING TOO EARLY.. DON'T USE IF YOU DON'T UNDERSTAND THE CODE BEHIND\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source. Faster, and often accurate enough.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule). Fast, but usually not accurate enough.",
   "viz-mode":
@@ -602,45 +610,75 @@ function getAutoWindowSizeKm() {
   return Number.isFinite(value) && value > 0 ? value : AUTO_WINDOW_SIZE_DEFAULT_KM;
 }
 
-function areOpenAipViewportTilesReady() {
-  return Boolean(
-    map?.getSource("openaip") && !map.isMoving() && map.areTilesLoaded()
-  );
+function areOpenAipAirportsAvailable() {
+  return openAipConfigured(openAipConfig);
 }
 
-async function waitForOpenAipViewportTiles() {
-  if (!map?.getSource("openaip") || areOpenAipViewportTilesReady()) {
+function syncOpenAipVectorTiles() {
+  if (!map) {
+    return;
+  }
+  const wantTiles = isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable();
+  if (wantTiles) {
+    if (initOpenAipAirspaceTiles(map, openAipConfig)) {
+      setOpenAipAirspaceVisible(map, true);
+    }
+    return;
+  }
+  removeOpenAipVectorTiles(map);
+}
+
+async function runAutoComputation({ refreshAirports = false } = {}) {
+  if (!isAutoParamsMode() || !areOpenAipAirportsAvailable()) {
+    if (isAutoParamsMode()) {
+      setStatus("Auto mode needs OpenAIP — check configuration");
+    }
     return;
   }
 
-  setStatus("Loading OpenAIP airport tiles…");
-  await new Promise((resolve) => {
-    let settled = false;
-    const finish = () => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      map.off("sourcedata", onSourceData);
-      map.off("idle", tryFinish);
-      window.clearTimeout(timer);
-      resolve();
-    };
-    const tryFinish = () => {
-      if (areOpenAipViewportTilesReady()) {
-        finish();
-      }
-    };
-    const onSourceData = (event) => {
-      if (event.sourceId === "openaip") {
-        tryFinish();
-      }
-    };
-    const timer = window.setTimeout(finish, AUTO_OPENAIP_TILES_MAX_WAIT_MS);
-    map.on("sourcedata", onSourceData);
-    map.on("idle", tryFinish);
-    tryFinish();
-  });
+  const windowSizeKm = getAutoWindowSizeKm();
+  const center = map.getCenter();
+  const bounds = kmBoxAroundLngLat(center.lng, center.lat, windowSizeKm);
+  autoComputeRegion = { ...bounds, windowSizeKm };
+
+  let seedsForCompute;
+
+  if (refreshAirports) {
+    await ensureAirportCellsCachedForBbox(bounds, openAipConfig, setStatus);
+    refreshCachedAirportMapLayer();
+    setStatus(`Finding airports in ${windowSizeKm * 2} km window…`);
+    const airports = getCachedAirportsInBounds(
+      bounds.west,
+      bounds.south,
+      bounds.east,
+      bounds.north
+    );
+
+    if (airports.length < MIN_SEEDS) {
+      setStatus(
+        `Auto: no airports in ${windowSizeKm * 2} km window — pan map or cache cells first`
+      );
+      return;
+    }
+
+    pendingSeeds = airports.map((airport) => ({
+      lng: airport.lng,
+      lat: airport.lat,
+      label: formatAirportLabel(airport),
+      source: "airport",
+    }));
+    updateSeedMarkers();
+    setStatus(`Found ${airports.length} airports — fetching terrain…`);
+    seedsForCompute = pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
+  } else if (pendingSeeds.length >= MIN_SEEDS) {
+    setStatus(`Recomputing ${pendingSeeds.length} airports…`);
+    seedsForCompute = pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
+  } else {
+    await runAutoComputation({ refreshAirports: true });
+    return;
+  }
+
+  await runComputation(seedsForCompute, { gridBounds: bounds });
 }
 
 function scheduleAutoCompute({ debounce = false, refreshAirports = false } = {}) {
@@ -694,60 +732,6 @@ function onAutoModeMapMoveEnd() {
   scheduleAutoCompute({ debounce: true, refreshAirports: true });
 }
 
-async function runAutoComputation({ refreshAirports = false } = {}) {
-  if (!isAutoParamsMode() || !map?.getSource("openaip")) {
-    if (isAutoParamsMode()) {
-      setStatus("Auto mode needs OpenAIP tiles — check configuration");
-    }
-    return;
-  }
-
-  const windowSizeKm = getAutoWindowSizeKm();
-  const center = map.getCenter();
-  const bounds = kmBoxAroundLngLat(center.lng, center.lat, windowSizeKm);
-  autoComputeRegion = { ...bounds, windowSizeKm };
-
-  let seedsForCompute;
-
-  if (refreshAirports) {
-    await ensureAirportCellsCachedForBbox(bounds, openAipConfig, setStatus);
-    await waitForOpenAipViewportTiles();
-    setStatus(`Finding airports in ${windowSizeKm * 2} km window…`);
-    const airports = getOpenAipAirportsInBounds(
-      map,
-      bounds.west,
-      bounds.south,
-      bounds.east,
-      bounds.north
-    );
-
-    if (airports.length < MIN_SEEDS) {
-      setStatus(
-        `Auto: no airports in ${windowSizeKm * 2} km window — pan or zoom to z${OPENAIP_AIRPORT_MIN_ZOOM}+`
-      );
-      return;
-    }
-
-    pendingSeeds = airports.map((airport) => ({
-      lng: airport.lng,
-      lat: airport.lat,
-      label: formatAirportLabel(airport),
-      source: "airport",
-    }));
-    updateSeedMarkers();
-    setStatus(`Found ${airports.length} airports — fetching terrain…`);
-    seedsForCompute = pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
-  } else if (pendingSeeds.length >= MIN_SEEDS) {
-    setStatus(`Recomputing ${pendingSeeds.length} airports…`);
-    seedsForCompute = pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
-  } else {
-    await runAutoComputation({ refreshAirports: true });
-    return;
-  }
-
-  await runComputation(seedsForCompute, { gridBounds: bounds });
-}
-
 function isDebugMode() {
   return debugModeInput?.checked ?? false;
 }
@@ -795,10 +779,14 @@ function isIncludeAirspaceEnabled() {
 }
 
 function syncAirspaceUi() {
-  setOpenAipAirspaceVisible(map, isIncludeAirspaceEnabled());
-  if (isIncludeAirspaceEnabled()) {
+  syncOpenAipVectorTiles();
+  if (isIncludeAirspaceEnabled() && map?.getSource("openaip")) {
+    setOpenAipAirspaceVisible(map, true);
     info.classList.add("visible");
   } else {
+    if (map?.getSource("openaip")) {
+      setOpenAipAirspaceVisible(map, false);
+    }
     info.classList.remove("visible");
     if (airspaceInfoEl) {
       airspaceInfoEl.textContent = "—";
@@ -935,7 +923,7 @@ function initParamPanel() {
 
   includeAirspaceInput?.addEventListener("change", () => {
     syncAirspaceUi();
-    if (isIncludeAirspaceEnabled() && map) {
+    if (isIncludeAirspaceEnabled() && map?.getSource("openaip")) {
       const center = map.getCenter();
       updateAirspaceInfo(center.lng, center.lat);
     }
@@ -1109,7 +1097,7 @@ geolocateControl.on("trackuserlocationend", () => {
 });
 
 function updateAirspaceInfo(lng, lat) {
-  if (!isIncludeAirspaceEnabled()) {
+  if (!isIncludeAirspaceEnabled() || !map?.getSource("openaip")) {
     return;
   }
 
@@ -1426,14 +1414,14 @@ function updateAirportSelectLayer() {
 
 function syncAirportAreaSelectUi() {
   if (toggleAirportAreaSelectBtn) {
-    toggleAirportAreaSelectBtn.disabled = computing || !map.getSource("openaip");
+    toggleAirportAreaSelectBtn.disabled = computing || !areOpenAipAirportsAvailable();
   }
   if (toggleManualAirportSelectBtn) {
     toggleManualAirportSelectBtn.disabled = computing;
   }
   if (addAirportsFromAreasBtn) {
     addAirportsFromAreasBtn.disabled =
-      computing || airportSelectRects.length === 0 || !map.getSource("openaip");
+      computing || airportSelectRects.length === 0 || !areOpenAipAirportsAvailable();
   }
   if (clearAirportAreasBtn) {
     clearAirportAreasBtn.disabled = computing || airportSelectRects.length === 0;
@@ -1732,7 +1720,7 @@ function scrollToSeedsSection() {
 }
 
 function enterAirportAreaSelectMode() {
-  if (computing || !map.getSource("openaip")) {
+  if (computing || !areOpenAipAirportsAvailable()) {
     return;
   }
   if (manualAirportSelectMode) {
@@ -1869,8 +1857,7 @@ async function addAirportsFromSelectAreas() {
   let added = 0;
   for (const rect of airportSelectRects) {
     await ensureAirportCellsCachedForBbox(rect, openAipConfig, setStatus);
-    const airports = getOpenAipAirportsInBounds(
-      map,
+    const airports = getCachedAirportsInBounds(
       rect.west,
       rect.south,
       rect.east,
@@ -1894,11 +1881,12 @@ async function addAirportsFromSelectAreas() {
   }
 
   updateSeedMarkers();
+  refreshCachedAirportMapLayer();
   const areaCount = airportSelectRects.length;
   clearAirportSelectAreas();
   exitAirportAreaSelectMode(true);
   if (added === 0) {
-    setStatus(`No new airports in the drawn areas — zoom in to z${OPENAIP_AIRPORT_MIN_ZOOM} or higher`);
+    setStatus(`No new airports in the drawn areas — cache cells or draw a larger area`);
   } else {
     setStatus(
       `Added ${added} airport${added === 1 ? "" : "s"} from ${areaCount} area${areaCount === 1 ? "" : "s"} — ${airportCountTotal(pendingSeeds.length)}`
@@ -2044,7 +2032,7 @@ function raisePathLayer() {
     map.moveLayer("glide-contours-line");
     map.moveLayer("glide-contours-label");
   }
-  for (const layerId of ["openaip-airports", "openaip-airport-labels"]) {
+  for (const layerId of ["airports-cached", "airports-cached-labels"]) {
     if (map.getLayer(layerId)) {
       map.moveLayer(layerId);
     }
@@ -2635,6 +2623,81 @@ function buildCacheAirportFeatures() {
   return mergedCachedAirportsToGeoJsonFeatures();
 }
 
+function ensureCachedAirportMapLayers() {
+  if (!map || cachedAirportMapReady) {
+    return;
+  }
+
+  map.addSource("airports-cached", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: "airports-cached",
+    type: "circle",
+    source: "airports-cached",
+    minzoom: OPENAIP_AIRPORT_MIN_ZOOM,
+    filter: OPENAIP_AIRPORT_FILTER,
+    paint: {
+      "circle-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        OPENAIP_AIRPORT_MIN_ZOOM,
+        2,
+        14,
+        5,
+      ],
+      "circle-color": "#bf2d2d",
+      "circle-stroke-width": 1,
+      "circle-stroke-color": "#ffffff",
+    },
+  });
+
+  map.addLayer({
+    id: "airports-cached-labels",
+    type: "symbol",
+    source: "airports-cached",
+    minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
+    filter: OPENAIP_AIRPORT_FILTER,
+    layout: {
+      "text-field": ["coalesce", ["get", "icao_code"], ["get", "icaoCode"], ["get", "name"]],
+      "text-font": ["Noto Sans Regular"],
+      "text-size": 10,
+      "text-offset": [0, -1.2],
+      "text-anchor": "bottom",
+      "text-max-width": 10,
+      "symbol-sort-key": 0,
+      "text-optional": false,
+    },
+    paint: {
+      "text-color": "#f5f7fa",
+      "text-halo-color": "rgba(18, 22, 28, 0.92)",
+      "text-halo-width": 2,
+    },
+  });
+
+  cachedAirportMapReady = true;
+  raisePathLayer();
+}
+
+function refreshCachedAirportMapLayer() {
+  if (!cachedAirportMapReady || cacheSelectMode || !map?.getSource("airports-cached")) {
+    return;
+  }
+  const bounds = map.getBounds();
+  map.getSource("airports-cached").setData({
+    type: "FeatureCollection",
+    features: cachedAirportsToGeoJsonFeatures(
+      bounds.getWest(),
+      bounds.getSouth(),
+      bounds.getEast(),
+      bounds.getNorth()
+    ),
+  });
+}
+
 function ensureCacheAirportLayers() {
   if (!map || cacheAirportsReady) {
     return;
@@ -2650,7 +2713,7 @@ function ensureCacheAirportLayers() {
     type: "circle",
     source: "cache-airports",
     minzoom: OPENAIP_AIRPORT_MIN_ZOOM,
-    filter: OPENAIP_CACHE_AIRPORT_FILTER,
+    filter: OPENAIP_AIRPORT_FILTER,
     paint: {
       "circle-radius": [
         "interpolate",
@@ -2672,7 +2735,7 @@ function ensureCacheAirportLayers() {
     type: "symbol",
     source: "cache-airports",
     minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-    filter: OPENAIP_CACHE_AIRPORT_FILTER,
+    filter: OPENAIP_AIRPORT_FILTER,
     layout: {
       "text-field": ["coalesce", ["get", "icao_code"], ["get", "icaoCode"], ["get", "name"]],
       "text-font": ["Noto Sans Regular"],
@@ -2877,6 +2940,7 @@ async function runCacheDownload() {
   try {
     await buildCacheBundle([...selectedCacheCells], openAipConfig, setStatus);
     refreshCacheSelectOverlays();
+    refreshCachedAirportMapLayer();
   } catch (error) {
     setStatus(`Cache error: ${error.message}`);
     console.error(error);
@@ -3170,15 +3234,18 @@ map.on("load", async () => {
     updateTerrainResolutionHint();
     onAutoModeMapMoveEnd();
     refreshCacheGridForViewport();
+    refreshCachedAirportMapLayer();
   });
   map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);
 
   try {
     openAipConfig = await loadOpenAipConfig();
-    if (initOpenAipTiles(map, openAipConfig)) {
-      console.info("OpenAIP vector tiles enabled");
-      syncAirspaceUi();
+    if (openAipConfigured(openAipConfig)) {
+      console.info("OpenAIP REST caching enabled");
+      ensureCachedAirportMapLayers();
+      refreshCachedAirportMapLayer();
+      syncOpenAipVectorTiles();
       raisePathLayer();
       updateSeedMarkers();
       if (isAutoParamsMode()) {

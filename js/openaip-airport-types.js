@@ -38,20 +38,22 @@ export const OPENAIP_AIRPORT_TYPE_SLUG_BY_CODE = {
   10: "af_water",
 };
 
-/** Types skipped on import in mountainCircles (heliports, closed, water). */
-export const OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES = [4, 7, 8, 10];
+/** Types excluded from fetch, map display, and compute seeds. */
+export const OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES = [4, 6, 7, 8, 10, 11, 12, 13];
 
 export const OPENAIP_EXCLUDED_AIRPORT_TYPE_TILE_SLUGS = OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES.map(
   (code) => OPENAIP_AIRPORT_TYPE_SLUG_BY_CODE[code]
 ).filter(Boolean);
 
-/** Cache management view — excludes non-soaring / non-airfield types. */
-export const OPENAIP_CACHE_EXCLUDED_AIRPORT_TYPE_CODES = [4, 6, 7, 8, 10, 11, 12, 13];
+/** @deprecated Same as OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES */
+export const OPENAIP_CACHE_EXCLUDED_AIRPORT_TYPE_CODES = OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES;
 
-export const OPENAIP_CACHE_AIRPORT_FILTER = [
+export const OPENAIP_AIRPORT_FILTER = [
   "!",
-  ["in", ["get", "type"], ["literal", OPENAIP_CACHE_EXCLUDED_AIRPORT_TYPE_CODES]],
+  ["in", ["get", "type"], ["literal", OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES]],
 ];
+
+export const OPENAIP_CACHE_AIRPORT_FILTER = OPENAIP_AIRPORT_FILTER;
 
 const OPENAIP_AIRPORT_TYPE_CODE_BY_NAME = Object.fromEntries(
   Object.entries(OPENAIP_AIRPORT_TYPES_BY_CODE).map(([code, name]) => [name, Number(code)])

@@ -1,6 +1,7 @@
 import { TILE_SIZE, lngLatToGlobalPixel } from "./geo.js";
 import { fetchTerrainTileBlob } from "./terrain-tiles.js";
 import { dedupeAirports, fetchAirportsInBbox } from "./openaip-airports.js";
+import { isIncludedOpenAipAirportType } from "./openaip-airport-types.js";
 
 export const CACHE_TERRAIN_Z_MIN = 3;
 export const CACHE_TERRAIN_Z_MAX = 7;
@@ -251,7 +252,31 @@ export function mergeCachedAirports(cellKeys = null) {
     }
   }
 
-  return dedupeAirports(all);
+  return dedupeAirports(all).filter((airport) =>
+    isIncludedOpenAipAirportType(airport.properties?.type)
+  );
+}
+
+export function getCachedAirportsInBounds(west, south, east, north) {
+  const cellKeys = cellKeysInBbox(west, south, east, north);
+  return mergeCachedAirports(cellKeys).filter(
+    (airport) =>
+      airport.lng >= west &&
+      airport.lng <= east &&
+      airport.lat >= south &&
+      airport.lat <= north
+  );
+}
+
+export function cachedAirportsToGeoJsonFeatures(west, south, east, north) {
+  return getCachedAirportsInBounds(west, south, east, north).map((airport) => ({
+    type: "Feature",
+    properties: airport.properties ?? {},
+    geometry: {
+      type: "Point",
+      coordinates: [airport.lng, airport.lat],
+    },
+  }));
 }
 
 export function mergedCachedAirportsToGeoJsonFeatures(cellKeys = null) {
