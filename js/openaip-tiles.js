@@ -45,6 +45,8 @@ const AIRPORT_FILTER = [
   ["in", ["get", "type"], ["literal", EXCLUDED_AIRPORT_TYPES]],
 ];
 
+export const OPENAIP_AIRPORT_MIN_ZOOM = 5;
+export const OPENAIP_AIRPORT_LABEL_MIN_ZOOM = 7;
 export const OPENAIP_AIRPORT_LAYERS = ["openaip-airports", "openaip-airport-labels"];
 export const OPENAIP_AIRSPACE_FILL_LAYER = "openaip-airspaces-fill";
 export const OPENAIP_AIRSPACE_LAYER = "openaip-airspaces-line";
@@ -54,12 +56,16 @@ export function isIncludedAirportType(type) {
   return type != null && !EXCLUDED_AIRPORT_TYPES.includes(type);
 }
 
-export function getViewportOpenAipAirports(map) {
+export function openAipAirportKey(properties, lng, lat) {
+  const { source_id: sourceId, icao_code: icaoCode, name } = properties ?? {};
+  return sourceId ?? icaoCode ?? `${name}@${lng.toFixed(5)},${lat.toFixed(5)}`;
+}
+
+export function getOpenAipAirportsInBounds(map, west, south, east, north) {
   if (!map.getSource("openaip")) {
     return [];
   }
 
-  const bounds = map.getBounds();
   const features = map.querySourceFeatures("openaip", {
     sourceLayer: "airports",
   });
@@ -68,7 +74,7 @@ export function getViewportOpenAipAirports(map) {
   const airports = [];
 
   for (const feature of features) {
-    const { type, source_id: sourceId, icao_code: icaoCode, name } = feature.properties ?? {};
+    const { type } = feature.properties ?? {};
     if (!isIncludedAirportType(type)) {
       continue;
     }
@@ -79,11 +85,11 @@ export function getViewportOpenAipAirports(map) {
     }
 
     const [lng, lat] = coords;
-    if (!bounds.contains([lng, lat])) {
+    if (lng < west || lng > east || lat < south || lat > north) {
       continue;
     }
 
-    const key = sourceId ?? icaoCode ?? `${name}@${lng.toFixed(5)},${lat.toFixed(5)}`;
+    const key = openAipAirportKey(feature.properties, lng, lat);
     if (seen.has(key)) {
       continue;
     }
@@ -93,6 +99,17 @@ export function getViewportOpenAipAirports(map) {
   }
 
   return airports;
+}
+
+export function getViewportOpenAipAirports(map) {
+  const bounds = map.getBounds();
+  return getOpenAipAirportsInBounds(
+    map,
+    bounds.getWest(),
+    bounds.getSouth(),
+    bounds.getEast(),
+    bounds.getNorth()
+  );
 }
 
 export function airspaceFeatureKey(feature) {
@@ -190,10 +207,18 @@ export function initOpenAipTiles(map, config) {
     type: "circle",
     source: "openaip",
     "source-layer": "airports",
-    minzoom: 8,
+    minzoom: OPENAIP_AIRPORT_MIN_ZOOM,
     filter: AIRPORT_FILTER,
     paint: {
-      "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 2, 14, 5],
+      "circle-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        OPENAIP_AIRPORT_MIN_ZOOM,
+        2,
+        14,
+        5,
+      ],
       "circle-color": "#bf2d2d",
       "circle-stroke-width": 1,
       "circle-stroke-color": "#ffffff",
@@ -205,7 +230,7 @@ export function initOpenAipTiles(map, config) {
     type: "symbol",
     source: "openaip",
     "source-layer": "airports",
-    minzoom: 9,
+    minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
     filter: AIRPORT_FILTER,
     layout: {
       "text-field": ["coalesce", ["get", "icao_code"], ["get", "icaoCode"], ["get", "name"]],

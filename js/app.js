@@ -13,15 +13,25 @@ import { GlideConeEngine } from "./glidecone.js";
 import {
   initOpenAipTiles,
   getViewportOpenAipAirports,
+  getOpenAipAirportsInBounds,
   queryOpenAipAirspacesAt,
   airspaceFeatureKey,
   setOpenAipAirspaceVisible,
+  OPENAIP_AIRPORT_MIN_ZOOM,
 } from "./openaip-tiles.js";
 import { loadOpenAipConfig } from "./openaip-client.js";
 
 const DEFAULT_MAX_ALTITUDE = 3050;
 const LONG_PRESS_MS = 550;
 const MIN_SEEDS = 1;
+const AIRPORT_RECT_MIN_DEG = 1e-5;
+const AIRPORT_HANDLE_HIT_PX = 12;
+const AIRPORT_HANDLE_CURSORS = {
+  nw: "nwse-resize",
+  se: "nwse-resize",
+  ne: "nesw-resize",
+  sw: "nesw-resize",
+};
 const MAP_CENTER = { lng: 9.0788, lat: 47.1194 };
 const INITIAL_TERRAIN_Z = pickTerrainZoom(MAP_CENTER.lat);
 const MAP_MAX_ZOOM = 22;
@@ -52,8 +62,17 @@ const downloadContoursBtn = document.getElementById("download-contours");
 const stopComputeBtn = document.getElementById("stop-compute");
 const runComputeBtn = document.getElementById("run-compute");
 const selectViewportAirportsBtn = document.getElementById("select-viewport-airports");
+const toggleAirportAreaSelectBtn = document.getElementById("toggle-airport-area-select");
+const addAirportAreaBtn = document.getElementById("add-airport-area");
+const addAirportsFromAreasBtn = document.getElementById("add-airports-from-areas");
+const clearAirportAreasBtn = document.getElementById("clear-airport-areas");
+const debugModeInput = document.getElementById("debug-mode");
 const seedListEl = document.getElementById("seed-list");
 const paramsPanel = document.getElementById("params-panel");
+const paramsShell = document.getElementById("params-shell");
+const paramsScrollEl = document.getElementById("params-scroll");
+const seedsSectionEl = document.getElementById("seeds-section");
+const airportAreaSelectPanel = document.getElementById("airport-area-select-panel");
 const clearOverlayBtn = document.getElementById("clear-overlay");
 const clearAllSeedsBtn = document.getElementById("clear-all-seeds");
 const seedInputHintEl = document.getElementById("seed-input-hint");
@@ -77,6 +96,11 @@ let longPressDone = false;
 let touchStartPoint = null;
 let footerStatusText = "Loading WebGPU…";
 let footerCellHtml = null;
+let airportAreaSelectMode = false;
+let airportAreaDrawMode = false;
+let airportSelectRects = [];
+let airportSelectLayersReady = false;
+let airportRectInteraction = null;
 
 const interaction = {
   hoverPath: false,
@@ -191,6 +215,9 @@ function startComputeSession() {
   if (selectViewportAirportsBtn) {
     selectViewportAirportsBtn.disabled = true;
   }
+  if (airportAreaSelectMode) {
+    exitAirportAreaSelectMode(false);
+  }
   syncCompareLosButton();
 }
 
@@ -236,7 +263,7 @@ const PARAM_HELP = {
   "include-airspace":
     "Show airspace on the map and cap the DEM under prohibited volumes and overflight-restriction areas (OpenAIP types: prohibited, overflight restriction). Airports stay visible either way.",
   "los-run":
-    "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate, but slower.\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source. Faster, and often accurate enough.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule). Fast, but usually not accurate enough.\n\nFor N>=1, use stripes overlay, and after computation return to the parameter box and click Full Bresenham to compare with fully accurate calculation",
+    "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate, but slower.\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source. Faster, and often accurate enough.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule). Fast, but usually not accurate enough.",
   "viz-mode":
     "Stripes — 100 m altitude bands. Raw raster — per-cell altitude colors. Contours — 100 m isolines with labels; exportable as GeoJSON after a run.",
   preview:
@@ -267,6 +294,38 @@ function syncParamVisibility() {
   }
   if (vizHintEl) {
     vizHintEl.textContent = VIZ_HINTS[mode] ?? "";
+  }
+}
+
+function isDebugMode() {
+  return debugModeInput?.checked ?? false;
+}
+
+function getParamHelpText(key) {
+  let text = PARAM_HELP[key];
+  if (!text) {
+    return null;
+  }
+  if (key === "los-run") {
+    text += isDebugMode()
+      ? "\n\nFull Bresenham comparison and path-length diagnostics are available (Debug mode on)."
+      : "\n\nEnable Debug mode at the bottom of this panel for Full Bresenham comparison and path-length diagnostics.";
+  }
+  return text;
+}
+
+function syncDebugUi() {
+  paramsShell?.classList.toggle("debug-mode", isDebugMode());
+  if (openParamHelpButton?.dataset.help === "los-run" && paramHelpPopover) {
+    const text = getParamHelpText("los-run");
+    if (text) {
+      paramHelpPopover.textContent = text;
+    }
+  }
+  syncCompareLosButton();
+  syncDownloadContoursButton();
+  if (lastHoverCell) {
+    showCellInspect(lastHoverCell);
   }
 }
 
@@ -336,7 +395,7 @@ function closeParamHelp() {
 
 function openParamHelp(button) {
   const key = button.dataset.help;
-  const text = PARAM_HELP[key];
+  const text = getParamHelpText(key);
   if (!text || !paramHelpPopover) {
     return;
   }
@@ -395,12 +454,15 @@ function initParamPanel() {
     }
   });
 
+  debugModeInput?.addEventListener("change", syncDebugUi);
+
   document.getElementById("los-run")?.addEventListener("input", syncCompareLosButton);
   detectInteractionMode();
   for (const query of ["(pointer: coarse)", "(pointer: fine)", "(hover: hover)"]) {
     window.matchMedia(query).addEventListener("change", detectInteractionMode);
   }
   syncCompareLosButton();
+  syncDebugUi();
   updateParamsFooter();
 }
 
@@ -601,6 +663,391 @@ function formatAirportLabel(airport) {
   return name ?? icao ?? `${airport.lat.toFixed(4)}°, ${airport.lng.toFixed(4)}°`;
 }
 
+function normalizeAirportSelectRect(a, b) {
+  return {
+    west: Math.min(a.lng, b.lng),
+    east: Math.max(a.lng, b.lng),
+    south: Math.min(a.lat, b.lat),
+    north: Math.max(a.lat, b.lat),
+  };
+}
+
+function airportSelectRectRing(rect) {
+  const { west, south, east, north } = rect;
+  return [
+    [west, south],
+    [east, south],
+    [east, north],
+    [west, north],
+    [west, south],
+  ];
+}
+
+function airportSelectRectCorners(rect) {
+  return [
+    { handle: "nw", lng: rect.west, lat: rect.north },
+    { handle: "ne", lng: rect.east, lat: rect.north },
+    { handle: "se", lng: rect.east, lat: rect.south },
+    { handle: "sw", lng: rect.west, lat: rect.south },
+  ];
+}
+
+function resizeAnchorForHandle(rect, handle) {
+  switch (handle) {
+    case "nw":
+      return { lng: rect.east, lat: rect.south };
+    case "ne":
+      return { lng: rect.west, lat: rect.south };
+    case "se":
+      return { lng: rect.west, lat: rect.north };
+    case "sw":
+      return { lng: rect.east, lat: rect.north };
+    default:
+      return { lng: rect.east, lat: rect.south };
+  }
+}
+
+function hitTestRectHandle(point) {
+  for (let index = airportSelectRects.length - 1; index >= 0; index -= 1) {
+    const rect = airportSelectRects[index];
+    for (const corner of airportSelectRectCorners(rect)) {
+      const projected = map.project([corner.lng, corner.lat]);
+      if (Math.hypot(point.x - projected.x, point.y - projected.y) <= AIRPORT_HANDLE_HIT_PX) {
+        return { rectIndex: index, handle: corner.handle };
+      }
+    }
+  }
+  return null;
+}
+
+function syncAreaSelectCursor(point) {
+  if (!airportAreaSelectMode || !map?.getCanvas() || airportRectInteraction) {
+    return;
+  }
+  const hit = hitTestRectHandle(point);
+  if (hit) {
+    map.getCanvas().style.cursor = AIRPORT_HANDLE_CURSORS[hit.handle];
+    return;
+  }
+  map.getCanvas().style.cursor = airportAreaDrawMode ? "crosshair" : "";
+}
+
+function ensureAirportSelectLayers() {
+  if (airportSelectLayersReady) {
+    return;
+  }
+
+  map.addSource("airport-select-areas", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: "airport-select-areas-fill",
+    type: "fill",
+    source: "airport-select-areas",
+    filter: ["!=", ["get", "handle"], true],
+    paint: {
+      "fill-color": "#5a9fd4",
+      "fill-opacity": ["case", ["get", "preview"], 0.12, 0.22],
+    },
+  });
+
+  map.addLayer({
+    id: "airport-select-areas-line",
+    type: "line",
+    source: "airport-select-areas",
+    filter: ["!=", ["get", "handle"], true],
+    paint: {
+      "line-color": "#5a9fd4",
+      "line-width": 2,
+    },
+  });
+
+  map.addLayer({
+    id: "airport-select-handles",
+    type: "circle",
+    source: "airport-select-areas",
+    filter: ["==", ["get", "handle"], true],
+    paint: {
+      "circle-radius": 5,
+      "circle-color": "#ffffff",
+      "circle-stroke-color": "#5a9fd4",
+      "circle-stroke-width": 2,
+    },
+  });
+
+  airportSelectLayersReady = true;
+}
+
+function updateAirportSelectLayer() {
+  if (!airportSelectLayersReady) {
+    return;
+  }
+
+  const features = airportSelectRects.flatMap((rect, index) => {
+    const polygon = {
+      type: "Feature",
+      properties: { index, preview: false, handle: false },
+      geometry: {
+        type: "Polygon",
+        coordinates: [airportSelectRectRing(rect)],
+      },
+    };
+    const handles = airportSelectRectCorners(rect).map((corner) => ({
+      type: "Feature",
+      properties: { index, handle: true, corner: corner.handle },
+      geometry: {
+        type: "Point",
+        coordinates: [corner.lng, corner.lat],
+      },
+    }));
+    return [polygon, ...handles];
+  });
+
+  if (airportRectInteraction?.kind === "draw") {
+    features.push({
+      type: "Feature",
+      properties: { preview: true, handle: false },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          airportSelectRectRing(
+            normalizeAirportSelectRect(airportRectInteraction.start, airportRectInteraction.current)
+          ),
+        ],
+      },
+    });
+  }
+
+  map.getSource("airport-select-areas").setData({
+    type: "FeatureCollection",
+    features,
+  });
+}
+
+function syncAirportAreaSelectUi() {
+  if (toggleAirportAreaSelectBtn) {
+    toggleAirportAreaSelectBtn.disabled = computing || !map.getSource("openaip");
+  }
+  if (addAirportsFromAreasBtn) {
+    addAirportsFromAreasBtn.disabled =
+      computing || airportSelectRects.length === 0 || !map.getSource("openaip");
+  }
+  if (clearAirportAreasBtn) {
+    clearAirportAreasBtn.disabled = computing || airportSelectRects.length === 0;
+  }
+  if (addAirportAreaBtn) {
+    addAirportAreaBtn.disabled =
+      computing || !airportAreaSelectMode || airportAreaDrawMode || airportRectInteraction;
+  }
+  if (airportAreaSelectPanel) {
+    airportAreaSelectPanel.hidden = !airportAreaSelectMode;
+  }
+  if (map?.getCanvas() && !airportAreaSelectMode) {
+    map.getCanvas().style.cursor = "";
+  }
+}
+
+function cancelAirportRectInteraction() {
+  if (airportRectInteraction) {
+    map.dragPan.enable();
+  }
+  airportRectInteraction = null;
+  updateAirportSelectLayer();
+}
+
+function scrollToSeedsSection() {
+  if (!paramsScrollEl || !seedsSectionEl) {
+    return;
+  }
+  paramsScrollEl.scrollTo({
+    top: Math.max(0, seedsSectionEl.offsetTop - 8),
+    behavior: "smooth",
+  });
+}
+
+function enterAirportAreaSelectMode() {
+  if (computing || !map.getSource("openaip")) {
+    return;
+  }
+  airportAreaSelectMode = true;
+  airportAreaDrawMode = airportSelectRects.length === 0;
+  if (paramsPanel) {
+    paramsPanel.open = false;
+  }
+  ensureAirportSelectLayers();
+  syncAirportAreaSelectUi();
+  setStatus(
+    airportAreaDrawMode
+      ? "Drag on the map to draw an area."
+      : "Pan and zoom freely, or use Add new area to draw another."
+  );
+}
+
+function startAddAirportArea() {
+  if (!airportAreaSelectMode || computing) {
+    return;
+  }
+  airportAreaDrawMode = true;
+  syncAirportAreaSelectUi();
+  setStatus("Drag on the map to draw a new area.");
+}
+
+function exitAirportAreaSelectMode(reopenParams = false) {
+  airportAreaSelectMode = false;
+  airportAreaDrawMode = false;
+  cancelAirportRectInteraction();
+  syncAirportAreaSelectUi();
+  if (reopenParams && paramsPanel) {
+    paramsPanel.open = true;
+    window.requestAnimationFrame(() => scrollToSeedsSection());
+  }
+  if (map?.getCanvas()) {
+    map.getCanvas().style.cursor = "";
+  }
+}
+
+function commitAirportSelectRect(endLngLat) {
+  const { start } = airportRectInteraction ?? {};
+  if (!start || !endLngLat) {
+    return false;
+  }
+
+  const rect = normalizeAirportSelectRect(start, endLngLat);
+  if (rect.east - rect.west < AIRPORT_RECT_MIN_DEG || rect.north - rect.south < AIRPORT_RECT_MIN_DEG) {
+    return false;
+  }
+
+  airportSelectRects.push(rect);
+  airportAreaDrawMode = false;
+  syncAirportAreaSelectUi();
+  setStatus(
+    `${airportSelectRects.length} area${airportSelectRects.length === 1 ? "" : "s"} drawn — pan/zoom freely, or Add new area`
+  );
+  return true;
+}
+
+function beginAirportAreaInteraction(lngLat, point) {
+  if (!airportAreaSelectMode || computing) {
+    return false;
+  }
+
+  ensureAirportSelectLayers();
+
+  const hit = hitTestRectHandle(point);
+  if (hit) {
+    const rect = airportSelectRects[hit.rectIndex];
+    airportRectInteraction = {
+      kind: "resize",
+      rectIndex: hit.rectIndex,
+      handle: hit.handle,
+      anchor: resizeAnchorForHandle(rect, hit.handle),
+    };
+    map.dragPan.disable();
+    updateAirportSelectLayer();
+    return true;
+  }
+
+  if (!airportAreaDrawMode) {
+    return false;
+  }
+
+  airportRectInteraction = {
+    kind: "draw",
+    start: lngLat,
+    current: lngLat,
+  };
+  map.dragPan.disable();
+  updateAirportSelectLayer();
+  return true;
+}
+
+function updateAirportAreaInteraction(lngLat) {
+  if (!airportRectInteraction) {
+    return;
+  }
+
+  if (airportRectInteraction.kind === "draw") {
+    airportRectInteraction.current = lngLat;
+  } else if (airportRectInteraction.kind === "resize") {
+    const { rectIndex, anchor } = airportRectInteraction;
+    airportSelectRects[rectIndex] = normalizeAirportSelectRect(anchor, lngLat);
+  }
+
+  updateAirportSelectLayer();
+}
+
+function finishAirportAreaInteraction(lngLat) {
+  if (!airportRectInteraction) {
+    return false;
+  }
+
+  if (airportRectInteraction.kind === "draw") {
+    commitAirportSelectRect(lngLat);
+  }
+
+  cancelAirportRectInteraction();
+  syncAirportAreaSelectUi();
+  return true;
+}
+
+function addAirportsFromSelectAreas() {
+  if (airportSelectRects.length === 0) {
+    setStatus("Draw one or more areas on the map first");
+    return;
+  }
+
+  const existing = new Set(pendingSeeds.map((seed) => seedKey(seed)));
+  let added = 0;
+  for (const rect of airportSelectRects) {
+    const airports = getOpenAipAirportsInBounds(
+      map,
+      rect.west,
+      rect.south,
+      rect.east,
+      rect.north
+    );
+    for (const airport of airports) {
+      const seed = {
+        lng: airport.lng,
+        lat: airport.lat,
+        label: formatAirportLabel(airport),
+        source: "airport",
+      };
+      const key = seedKey(seed);
+      if (existing.has(key)) {
+        continue;
+      }
+      existing.add(key);
+      pendingSeeds.push(seed);
+      added += 1;
+    }
+  }
+
+  updateSeedMarkers();
+  const areaCount = airportSelectRects.length;
+  clearAirportSelectAreas();
+  exitAirportAreaSelectMode(true);
+  if (added === 0) {
+    setStatus(`No new airports in the drawn areas — zoom in to z${OPENAIP_AIRPORT_MIN_ZOOM} or higher`);
+  } else {
+    setStatus(
+      `Added ${added} airport${added === 1 ? "" : "s"} from ${areaCount} area${areaCount === 1 ? "" : "s"} — ${pendingSeeds.length} seed${pendingSeeds.length === 1 ? "" : "s"} total`
+    );
+  }
+}
+
+function clearAirportSelectAreas() {
+  airportSelectRects = [];
+  airportAreaDrawMode = airportAreaSelectMode;
+  cancelAirportRectInteraction();
+  if (airportSelectLayersReady && map.getSource("airport-select-areas")) {
+    updateAirportSelectLayer();
+  }
+  syncAirportAreaSelectUi();
+}
+
 function seedDisplayLabel(seed) {
   if (seed.label) {
     return seed.label;
@@ -627,7 +1074,7 @@ function updateSeedList() {
   if (pendingSeeds.length === 0) {
     const empty = document.createElement("div");
     empty.className = "seed-list-empty";
-    empty.textContent = "Click the map or select viewport airports";
+    empty.textContent = "Click the map, select viewport airports, or draw areas";
     seedListEl.append(empty);
     return;
   }
@@ -691,6 +1138,7 @@ function updateSeedMarkers() {
   if (selectViewportAirportsBtn) {
     selectViewportAirportsBtn.disabled = computing || !map.getSource("openaip");
   }
+  syncAirportAreaSelectUi();
   updateSeedList();
 }
 
@@ -709,7 +1157,7 @@ function addPendingSeed(lng, lat) {
 function addViewportAirportsToSeeds() {
   const airports = getViewportOpenAipAirports(map);
   if (airports.length === 0) {
-    setStatus("No airports in viewport — zoom in until OpenAIP tiles load");
+    setStatus(`No airports in viewport — zoom in to z${OPENAIP_AIRPORT_MIN_ZOOM} or higher`);
     return;
   }
 
@@ -922,13 +1370,12 @@ function refreshHoverPath(cell) {
 }
 
 function syncCompareLosButton() {
-  const losRunN = Number.parseInt(document.getElementById("los-run")?.value ?? "0", 10);
-  const show = Number.isFinite(losRunN) && losRunN !== 0;
+  const show = isDebugMode() && coneState && !computing;
   if (compareLosRow) {
     compareLosRow.hidden = !show;
   }
   if (compareLosBtn) {
-    compareLosBtn.disabled = !coneState || computing;
+    compareLosBtn.disabled = !show;
   }
 }
 
@@ -936,8 +1383,17 @@ function setCompareButtonVisible(_visible) {
   syncCompareLosButton();
 }
 
-function setDownloadContoursVisible(visible) {
-  downloadContoursBtn.hidden = !visible;
+function syncDownloadContoursButton() {
+  if (!downloadContoursBtn) {
+    return;
+  }
+  const hasContours = Boolean(coneState?.contourGeojson);
+  downloadContoursBtn.hidden = !hasContours;
+  downloadContoursBtn.disabled = !hasContours;
+}
+
+function setDownloadContoursVisible(_visible) {
+  syncDownloadContoursButton();
 }
 
 function downloadContourGeojson() {
@@ -1217,15 +1673,19 @@ function formatHoverTip(cell) {
     deltaLine = `<span class="${cls}">${sign}${delta} m</span>`;
   }
 
-  return (
-    `minimum alt: ${minAlt}\n` +
-    `ground elevation: ${groundElev}\n` +
-    `<span class="path-info-heading">comparison with measured path length (haversine):</span>\n` +
-    `path length: ${pathLengthLine}\n` +
-    `required alt: ${requiredLine}\n` +
-    `delta: ${deltaLine}\n` +
-    `<span class="path-info-note">delta heavily positive might mean path went over a saddle, or starts from a mountain well above glide, no issue in that case. use this on flatland at your latitude to check for unacceptable errors</span>`
-  );
+  let text =
+    `minimum alt: ${minAlt}\n` + `ground elevation: ${groundElev}`;
+
+  if (isDebugMode()) {
+    text +=
+      `\n<span class="path-info-heading">comparison with measured path length (haversine):</span>\n` +
+      `path length: ${pathLengthLine}\n` +
+      `required alt: ${requiredLine}\n` +
+      `delta: ${deltaLine}\n` +
+      `<span class="path-info-note">delta heavily positive might mean path went over a saddle, or starts from a mountain well above glide, no issue in that case. use this on flatland at your latitude to check for unacceptable errors</span>`;
+  }
+
+  return text;
 }
 
 function updateGlidePath(coordinates) {
@@ -1299,27 +1759,60 @@ map.on("load", async () => {
 map.on("mousemove", (event) => {
   updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
 
+  if (airportAreaSelectMode) {
+    if (airportRectInteraction) {
+      updateAirportAreaInteraction(event.lngLat);
+    } else {
+      syncAreaSelectCursor(event.point);
+    }
+    return;
+  }
+
   if (!interaction.hoverPath) {
     return;
   }
 
   const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
   if (cell === null) {
-    clearCellInspect();
+    if (!isDebugMode()) {
+      clearCellInspect();
+    }
     return;
   }
 
   showCellInspect(cell);
 });
 
+map.on("mousedown", (event) => {
+  if (event.originalEvent.button !== 0 || !airportAreaSelectMode) {
+    return;
+  }
+  beginAirportAreaInteraction(event.lngLat, event.point);
+});
+
+map.on("mouseup", (event) => {
+  finishAirportAreaInteraction(event.lngLat);
+});
+
 map.on("mouseleave", () => {
+  if (airportRectInteraction) {
+    cancelAirportRectInteraction();
+    syncAirportAreaSelectUi();
+  }
   if (!interaction.hoverPath) {
     return;
   }
-  clearCellInspect();
+  if (!isDebugMode()) {
+    clearCellInspect();
+  }
 });
 
 map.on("touchstart", (event) => {
+  if (airportAreaSelectMode && !computing && event.points.length === 1) {
+    beginAirportAreaInteraction(event.lngLat, event.point);
+    return;
+  }
+
   if (!interaction.tapPath && !interaction.longPressSeed) {
     return;
   }
@@ -1344,6 +1837,11 @@ map.on("touchstart", (event) => {
 map.on("touchmove", (event) => {
   updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
 
+  if (airportAreaSelectMode && airportRectInteraction) {
+    updateAirportAreaInteraction(event.lngLat);
+    return;
+  }
+
   if (longPressTimer === null || !touchStartPoint) {
     return;
   }
@@ -1356,6 +1854,12 @@ map.on("touchmove", (event) => {
 
 map.on("touchend", (event) => {
   updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
+
+  if (airportAreaSelectMode && airportRectInteraction) {
+    finishAirportAreaInteraction(event.lngLat);
+    markTouchHandled();
+    return;
+  }
 
   if (!interaction.tapPath && !interaction.longPressSeed) {
     return;
@@ -1383,13 +1887,22 @@ map.on("touchend", (event) => {
 });
 
 map.on("touchcancel", () => {
+  if (airportRectInteraction) {
+    cancelAirportRectInteraction();
+    syncAirportAreaSelectUi();
+  }
   cancelLongPress();
   longPressDone = false;
   touchStartPoint = null;
 });
 
 map.on("click", (event) => {
-  if (computing || touchHandledRecently) {
+  if (
+    computing ||
+    touchHandledRecently ||
+    airportAreaSelectMode ||
+    airportRectInteraction
+  ) {
     return;
   }
 
@@ -1546,4 +2059,39 @@ selectViewportAirportsBtn?.addEventListener("click", () => {
     return;
   }
   addViewportAirportsToSeeds();
+});
+
+toggleAirportAreaSelectBtn?.addEventListener("click", () => {
+  if (computing) {
+    return;
+  }
+  enterAirportAreaSelectMode();
+});
+
+addAirportAreaBtn?.addEventListener("click", () => {
+  if (computing) {
+    return;
+  }
+  startAddAirportArea();
+});
+
+addAirportsFromAreasBtn?.addEventListener("click", () => {
+  if (computing) {
+    return;
+  }
+  addAirportsFromSelectAreas();
+});
+
+clearAirportAreasBtn?.addEventListener("click", () => {
+  if (computing) {
+    return;
+  }
+  clearAirportSelectAreas();
+  setStatus("Airport selection areas cleared");
+});
+
+paramsPanel?.addEventListener("toggle", () => {
+  if (paramsPanel.open && airportAreaSelectMode) {
+    exitAirportAreaSelectMode(false);
+  }
 });

@@ -64,6 +64,15 @@
         display: none;
       }
 
+      #airport-area-select-panel {
+        padding: 0.55rem 0.85rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      #airport-area-select-panel[hidden] {
+        display: none;
+      }
+
       #params-panel > summary {
         list-style: none;
         cursor: pointer;
@@ -738,12 +747,15 @@
             </div>
           </div>
 
-          <div class="params-section">
+          <div class="params-section" id="seeds-section">
             <div class="params-section-title">Seeds</div>
             <p class="param-section-desc" id="seed-input-hint"></p>
             <div class="params-actions">
               <button type="button" class="action-btn btn-blue" id="select-viewport-airports" disabled>
                 Select viewport airports
+              </button>
+              <button type="button" class="action-btn btn-blue" id="toggle-airport-area-select" disabled>
+                Draw airport areas
               </button>
               <button type="button" class="action-btn btn-red" id="clear-all-seeds">Clear all seeds</button>
             </div>
@@ -752,16 +764,45 @@
               <button type="button" class="action-btn btn-blue" id="run-compute" disabled>Run</button>
             </div>
             <div class="params-actions params-actions-secondary">
-              <button type="button" class="action-btn btn-green" id="download-contours" hidden>Download contours</button>
+              <button type="button" class="action-btn btn-green" id="download-contours" hidden disabled>
+                Download contours
+              </button>
               <div class="compare-los-row" id="compare-los-row" hidden>
                 <button type="button" class="action-btn" id="compare-los">Full Bresenham (red)</button>
                 <button type="button" class="param-help" data-help="compare-los" aria-label="Help: Full Bresenham">ⓘ</button>
               </div>
             </div>
           </div>
+
+          <div class="params-section">
+            <div class="params-fields">
+              <div class="param-field param-field-full">
+                <label class="param-check" for="debug-mode">
+                  <input id="debug-mode" type="checkbox" />
+                  <span>Debug mode</span>
+                </label>
+              </div>
+            </div>
+          </div>
         </form>
         </div>
       </details>
+      <div id="airport-area-select-panel" hidden>
+        <p class="param-section-desc">
+          Drag to draw the first area, then pan/zoom freely. Use Add new area to draw more, or drag corner handles to resize.
+        </p>
+        <div class="params-actions">
+          <button type="button" class="action-btn btn-blue" id="add-airport-area" disabled>
+            Add new area
+          </button>
+          <button type="button" class="action-btn" id="clear-airport-areas" disabled>
+            Clear areas
+          </button>
+          <button type="button" class="action-btn btn-blue" id="add-airports-from-areas" disabled>
+            Add airports from areas
+          </button>
+        </div>
+      </div>
       <div id="params-footer">
         <div id="params-footer-info">
           <div id="cell-info" hidden aria-live="polite"></div>
