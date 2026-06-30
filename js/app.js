@@ -22,6 +22,10 @@ import {
   OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
 } from "./openaip-tiles.js";
 import { loadOpenAipConfig } from "./openaip-client.js";
+import {
+  registerTerrainTileProtocol,
+  TERRAIN_TILE_URL_TEMPLATE,
+} from "./terrain-tiles.js";
 
 const DEFAULT_MAX_ALTITUDE = 3050;
 const MIN_SEEDS = 1;
@@ -969,6 +973,8 @@ function getGlideParams() {
   };
 }
 
+registerTerrainTileProtocol();
+
 map = new maplibregl.Map({
   container: "map",
   hash: "map",
@@ -981,10 +987,11 @@ map = new maplibregl.Map({
     sources: {
       hillshadeSource: {
         type: "raster-dem",
-        url: "https://tiles.mapterhorn.com/tilejson.json",
+        tiles: [TERRAIN_TILE_URL_TEMPLATE],
         encoding: "terrarium",
         tileSize: 512,
         maxzoom: INITIAL_TERRAIN_Z,
+        attribution: '<a href="https://mapterhorn.com" target="_blank" rel="noopener">Mapterhorn</a>',
       },
     },
     layers: [

@@ -4,43 +4,10 @@ import {
   metersPerPixel,
   clampTerrainZoom,
   pickTerrainZoom,
-  terrariumElevation,
 } from "./geo.js";
 import { applyAirspaceToDem, demBbox, fetchOverlayAirspaces } from "./airspace.js";
 import { openAipConfigured } from "./openaip-client.js";
-
-const tileCache = new Map();
-
-async function fetchTileDecoded(z, x, y) {
-  const key = `${z}/${x}/${y}`;
-  if (tileCache.has(key)) {
-    return tileCache.get(key);
-  }
-
-  const response = await fetch(`https://tiles.mapterhorn.com/${key}.webp`);
-  if (!response.ok) {
-    throw new Error(`Failed to load tile ${key}`);
-  }
-
-  const bitmap = await createImageBitmap(await response.blob());
-  const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(bitmap, 0, 0);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-  const elevation = new Float32Array(TILE_SIZE * TILE_SIZE);
-  const data = imageData.data;
-  for (let i = 0; i < TILE_SIZE * TILE_SIZE; i += 1) {
-    const p = i * 4;
-    elevation[i] = terrariumElevation(data[p], data[p + 1], data[p + 2]);
-  }
-
-  const payload = { elevation, z, x, y };
-  tileCache.set(key, payload);
-  return payload;
-}
+import { fetchTerrainTileDecoded } from "./terrain-tiles.js";
 
 function sampleGlobalPixel(tiles, gx, gy, z) {
   const tileX = Math.floor(gx / TILE_SIZE);
@@ -157,7 +124,7 @@ export async function buildDemGrid(seeds, params) {
   for (let ty = minTileY; ty <= maxTileY; ty += 1) {
     for (let tx = minTileX; tx <= maxTileX; tx += 1) {
       fetches.push(
-        fetchTileDecoded(z, tx, ty).then((tile) => {
+        fetchTerrainTileDecoded(z, tx, ty).then((tile) => {
           tiles.set(`${z}/${tx}/${ty}`, tile);
           tilesLoaded += 1;
           onStatus?.(
@@ -248,7 +215,7 @@ export async function sampleElevationAt(lng, lat) {
   const { gx, gy } = lngLatToGlobalPixel(lng, lat, z);
   const tileX = Math.floor(gx / TILE_SIZE);
   const tileY = Math.floor(gy / TILE_SIZE);
-  const tile = await fetchTileDecoded(z, tileX, tileY);
+  const tile = await fetchTerrainTileDecoded(z, tileX, tileY);
   const localX = Math.floor(gx) - tileX * TILE_SIZE;
   const localY = Math.floor(gy) - tileY * TILE_SIZE;
   return tile.elevation[localY * TILE_SIZE + localX];
