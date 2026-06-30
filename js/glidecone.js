@@ -762,9 +762,12 @@ export class GlideConeEngine {
       circuitHeight,
       originRunN = 0,
       raw: rawParam = true,
+      contours: contoursParam = false,
       updateMapMs = 100,
     } = params;
     const raw = rawOverride !== undefined ? rawOverride : rawParam;
+    const contours = contoursParam;
+    const needsRaster = imageOnly || raw || !contours;
     const useFullBresenham = fullBresenham || originRunN === 0;
     const losShortcut = useFullBresenham ? 0 : 1;
     const shaderOriginRunN = originRunN === 0 ? 1 : originRunN;
@@ -849,7 +852,11 @@ export class GlideConeEngine {
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
     const livePreview =
-      !imageOnly && onProgress && Number.isFinite(updateMapMs) && updateMapMs > 0;
+      needsRaster &&
+      !imageOnly &&
+      onProgress &&
+      Number.isFinite(updateMapMs) &&
+      updateMapMs > 0;
     let lastMapUpdate = 0;
 
     const frameArgs = {
@@ -1000,7 +1007,10 @@ export class GlideConeEngine {
       device.queue.submit([groundOriginEncoder.finish()]);
     }
 
-    const imageData = await renderColorFrame(device, frameArgs);
+    let imageData = null;
+    if (needsRaster) {
+      imageData = await renderColorFrame(device, frameArgs);
+    }
 
     const baseResult = {
       imageData,

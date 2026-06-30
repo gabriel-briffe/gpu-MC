@@ -26,7 +26,7 @@
         inset: 0;
       }
 
-      #params-panel {
+      #params-shell {
         position: fixed;
         top: 0.75rem;
         left: 50%;
@@ -38,7 +38,8 @@
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
         backdrop-filter: blur(8px);
         font-size: 0.85rem;
-        max-width: min(96vw, 42rem);
+        max-width: min(96vw, 54rem);
+        overflow: hidden;
       }
 
       #params-panel > summary {
@@ -182,39 +183,261 @@
 
       #params {
         display: flex;
-        flex-wrap: wrap;
-        align-items: end;
-        gap: 0.65rem 1rem;
-        padding: 0 0.85rem 0.65rem;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0 0.85rem 0.75rem;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
       }
 
-      #params label {
+      .params-section-title {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #7a8494;
+        margin-bottom: 0.45rem;
+      }
+
+      .params-fields {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem 0.85rem;
+        align-items: start;
+      }
+
+      .param-field {
         display: flex;
         flex-direction: column;
         gap: 0.25rem;
+      }
+
+      .param-label-row {
+        display: flex;
+        align-items: center;
+        gap: 0.2rem;
+      }
+
+      .param-label {
         color: #9aa4b2;
         font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.04em;
       }
 
-      #params input[type="checkbox"] {
-        width: 1rem;
-        height: 1rem;
-        margin: 0.2rem 0 0;
-        accent-color: #5a9fff;
+      .param-help {
+        width: 1.05rem;
+        height: 1.05rem;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.08);
+        color: #9eb8e8;
+        font-size: 0.62rem;
+        line-height: 1;
+        cursor: pointer;
+        flex-shrink: 0;
       }
 
-      #params label.checkbox-row {
-        flex-direction: row;
-        align-items: center;
-        gap: 0.45rem;
+      .param-help:hover {
+        background: rgba(100, 160, 255, 0.28);
+        color: #c8dcff;
+      }
+
+      .param-hint {
+        font-size: 0.68rem;
+        color: #8b96a8;
         text-transform: none;
         letter-spacing: normal;
-        font-size: 0.82rem;
+        line-height: 1.3;
+        max-width: 14rem;
+      }
+
+      .params-advanced {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.45rem;
+        padding: 0.35rem 0.55rem 0.5rem;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .params-advanced > summary {
+        cursor: pointer;
+        color: #9aa4b2;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        user-select: none;
+        list-style: none;
+      }
+
+      .params-advanced > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .params-advanced > summary::after {
+        content: " ▸";
+        opacity: 0.65;
+      }
+
+      .params-advanced[open] > summary::after {
+        content: " ▾";
+      }
+
+      .params-advanced .params-fields {
+        margin-top: 0.45rem;
+      }
+
+      .params-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        align-items: center;
+      }
+
+      .params-actions-secondary {
+        padding-top: 0.15rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .compare-los-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+      }
+
+      .compare-los-row[hidden] {
+        display: none;
+      }
+
+      #seed-list {
+        display: flex;
+        flex-direction: column;
+        max-height: 8.5rem;
+        overflow-y: auto;
+        margin: 0.45rem 0;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.4rem;
+        background: rgba(0, 0, 0, 0.15);
+      }
+
+      .seed-list-empty {
+        padding: 0.45rem 0.55rem;
+        color: #8b96a8;
+        font-size: 0.74rem;
+        font-style: italic;
+      }
+
+      .seed-list-item {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.32rem 0.45rem;
+        font-size: 0.78rem;
         color: #d8dee9;
-        padding-top: 1.1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .seed-list-item:last-child {
+        border-bottom: none;
+      }
+
+      .seed-list-label {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .seed-list-delete {
+        flex-shrink: 0;
+        width: 1.35rem;
+        height: 1.35rem;
+        padding: 0;
+        border: 1px solid rgba(255, 120, 120, 0.35);
+        border-radius: 0.3rem;
+        background: rgba(255, 80, 80, 0.12);
+        color: #ffc8c8;
+        font-size: 0.95rem;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .seed-list-delete:hover {
+        background: rgba(255, 80, 80, 0.28);
+      }
+
+      #params-footer {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 0.45rem 0.75rem;
+      }
+
+      #params-footer #status {
+        color: #b8c5d6;
+        font-size: 0.78rem;
+        flex: 1;
+        min-width: 0;
+        line-height: 1.35;
+      }
+
+      #params button.action-btn.btn-blue {
+        border-color: rgba(90, 159, 255, 0.55);
+        background: rgba(90, 159, 255, 0.2);
+        color: #d8e8ff;
+      }
+
+      #params button.action-btn.btn-blue:hover:not(:disabled) {
+        background: rgba(90, 159, 255, 0.32);
+      }
+
+      #params button.action-btn.btn-green {
+        border-color: rgba(100, 210, 120, 0.6);
+        background: rgba(70, 190, 100, 0.22);
+        color: #d8ffe3;
+      }
+
+      #params button.action-btn.btn-green:hover:not(:disabled) {
+        background: rgba(70, 190, 100, 0.36);
+      }
+
+      #params button.action-btn.btn-red {
+        border-color: rgba(255, 120, 120, 0.55);
+        background: rgba(255, 80, 80, 0.18);
+        color: #ffd6d6;
+      }
+
+      #params button.action-btn.btn-red:hover:not(:disabled) {
+        background: rgba(255, 80, 80, 0.32);
+      }
+
+      .param-section-desc {
+        margin: 0 0 0.45rem;
+        color: #8b96a8;
+        font-size: 0.72rem;
+        line-height: 1.4;
+        text-transform: none;
+        letter-spacing: normal;
+      }
+
+      #param-help-popover {
+        position: fixed;
+        z-index: 10;
+        max-width: 17rem;
+        padding: 0.55rem 0.65rem;
+        border-radius: 0.45rem;
+        background: rgba(18, 22, 28, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        font-size: 0.78rem;
+        line-height: 1.45;
+        color: #d4deea;
+        white-space: pre-line;
+      }
+
+      #param-help-popover[hidden] {
+        display: none;
       }
 
       #params input {
@@ -233,8 +456,9 @@
         border-color: transparent;
       }
 
-      #params select {
-        min-width: 9.5rem;
+      #params select,
+      #viz-mode {
+        min-width: 10.5rem;
         padding: 0.35rem 0.5rem;
         border: 1px solid rgba(255, 255, 255, 0.15);
         border-radius: 0.4rem;
@@ -243,12 +467,17 @@
         font-size: 0.82rem;
       }
 
+      #viz-mode:focus,
       #params select:focus {
         outline: 2px solid rgba(100, 160, 255, 0.55);
         border-color: transparent;
       }
 
-      #params button {
+      #preview-field[hidden] {
+        display: none;
+      }
+
+      #params button.action-btn {
         padding: 0.45rem 0.75rem;
         border: 1px solid rgba(255, 120, 120, 0.45);
         border-radius: 0.4rem;
@@ -259,42 +488,16 @@
         white-space: nowrap;
       }
 
-      #params button:hover:not(:disabled) {
+      #params button.action-btn:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.24);
       }
 
-      #run-compute {
-        border-color: rgba(90, 159, 255, 0.55);
-        background: rgba(90, 159, 255, 0.2);
-        color: #d8e8ff;
-      }
-
-      #run-compute:hover:not(:disabled) {
-        background: rgba(90, 159, 255, 0.32);
-      }
-
-      #run-viewport-airports {
-        border-color: rgba(120, 200, 140, 0.55);
-        background: rgba(80, 180, 110, 0.18);
-        color: #d8ffe3;
-      }
-
-      #run-viewport-airports:hover:not(:disabled) {
-        background: rgba(80, 180, 110, 0.3);
-      }
-
-      #clear-seeds {
-        border-color: rgba(255, 255, 255, 0.2);
-        background: rgba(255, 255, 255, 0.08);
-        color: #d8dee9;
-      }
-
-      #params button:disabled {
+      #params button.action-btn:disabled {
         opacity: 0.55;
         cursor: wait;
       }
 
-      #params button[hidden] {
+      #params button.action-btn[hidden] {
         display: none;
       }
 
@@ -440,18 +643,7 @@
       }
 
       .status-row {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
-        padding-top: 0.4rem;
-      }
-
-      #status {
-        color: #b8c5d6;
-        font-size: 0.8rem;
-        flex: 1;
-        min-width: 0;
+        display: none;
       }
 
       @media (max-width: 640px) {
@@ -477,57 +669,116 @@
         </div>
       </div>
     </details>
-    <details id="params-panel">
-      <summary>Parameters</summary>
-      <form id="params" aria-label="Glide parameters">
-        <label>
-          L/D
-          <input id="ld" type="number" min="1" step="1" value="20" />
-        </label>
-        <label>
-          Circuit height (m)
-          <input id="circuit" type="number" min="0" step="10" value="250" />
-        </label>
-        <label>
-          Ground clearance (m)
-          <input id="clearance" type="number" min="0" step="10" value="100" />
-        </label>
-        <label>
-          Max altitude (m)
-          <input
-            id="max-alt"
-            type="number"
-            min="1"
-            step="50"
-            value="4050"
-            title="Glide radius per seed = max altitude × L/D"
-          />
-        </label>
-        <label>
-          LOS run N
-          <input id="los-run" type="number" min="0" step="1" value="0" title="0 = full Bresenham" />
-        </label>
-        <label>
-          Update map (ms)
-          <input
-            id="update-map"
-            type="number"
-            min="0"
-            step="50"
-            value="100"
-            title="0 = final frame only"
-          />
-        </label>
-        <label class="checkbox-row">
-          <input id="raw" type="checkbox" checked />
-          Raw
-        </label>
-        <button type="button" id="run-compute" disabled>Run</button>
-        <button type="button" id="run-viewport-airports" disabled>Run viewport airports</button>
-        <button type="button" id="clear-seeds">Clear seeds</button>
-        <button type="button" id="compare-los" hidden>Full Bresenham (red)</button>
-      </form>
-    </details>
+    <div id="params-shell">
+      <details id="params-panel">
+        <summary>Parameters</summary>
+        <form id="params" aria-label="Glide parameters">
+          <div class="params-section">
+            <div class="params-section-title">Flight</div>
+            <div class="params-fields">
+              <div class="param-field">
+                <div class="param-label-row">
+                  <span class="param-label">L/D</span>
+                  <button type="button" class="param-help" data-help="ld" aria-label="Help: L/D">ⓘ</button>
+                </div>
+                <input id="ld" type="number" min="1" step="1" value="20" />
+              </div>
+              <div class="param-field">
+                <div class="param-label-row">
+                  <span class="param-label">Circuit height (m)</span>
+                  <button type="button" class="param-help" data-help="circuit" aria-label="Help: circuit height">ⓘ</button>
+                </div>
+                <input id="circuit" type="number" min="0" step="10" value="250" />
+              </div>
+              <div class="param-field">
+                <div class="param-label-row">
+                  <span class="param-label">Ground clearance (m)</span>
+                  <button type="button" class="param-help" data-help="clearance" aria-label="Help: ground clearance">ⓘ</button>
+                </div>
+                <input id="clearance" type="number" min="0" step="10" value="100" />
+              </div>
+              <div class="param-field">
+                <div class="param-label-row">
+                  <span class="param-label">Max altitude (m)</span>
+                  <button type="button" class="param-help" data-help="max-alt" aria-label="Help: max altitude">ⓘ</button>
+                </div>
+                <input id="max-alt" type="number" min="1" step="50" value="3050" />
+                <span class="param-hint" id="grid-radius-hint"></span>
+              </div>
+            </div>
+          </div>
+
+          <details class="params-advanced">
+            <summary>Advanced</summary>
+            <div class="params-fields">
+              <div class="param-field">
+                <div class="param-label-row">
+                  <span class="param-label">LOS run N</span>
+                  <button type="button" class="param-help" data-help="los-run" aria-label="Help: LOS run N">ⓘ</button>
+                </div>
+                <input id="los-run" type="number" min="0" step="1" value="0" />
+              </div>
+            </div>
+          </details>
+
+          <div class="params-section">
+            <div class="params-section-title">Display</div>
+            <div class="params-fields">
+              <div class="param-field">
+                <div class="param-label-row">
+                  <span class="param-label">Overlay</span>
+                  <button type="button" class="param-help" data-help="viz-mode" aria-label="Help: overlay mode">ⓘ</button>
+                </div>
+                <select id="viz-mode">
+                  <option value="stripes" selected>Stripes</option>
+                  <option value="raw">Raw raster</option>
+                  <option value="contours">Contours</option>
+                </select>
+                <span class="param-hint" id="viz-hint"></span>
+              </div>
+              <div class="param-field" id="preview-field">
+                <div class="param-label-row">
+                  <span class="param-label">Preview interval (ms)</span>
+                  <button type="button" class="param-help" data-help="preview" aria-label="Help: preview interval">ⓘ</button>
+                </div>
+                <input id="update-map" type="number" min="0" step="50" value="100" />
+              </div>
+            </div>
+            <p class="param-section-desc" id="path-input-hint"></p>
+            <div class="params-actions">
+              <button type="button" class="action-btn btn-red" id="clear-overlay">Clear overlay</button>
+            </div>
+          </div>
+
+          <div class="params-section">
+            <div class="params-section-title">Seeds</div>
+            <p class="param-section-desc" id="seed-input-hint"></p>
+            <div class="params-actions">
+              <button type="button" class="action-btn btn-blue" id="select-viewport-airports" disabled>
+                Select viewport airports
+              </button>
+              <button type="button" class="action-btn btn-red" id="clear-all-seeds">Clear all seeds</button>
+            </div>
+            <div id="seed-list" class="seed-list" aria-label="Selected seeds"></div>
+            <div class="params-actions">
+              <button type="button" class="action-btn btn-blue" id="run-compute" disabled>Run</button>
+            </div>
+            <div class="params-actions params-actions-secondary">
+              <button type="button" class="action-btn btn-green" id="download-contours" hidden>Download contours</button>
+              <div class="compare-los-row" id="compare-los-row" hidden>
+                <button type="button" class="action-btn" id="compare-los">Full Bresenham (red)</button>
+                <button type="button" class="param-help" data-help="compare-los" aria-label="Help: Full Bresenham">ⓘ</button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </details>
+      <div id="params-footer">
+        <div id="status">Loading WebGPU…</div>
+        <button type="button" id="stop-compute" hidden>Stop</button>
+      </div>
+    </div>
+    <div id="param-help-popover" hidden role="tooltip"></div>
     <div id="hover-tip" aria-hidden="true"></div>
     <div id="map"></div>
     <div id="info" aria-live="polite">
@@ -536,10 +787,6 @@
           <span class="label">Airspace</span>
           <div class="value" id="airspace-info">—</div>
         </span>
-      </div>
-      <div class="row status-row">
-        <div id="status">Loading WebGPU…</div>
-        <button type="button" id="stop-compute" hidden>Stop</button>
       </div>
     </div>
 
