@@ -4,6 +4,7 @@ import {
   gridCellToLngLat,
   gridIndexFromLngLat,
   pickTerrainZoom,
+  clampTerrainZoom,
   metersPerPixel,
 } from "./geo.js";
 import { buildDemGrid } from "./dem.js";
@@ -23,6 +24,7 @@ const MIN_SEEDS = 1;
 const MAP_CENTER = { lng: 9.0788, lat: 47.1194 };
 const INITIAL_TERRAIN_Z = pickTerrainZoom(MAP_CENTER.lat);
 const MAP_MAX_ZOOM = 22;
+let map;
 
 const EMPTY_PATH = {
   type: "Feature",
@@ -39,6 +41,8 @@ const vizModeSelect = document.getElementById("viz-mode");
 const previewFieldEl = document.getElementById("preview-field");
 const vizHintEl = document.getElementById("viz-hint");
 const gridRadiusHintEl = document.getElementById("grid-radius-hint");
+const terrainZoomInput = document.getElementById("terrain-zoom");
+const terrainResolutionHintEl = document.getElementById("terrain-resolution-hint");
 const paramHelpPopover = document.getElementById("param-help-popover");
 const compareLosBtn = document.getElementById("compare-los");
 const compareLosRow = document.getElementById("compare-los-row");
@@ -225,6 +229,8 @@ const PARAM_HELP = {
     "Minimum height above terrain for reachable cells. The flyable surface in the DEM is terrain + this clearance.",
   "max-alt":
     "Ceiling for the simulation. Unreachable cells stay at this value. With L/D, it caps how large the computed grid can be.",
+  "terrain-zoom":
+    "Mapterhorn DEM tile zoom (7–10). Higher zoom = finer cell resolution and larger grids. Resolution shown is the ground distance per DEM cell at the map centre.",
   "los-run":
     "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate, but slower.\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source. Faster, and often accurate enough.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule). Fast, but usually not accurate enough.\n\nFor N>=1, use stripes overlay, and after computation return to the parameter box and click Full Bresenham to compare with fully accurate calculation",
   "viz-mode":
@@ -274,6 +280,32 @@ function updateGridRadiusHint() {
   gridRadiusHintEl.textContent = `Grid radius ≈ ${Math.round(radiusKm)} km`;
 }
 
+function getMapCenterLat() {
+  return map?.getCenter?.().lat ?? MAP_CENTER.lat;
+}
+
+function updateTerrainResolutionHint() {
+  if (!terrainResolutionHintEl) {
+    return;
+  }
+  const zoom = clampTerrainZoom(Number.parseInt(terrainZoomInput?.value ?? "", 10));
+  const cellSizeM = metersPerPixel(getMapCenterLat(), zoom);
+  terrainResolutionHintEl.textContent = `Resolution: ~${Math.round(cellSizeM)} m`;
+}
+
+function syncTerrainTileMaxZoom() {
+  if (!map?.getStyle?.()?.sources?.hillshadeSource) {
+    return;
+  }
+  const zoom = clampTerrainZoom(Number.parseInt(terrainZoomInput?.value ?? "", 10));
+  setTerrainTileMaxZoom(zoom);
+}
+
+function onTerrainZoomChange() {
+  updateTerrainResolutionHint();
+  syncTerrainTileMaxZoom();
+}
+
 function closeParamHelp() {
   if (!paramHelpPopover) {
     return;
@@ -303,6 +335,10 @@ function openParamHelp(button) {
 function initParamPanel() {
   syncParamVisibility();
   updateGridRadiusHint();
+  if (terrainZoomInput) {
+    terrainZoomInput.value = String(clampTerrainZoom(pickTerrainZoom(MAP_CENTER.lat)));
+  }
+  updateTerrainResolutionHint();
 
   for (const button of document.querySelectorAll(".param-help")) {
     button.addEventListener("click", (event) => {
@@ -332,6 +368,8 @@ function initParamPanel() {
     document.getElementById(id)?.addEventListener("input", updateGridRadiusHint);
   }
 
+  terrainZoomInput?.addEventListener("input", onTerrainZoomChange);
+
   document.getElementById("los-run")?.addEventListener("input", syncCompareLosButton);
   detectInteractionMode();
   for (const query of ["(pointer: coarse)", "(pointer: fine)", "(hover: hover)"]) {
@@ -349,6 +387,9 @@ function getGlideParams() {
   const groundClearance = Number.parseFloat(document.getElementById("clearance").value);
   const maxAltitude = Number.parseFloat(document.getElementById("max-alt").value);
   const originRunN = Number.parseInt(document.getElementById("los-run").value, 10);
+  const terrainZoom = clampTerrainZoom(
+    Number.parseInt(document.getElementById("terrain-zoom")?.value ?? "", 10)
+  );
   const updateMapMs = Number.parseInt(document.getElementById("update-map").value, 10);
   const { raw, contours } = parseVizMode();
 
@@ -359,6 +400,7 @@ function getGlideParams() {
       Number.isFinite(groundClearance) && groundClearance >= 0 ? groundClearance : 100,
     maxAltitude:
       Number.isFinite(maxAltitude) && maxAltitude > 0 ? maxAltitude : DEFAULT_MAX_ALTITUDE,
+    terrainZoom,
     originRunN:
       Number.isFinite(originRunN) && originRunN === 0
         ? 0
@@ -372,7 +414,7 @@ function getGlideParams() {
   };
 }
 
-const map = new maplibregl.Map({
+map = new maplibregl.Map({
   container: "map",
   hash: "map",
   zoom: INITIAL_TERRAIN_Z,
@@ -1192,9 +1234,10 @@ async function ensureEngine() {
 }
 
 map.on("load", async () => {
-  setTerrainTileMaxZoom(INITIAL_TERRAIN_Z);
+  syncTerrainTileMaxZoom();
   info.classList.add("visible");
   ensurePathLayer();
+  map.on("moveend", updateTerrainResolutionHint);
 
   try {
     openAipConfig = await loadOpenAipConfig();
@@ -1401,7 +1444,7 @@ async function runComputation(seedsOverride = null) {
 
   try {
     const centerLat = seeds.reduce((sum, seed) => sum + seed.lat, 0) / seeds.length;
-    const terrainZ = pickTerrainZoom(centerLat);
+    const terrainZ = glideParams.terrainZoom;
     const cellSizeM = metersPerPixel(centerLat, terrainZ);
 
     setStatus(

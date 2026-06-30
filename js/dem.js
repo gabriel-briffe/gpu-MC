@@ -1,8 +1,9 @@
 import {
   TILE_SIZE,
   lngLatToGlobalPixel,
-  pickTerrainZoom,
   metersPerPixel,
+  clampTerrainZoom,
+  pickTerrainZoom,
   terrariumElevation,
 } from "./geo.js";
 import { applyAirspaceToDem, demBbox, fetchOverlayAirspaces } from "./airspace.js";
@@ -89,9 +90,9 @@ export async function buildDemGrid(seeds, params) {
     throw new Error("At least one seed is required");
   }
 
-  const { glideRatio, maxAltitude, groundClearance } = params;
+  const { glideRatio, maxAltitude, groundClearance, terrainZoom } = params;
   const centerLat = seeds.reduce((sum, seed) => sum + seed.lat, 0) / seeds.length;
-  const z = pickTerrainZoom(centerLat);
+  const z = clampTerrainZoom(terrainZoom);
   const cellSizeM = metersPerPixel(centerLat, z);
   const radiusM = maxAltitude * glideRatio;
   const radiusPx = Math.ceil(radiusM / cellSizeM);

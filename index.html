@@ -159,6 +159,31 @@
         max-width: 14rem;
       }
 
+      .param-field-full {
+        flex: 1 1 100%;
+        max-width: 100%;
+      }
+
+      .param-zoom-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 0.55rem 1rem;
+      }
+
+      .param-zoom-input {
+        flex: 0 0 auto;
+      }
+
+      .param-resolution-hint {
+        flex: 1 1 10rem;
+        min-width: 0;
+        padding-bottom: 0.35rem;
+        font-size: 0.72rem;
+        color: #8b96a8;
+        line-height: 1.35;
+      }
+
       .params-actions {
         display: flex;
         flex-wrap: wrap;
@@ -608,6 +633,18 @@
                 </div>
                 <input id="max-alt" type="number" min="1" step="50" value="3050" />
                 <span class="param-hint" id="grid-radius-hint"></span>
+              </div>
+              <div class="param-field param-field-full">
+                <div class="param-zoom-row">
+                  <div class="param-field param-zoom-input">
+                    <div class="param-label-row">
+                      <span class="param-label">Terrain zoom</span>
+                      <button type="button" class="param-help" data-help="terrain-zoom" aria-label="Help: terrain zoom">ⓘ</button>
+                    </div>
+                    <input id="terrain-zoom" type="number" min="7" max="10" step="1" value="10" />
+                  </div>
+                  <span id="terrain-resolution-hint" class="param-resolution-hint">Resolution: —</span>
+                </div>
               </div>
               <div class="param-field">
                 <div class="param-label-row">

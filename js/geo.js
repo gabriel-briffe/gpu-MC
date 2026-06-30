@@ -1,6 +1,8 @@
 export const TILE_SIZE = 512;
 export const MIN_CELL_M = 100;
 export const MAX_MAPTERHORN_Z = 12;
+export const TERRAIN_ZOOM_MIN = 7;
+export const TERRAIN_ZOOM_MAX = 10;
 export const EARTH_CIRCUMFERENCE = 40_075_017;
 
 /** Ground meters per pixel at latitude for 512px Mapterhorn tiles. */
@@ -14,6 +16,13 @@ export function pickTerrainZoom(lat, minCellM = MIN_CELL_M, maxZ = MAX_MAPTERHOR
   const latRad = (lat * Math.PI) / 180;
   const raw = Math.log2((Math.cos(latRad) * EARTH_CIRCUMFERENCE) / (TILE_SIZE * minCellM));
   return Math.max(0, Math.min(maxZ, Math.floor(raw)));
+}
+
+export function clampTerrainZoom(z) {
+  if (!Number.isFinite(z)) {
+    return TERRAIN_ZOOM_MAX;
+  }
+  return Math.max(TERRAIN_ZOOM_MIN, Math.min(TERRAIN_ZOOM_MAX, Math.floor(z)));
 }
 
 export function lngLatToGlobalPixel(lng, lat, zoom) {
