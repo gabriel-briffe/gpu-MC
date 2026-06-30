@@ -29,7 +29,7 @@ import {
   registerTerrainTileProtocol,
   TERRAIN_TILE_URL_TEMPLATE,
 } from "./terrain-tiles.js";
-import { buildCacheBundle, cacheCellKey, getActiveCacheBundle } from "./cache-area.js";
+import { buildCacheBundle, cacheCellKey, ensureAirportCellsCachedForBbox, getLastCachedCellKeysForSelection, mergedCachedAirportsToGeoJsonFeatures } from "./cache-area.js";
 
 const DEFAULT_MAX_ALTITUDE = 3050;
 const MIN_SEEDS = 1;
@@ -710,6 +710,7 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
   let seedsForCompute;
 
   if (refreshAirports) {
+    await ensureAirportCellsCachedForBbox(bounds, openAipConfig, setStatus);
     await waitForOpenAipViewportTiles();
     setStatus(`Finding airports in ${windowSizeKm * 2} km window…`);
     const airports = getOpenAipAirportsInBounds(
@@ -876,7 +877,7 @@ function openParamHelp(button) {
 
 function initParamPanel() {
   syncParamVisibility();
-  setParamsMode("auto");
+  setParamsMode("manual");
   updateGridRadiusHint();
   updateTerrainResolutionHint();
 
@@ -1858,7 +1859,7 @@ function finishAirportAreaInteraction(lngLat) {
   return true;
 }
 
-function addAirportsFromSelectAreas() {
+async function addAirportsFromSelectAreas() {
   if (airportSelectRects.length === 0) {
     setStatus("Draw one or more areas on the map first");
     return;
@@ -1867,6 +1868,7 @@ function addAirportsFromSelectAreas() {
   const existing = new Set(pendingSeeds.map((seed) => seedKey(seed)));
   let added = 0;
   for (const rect of airportSelectRects) {
+    await ensureAirportCellsCachedForBbox(rect, openAipConfig, setStatus);
     const airports = getOpenAipAirportsInBounds(
       map,
       rect.west,
@@ -2630,19 +2632,7 @@ function ensureCacheGridLayers() {
 }
 
 function buildCacheAirportFeatures() {
-  const bundle = getActiveCacheBundle();
-  if (!bundle?.airports?.length) {
-    return [];
-  }
-
-  return bundle.airports.map((airport) => ({
-    type: "Feature",
-    properties: airport.properties ?? {},
-    geometry: {
-      type: "Point",
-      coordinates: [airport.lng, airport.lat],
-    },
-  }));
+  return mergedCachedAirportsToGeoJsonFeatures();
 }
 
 function ensureCacheAirportLayers() {
@@ -2815,6 +2805,9 @@ function enterCacheSelectMode() {
 
   cacheSelectMode = true;
   selectedCacheCells.clear();
+  for (const cellKey of getLastCachedCellKeysForSelection()) {
+    selectedCacheCells.add(cellKey);
+  }
   paramsShell?.classList.add("cache-select-mode");
   if (paramsPanel) {
     paramsPanel.open = false;
@@ -2829,7 +2822,11 @@ function enterCacheSelectMode() {
   setOverlaysHiddenForCacheSelect(true);
   refreshCacheSelectOverlays();
   syncCacheDownloadButton();
-  setStatus("Click 1° cells to select areas to cache");
+  setStatus(
+    selectedCacheCells.size === 0
+      ? "Click 1° cells to select areas to cache"
+      : `${selectedCacheCells.size} cell${selectedCacheCells.size === 1 ? "" : "s"} selected — click Cache to verify or add cells`
+  );
 }
 
 function exitCacheSelectMode() {
@@ -3587,7 +3584,10 @@ addAirportsFromAreasBtn?.addEventListener("click", () => {
   if (computing) {
     return;
   }
-  addAirportsFromSelectAreas();
+  addAirportsFromSelectAreas().catch((error) => {
+    setStatus(`Airport error: ${error.message}`);
+    console.error(error);
+  });
 });
 
 clearAirportAreasBtn?.addEventListener("click", () => {
