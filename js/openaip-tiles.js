@@ -1,5 +1,10 @@
 import { OVERLAY_AIRSPACE_TILE_TYPES, pointInGeoJson } from "./airspace.js";
 import { openAipConfigured, openAipTileUrls } from "./openaip-client.js";
+import {
+  OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES,
+  OPENAIP_EXCLUDED_AIRPORT_TYPE_TILE_SLUGS,
+  isIncludedOpenAipAirportType,
+} from "./openaip-airport-types.js";
 
 const AIRSPACE_TYPE_COLOR = [
   "match",
@@ -31,18 +36,10 @@ const AIRSPACE_TYPE_COLOR = [
   "#2e7d32",
 ];
 
-const EXCLUDED_AIRPORT_TYPES = [
-  "heli_civil",
-  "heli_mil",
-  "af_water",
-  "ad_closed",
-  "light_aircraft",
-  "ls_alti",
-];
-
-const AIRPORT_FILTER = [
-  "!",
-  ["in", ["get", "type"], ["literal", EXCLUDED_AIRPORT_TYPES]],
+export const OPENAIP_AIRPORT_FILTER = [
+  "all",
+  ["!", ["in", ["get", "type"], ["literal", OPENAIP_EXCLUDED_AIRPORT_TYPE_TILE_SLUGS]]],
+  ["!", ["in", ["get", "type"], ["literal", OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES]]],
 ];
 
 export const OPENAIP_AIRPORT_MIN_ZOOM = 5;
@@ -53,7 +50,7 @@ export const OPENAIP_AIRSPACE_LAYER = "openaip-airspaces-line";
 export const OPENAIP_AIRSPACE_LAYERS = [OPENAIP_AIRSPACE_FILL_LAYER, OPENAIP_AIRSPACE_LAYER];
 
 export function isIncludedAirportType(type) {
-  return type != null && !EXCLUDED_AIRPORT_TYPES.includes(type);
+  return isIncludedOpenAipAirportType(type);
 }
 
 export function openAipAirportKey(properties, lng, lat) {
@@ -208,7 +205,7 @@ export function initOpenAipTiles(map, config) {
     source: "openaip",
     "source-layer": "airports",
     minzoom: OPENAIP_AIRPORT_MIN_ZOOM,
-    filter: AIRPORT_FILTER,
+    filter: OPENAIP_AIRPORT_FILTER,
     paint: {
       "circle-radius": [
         "interpolate",
@@ -231,7 +228,7 @@ export function initOpenAipTiles(map, config) {
     source: "openaip",
     "source-layer": "airports",
     minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-    filter: AIRPORT_FILTER,
+    filter: OPENAIP_AIRPORT_FILTER,
     layout: {
       "text-field": ["coalesce", ["get", "icao_code"], ["get", "icaoCode"], ["get", "name"]],
       "text-font": ["Noto Sans Regular"],

@@ -45,7 +45,7 @@ async function fetchTerrainTileBlobFromNetwork(z, x, y) {
   return blob;
 }
 
-/** Persistent (Cache API) + in-flight dedupe; returns raw .webp blob. */
+/** Persistent (Cache API) + in-flight dedupe; returns raw .webp blob and fetch source. */
 export async function fetchTerrainTileBlob(z, x, y) {
   const key = terrainTileKey(z, x, y);
   if (inflightBlobs.has(key)) {
@@ -58,10 +58,11 @@ export async function fetchTerrainTileBlob(z, x, y) {
     if (cache) {
       const cached = await cache.match(url);
       if (cached) {
-        return cached.blob();
+        return { blob: await cached.blob(), fromNetwork: false };
       }
     }
-    return fetchTerrainTileBlobFromNetwork(z, x, y);
+    const blob = await fetchTerrainTileBlobFromNetwork(z, x, y);
+    return { blob, fromNetwork: true };
   })();
 
   inflightBlobs.set(key, promise);
@@ -98,7 +99,7 @@ export async function fetchTerrainTileDecoded(z, x, y) {
     return decodedMemory.get(key);
   }
 
-  const blob = await fetchTerrainTileBlob(z, x, y);
+  const { blob } = await fetchTerrainTileBlob(z, x, y);
   const payload = await decodeTerrainTileBlob(blob, z, x, y);
   decodedMemory.set(key, payload);
   return payload;
@@ -118,7 +119,7 @@ export function registerTerrainTileProtocol() {
     const z = Number(match[1]);
     const x = Number(match[2]);
     const y = Number(match[3]);
-    const blob = await fetchTerrainTileBlob(z, x, y);
+    const { blob } = await fetchTerrainTileBlob(z, x, y);
     return { data: await blob.arrayBuffer() };
   });
 }

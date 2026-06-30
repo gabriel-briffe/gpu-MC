@@ -20,12 +20,16 @@ import {
   setOpenAipAirspaceVisible,
   OPENAIP_AIRPORT_MIN_ZOOM,
   OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
+  OPENAIP_AIRSPACE_FILL_LAYER,
+  OPENAIP_AIRSPACE_LAYER,
 } from "./openaip-tiles.js";
+import { OPENAIP_CACHE_AIRPORT_FILTER } from "./openaip-airport-types.js";
 import { loadOpenAipConfig } from "./openaip-client.js";
 import {
   registerTerrainTileProtocol,
   TERRAIN_TILE_URL_TEMPLATE,
 } from "./terrain-tiles.js";
+import { buildCacheBundle, cacheCellKey, getActiveCacheBundle } from "./cache-area.js";
 
 const DEFAULT_MAX_ALTITUDE = 3050;
 const MIN_SEEDS = 1;
@@ -103,6 +107,29 @@ const manualAirportSelectPanel = document.getElementById("manual-airport-select-
 const clearOverlayBtn = document.getElementById("clear-overlay");
 const clearAllSeedsBtn = document.getElementById("clear-all-seeds");
 const pathInputHintEl = document.getElementById("path-input-hint");
+const openCacheDataBtn = document.getElementById("open-cache-data");
+const cacheDataPanel = document.getElementById("cache-data-panel");
+const runCacheDownloadBtn = document.getElementById("run-cache-download");
+const finishCacheSelectBtn = document.getElementById("finish-cache-select");
+
+const CACHE_HIDDEN_LAYER_IDS = [
+  "glide-cone",
+  "glide-cone-full",
+  "glide-contours-line",
+  "glide-contours-label",
+  "openaip-airports",
+  "openaip-airport-labels",
+  OPENAIP_AIRSPACE_FILL_LAYER,
+  OPENAIP_AIRSPACE_LAYER,
+  "seeds-circle",
+  "seeds-label",
+  "pending-manual-airport-circle",
+  "glide-path",
+  "glide-path-geo",
+  "airport-select-areas-fill",
+  "airport-select-areas-line",
+  "airport-select-handles",
+];
 
 let engine = null;
 let computing = false;
@@ -144,6 +171,12 @@ let manualStagingAirports = [];
 let pendingManualAirport = null;
 let pendingManualAirportLayerReady = false;
 let manualTouchStart = null;
+let cacheSelectMode = false;
+let cacheGridReady = false;
+let cacheAirportsReady = false;
+let cacheDownloadInProgress = false;
+let overlayVisibilityBeforeCache = null;
+const selectedCacheCells = new Set();
 
 const interaction = {
   hoverPath: false,
@@ -2511,6 +2544,351 @@ function clearAllOverlays() {
   setStatus("Overlay cleared");
 }
 
+function syncCacheDownloadButton() {
+  if (!runCacheDownloadBtn) {
+    return;
+  }
+  runCacheDownloadBtn.disabled =
+    !cacheSelectMode || selectedCacheCells.size === 0 || cacheDownloadInProgress;
+}
+
+function buildCacheGridFeatures() {
+  if (!map) {
+    return [];
+  }
+
+  const bounds = map.getBounds();
+  const west = Math.floor(bounds.getWest());
+  const east = Math.ceil(bounds.getEast());
+  const south = Math.max(-85, Math.floor(bounds.getSouth()));
+  const north = Math.min(85, Math.ceil(bounds.getNorth()));
+  const features = [];
+
+  for (let lng = west; lng < east; lng += 1) {
+    for (let lat = south; lat < north; lat += 1) {
+      const cellKey = `${lng},${lat}`;
+      features.push({
+        type: "Feature",
+        properties: {
+          cellKey,
+          selected: selectedCacheCells.has(cellKey),
+        },
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [lng, lat],
+              [lng + 1, lat],
+              [lng + 1, lat + 1],
+              [lng, lat + 1],
+              [lng, lat],
+            ],
+          ],
+        },
+      });
+    }
+  }
+
+  return features;
+}
+
+function ensureCacheGridLayers() {
+  if (!map || cacheGridReady) {
+    return;
+  }
+
+  map.addSource("cache-grid", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: "cache-grid-fill",
+    type: "fill",
+    source: "cache-grid",
+    paint: {
+      "fill-color": [
+        "case",
+        ["boolean", ["get", "selected"], false],
+        "rgba(80, 140, 255, 0.42)",
+        "rgba(255, 255, 255, 0.04)",
+      ],
+    },
+  });
+
+  map.addLayer({
+    id: "cache-grid-line",
+    type: "line",
+    source: "cache-grid",
+    paint: {
+      "line-color": "#000000",
+      "line-width": 1,
+    },
+  });
+
+  cacheGridReady = true;
+}
+
+function buildCacheAirportFeatures() {
+  const bundle = getActiveCacheBundle();
+  if (!bundle?.airports?.length) {
+    return [];
+  }
+
+  return bundle.airports.map((airport) => ({
+    type: "Feature",
+    properties: airport.properties ?? {},
+    geometry: {
+      type: "Point",
+      coordinates: [airport.lng, airport.lat],
+    },
+  }));
+}
+
+function ensureCacheAirportLayers() {
+  if (!map || cacheAirportsReady) {
+    return;
+  }
+
+  map.addSource("cache-airports", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: "cache-airports",
+    type: "circle",
+    source: "cache-airports",
+    minzoom: OPENAIP_AIRPORT_MIN_ZOOM,
+    filter: OPENAIP_CACHE_AIRPORT_FILTER,
+    paint: {
+      "circle-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        OPENAIP_AIRPORT_MIN_ZOOM,
+        2,
+        14,
+        5,
+      ],
+      "circle-color": "#bf2d2d",
+      "circle-stroke-width": 1,
+      "circle-stroke-color": "#ffffff",
+    },
+  });
+
+  map.addLayer({
+    id: "cache-airport-labels",
+    type: "symbol",
+    source: "cache-airports",
+    minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
+    filter: OPENAIP_CACHE_AIRPORT_FILTER,
+    layout: {
+      "text-field": ["coalesce", ["get", "icao_code"], ["get", "icaoCode"], ["get", "name"]],
+      "text-font": ["Noto Sans Regular"],
+      "text-size": 10,
+      "text-offset": [0, -1.2],
+      "text-anchor": "bottom",
+      "text-max-width": 10,
+      "symbol-sort-key": 0,
+      "text-optional": false,
+    },
+    paint: {
+      "text-color": "#f5f7fa",
+      "text-halo-color": "rgba(18, 22, 28, 0.92)",
+      "text-halo-width": 2,
+    },
+  });
+
+  cacheAirportsReady = true;
+}
+
+function updateCacheAirportData() {
+  if (!cacheAirportsReady || !map.getSource("cache-airports")) {
+    return;
+  }
+  map.getSource("cache-airports").setData({
+    type: "FeatureCollection",
+    features: buildCacheAirportFeatures(),
+  });
+}
+
+function clearCacheAirportLayers() {
+  if (!map || !cacheAirportsReady) {
+    return;
+  }
+  if (map.getLayer("cache-airport-labels")) {
+    map.removeLayer("cache-airport-labels");
+  }
+  if (map.getLayer("cache-airports")) {
+    map.removeLayer("cache-airports");
+  }
+  if (map.getSource("cache-airports")) {
+    map.removeSource("cache-airports");
+  }
+  cacheAirportsReady = false;
+}
+
+function refreshCacheSelectOverlays() {
+  if (!cacheSelectMode) {
+    return;
+  }
+  ensureCacheGridLayers();
+  updateCacheGridData();
+  ensureCacheAirportLayers();
+  updateCacheAirportData();
+}
+
+function updateCacheGridData() {
+  if (!cacheGridReady || !map.getSource("cache-grid")) {
+    return;
+  }
+  map.getSource("cache-grid").setData({
+    type: "FeatureCollection",
+    features: buildCacheGridFeatures(),
+  });
+}
+
+function refreshCacheGridForViewport() {
+  refreshCacheSelectOverlays();
+}
+
+function clearCacheGridLayers() {
+  if (!map || !cacheGridReady) {
+    return;
+  }
+  if (map.getLayer("cache-grid-line")) {
+    map.removeLayer("cache-grid-line");
+  }
+  if (map.getLayer("cache-grid-fill")) {
+    map.removeLayer("cache-grid-fill");
+  }
+  if (map.getSource("cache-grid")) {
+    map.removeSource("cache-grid");
+  }
+  cacheGridReady = false;
+}
+
+function setOverlaysHiddenForCacheSelect(hidden) {
+  if (!map) {
+    return;
+  }
+
+  if (hidden) {
+    overlayVisibilityBeforeCache = new Map();
+    for (const layerId of CACHE_HIDDEN_LAYER_IDS) {
+      if (!map.getLayer(layerId)) {
+        continue;
+      }
+      overlayVisibilityBeforeCache.set(
+        layerId,
+        map.getLayoutProperty(layerId, "visibility") ?? "visible"
+      );
+      map.setLayoutProperty(layerId, "visibility", "none");
+    }
+    clearCellInspect();
+    info.classList.remove("visible");
+    return;
+  }
+
+  if (overlayVisibilityBeforeCache) {
+    for (const [layerId, visibility] of overlayVisibilityBeforeCache) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, "visibility", visibility);
+      }
+    }
+    overlayVisibilityBeforeCache = null;
+  }
+  syncAirspaceUi();
+}
+
+function enterCacheSelectMode() {
+  if (cacheSelectMode || computing) {
+    return;
+  }
+  if (manualAirportSelectMode) {
+    exitManualAirportSelectMode(false);
+  }
+  if (airportAreaSelectMode) {
+    exitAirportAreaSelectMode(false);
+  }
+
+  cacheSelectMode = true;
+  selectedCacheCells.clear();
+  paramsShell?.classList.add("cache-select-mode");
+  if (paramsPanel) {
+    paramsPanel.open = false;
+  }
+  if (cacheDataPanel) {
+    cacheDataPanel.hidden = false;
+  }
+  if (openCacheDataBtn) {
+    openCacheDataBtn.disabled = true;
+  }
+
+  setOverlaysHiddenForCacheSelect(true);
+  refreshCacheSelectOverlays();
+  syncCacheDownloadButton();
+  setStatus("Click 1° cells to select areas to cache");
+}
+
+function exitCacheSelectMode() {
+  if (!cacheSelectMode) {
+    return;
+  }
+
+  cacheSelectMode = false;
+  selectedCacheCells.clear();
+  paramsShell?.classList.remove("cache-select-mode");
+  if (cacheDataPanel) {
+    cacheDataPanel.hidden = true;
+  }
+  if (openCacheDataBtn) {
+    openCacheDataBtn.disabled = false;
+  }
+
+  clearCacheGridLayers();
+  clearCacheAirportLayers();
+  setOverlaysHiddenForCacheSelect(false);
+  syncCacheDownloadButton();
+  setStatus("Cache selection closed");
+}
+
+function toggleCacheCellSelection(lng, lat) {
+  const key = cacheCellKey(lng, lat);
+  if (selectedCacheCells.has(key)) {
+    selectedCacheCells.delete(key);
+  } else {
+    selectedCacheCells.add(key);
+  }
+  updateCacheGridData();
+  syncCacheDownloadButton();
+  setStatus(
+    selectedCacheCells.size === 0
+      ? "Click 1° cells to select areas to cache"
+      : `${selectedCacheCells.size} cell${selectedCacheCells.size === 1 ? "" : "s"} selected`
+  );
+}
+
+async function runCacheDownload() {
+  if (!cacheSelectMode || selectedCacheCells.size === 0 || cacheDownloadInProgress) {
+    return;
+  }
+
+  cacheDownloadInProgress = true;
+  syncCacheDownloadButton();
+  try {
+    await buildCacheBundle([...selectedCacheCells], openAipConfig, setStatus);
+    refreshCacheSelectOverlays();
+  } catch (error) {
+    setStatus(`Cache error: ${error.message}`);
+    console.error(error);
+  } finally {
+    cacheDownloadInProgress = false;
+    syncCacheDownloadButton();
+  }
+}
+
 function clearRasterOverlay() {
   if (map.getLayer("glide-cone")) {
     map.removeLayer("glide-cone");
@@ -2794,6 +3172,7 @@ map.on("load", async () => {
   map.on("moveend", () => {
     updateTerrainResolutionHint();
     onAutoModeMapMoveEnd();
+    refreshCacheGridForViewport();
   });
   map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);
@@ -2925,6 +3304,15 @@ map.on("touchmove", (event) => {
 });
 
 map.on("touchend", (event) => {
+  if (cacheSelectMode) {
+    const features = map.queryRenderedFeatures(event.point, { layers: ["cache-grid-fill"] });
+    if (features.length > 0) {
+      toggleCacheCellSelection(event.lngLat.lng, event.lngLat.lat);
+      markTouchHandled();
+    }
+    return;
+  }
+
   updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
 
   if (airportAreaSelectMode && airportRectInteraction) {
@@ -2958,6 +3346,14 @@ map.on("touchcancel", () => {
 });
 
 map.on("click", (event) => {
+  if (cacheSelectMode) {
+    const features = map.queryRenderedFeatures(event.point, { layers: ["cache-grid-fill"] });
+    if (features.length > 0) {
+      toggleCacheCellSelection(event.lngLat.lng, event.lngLat.lat);
+    }
+    return;
+  }
+
   if (
     computing ||
     touchHandledRecently ||
@@ -3110,6 +3506,21 @@ async function runComputation(seedsOverride = null, { gridBounds = null } = {}) 
 
 clearOverlayBtn?.addEventListener("click", () => {
   clearAllOverlays();
+});
+
+openCacheDataBtn?.addEventListener("click", () => {
+  if (computing) {
+    return;
+  }
+  enterCacheSelectMode();
+});
+
+runCacheDownloadBtn?.addEventListener("click", () => {
+  void runCacheDownload();
+});
+
+finishCacheSelectBtn?.addEventListener("click", () => {
+  exitCacheSelectMode();
 });
 
 clearAllSeedsBtn?.addEventListener("click", () => {

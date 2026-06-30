@@ -65,14 +65,30 @@
       }
 
       #airport-area-select-panel,
-      #manual-airport-select-panel {
+      #manual-airport-select-panel,
+      #cache-data-panel {
         padding: 0.55rem 0.85rem;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
       }
 
       #airport-area-select-panel[hidden],
-      #manual-airport-select-panel[hidden] {
+      #manual-airport-select-panel[hidden],
+      #cache-data-panel[hidden] {
         display: none;
+      }
+
+      #params-shell.cache-select-mode #params-mode-bar,
+      #params-shell.cache-select-mode #params-scroll {
+        display: none !important;
+      }
+
+      #params-shell.cache-select-mode #params-panel > summary {
+        pointer-events: none;
+        opacity: 0.55;
+      }
+
+      #cache-data-panel .param-section-desc {
+        margin: 0 0 0.55rem;
       }
 
       #params-panel > summary {
@@ -981,6 +997,11 @@
                 </label>
               </div>
             </div>
+            <div class="params-actions">
+              <button type="button" class="action-btn btn-blue" id="open-cache-data">
+                Cache data
+              </button>
+            </div>
           </div>
         </form>
         </div>
@@ -1026,6 +1047,17 @@
           </button>
           <button type="button" class="action-btn btn-green" id="add-airports-from-areas" disabled>
             Add airports from areas
+          </button>
+        </div>
+      </div>
+      <div id="cache-data-panel" hidden>
+        <p class="param-section-desc">Select areas to cache</p>
+        <div class="params-actions">
+          <button type="button" class="action-btn btn-green" id="run-cache-download" disabled>
+            Cache
+          </button>
+          <button type="button" class="action-btn btn-green" id="finish-cache-select">
+            Done
           </button>
         </div>
       </div>

@@ -10,6 +10,7 @@
  * Routes:
  *   GET /tiles/{z}/{x}/{y}.pbf  → OpenAIP vector tiles
  *   GET /core/airspaces?...     → OpenAIP Core airspaces API
+ *   GET /core/airports?...      → OpenAIP Core airports API
  */
 
 const TILES_ORIGIN = "https://api.tiles.openaip.net";
@@ -76,6 +77,14 @@ export default {
 
     if (url.pathname === "/core/airspaces") {
       const target = new URL(`${CORE_ORIGIN}/api/airspaces`);
+      copySearchParams(url, target, { skip: ["apiKey"] });
+      target.searchParams.set("apiKey", apiKey);
+      const upstream = await fetch(target.toString(), { method: request.method });
+      return withCors(upstream);
+    }
+
+    if (url.pathname === "/core/airports") {
+      const target = new URL(`${CORE_ORIGIN}/api/airports`);
       copySearchParams(url, target, { skip: ["apiKey"] });
       target.searchParams.set("apiKey", apiKey);
       const upstream = await fetch(target.toString(), { method: request.method });

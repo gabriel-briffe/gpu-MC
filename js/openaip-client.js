@@ -72,6 +72,25 @@ export function openAipAirspacesUrl(config, searchParams) {
   return null;
 }
 
+const CORE_AIRPORTS_DIRECT = "https://api.core.openaip.net/api/airports";
+
+export function openAipAirportsUrl(config, searchParams) {
+  const { apiKey, proxyBase, useProxy } = resolveOpenAipConfig(config);
+  const query = new URLSearchParams(searchParams);
+
+  if (useProxy) {
+    query.delete("apiKey");
+    return `${proxyBase}/core/airports?${query}`;
+  }
+
+  if (apiKey) {
+    query.set("apiKey", apiKey);
+    return `${CORE_AIRPORTS_DIRECT}?${query}`;
+  }
+
+  return null;
+}
+
 export async function loadOpenAipConfig() {
   try {
     return await import("./openaip-config.js");
