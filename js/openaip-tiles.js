@@ -93,18 +93,6 @@ export function getViewportOpenAipAirports(map) {
   return airports;
 }
 
-export function pickOpenAipAirport(map, point) {
-  if (!map.getLayer("openaip-airports")) {
-    return null;
-  }
-
-  const features = map.queryRenderedFeatures(point, {
-    layers: OPENAIP_AIRPORT_LAYERS,
-  });
-
-  return features[0] ?? null;
-}
-
 export function airspaceFeatureKey(feature) {
   const props = feature.properties ?? {};
   return (

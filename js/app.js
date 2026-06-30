@@ -9,10 +9,8 @@ import {
 import { buildDemGrid } from "./dem.js";
 import { buildAltitudeContours } from "./contours.js";
 import { GlideConeEngine } from "./glidecone.js";
-import { initAirportsPanel } from "./airports.js";
 import {
   initOpenAipTiles,
-  pickOpenAipAirport,
   getViewportOpenAipAirports,
   queryOpenAipAirspacesAt,
   airspaceFeatureKey,
@@ -409,8 +407,6 @@ const map = new maplibregl.Map({
 });
 
 map.addControl(new maplibregl.NavigationControl(), "top-right");
-
-initAirportsPanel(map, { onStatus: setStatus });
 
 function updateAirspaceInfo(lng, lat) {
   const openKeys = new Set();
@@ -1265,9 +1261,6 @@ map.on("touchstart", (event) => {
     longPressTimer = null;
     longPressDone = true;
     markTouchHandled();
-    if (pickOpenAipAirport(map, event.point)) {
-      return;
-    }
     addPendingSeed(lng, lat);
   }, LONG_PRESS_MS);
 });
@@ -1321,12 +1314,6 @@ map.on("touchcancel", () => {
 
 map.on("click", (event) => {
   if (computing || touchHandledRecently) {
-    return;
-  }
-
-  const airportFeature = pickOpenAipAirport(map, event.point);
-  if (airportFeature) {
-    console.log(airportFeature);
     return;
   }
 
