@@ -17,6 +17,7 @@ import {
   queryOpenAipAirspacesAt,
   airspaceFeatureKey,
 } from "./openaip-tiles.js";
+import { loadOpenAipConfig } from "./openaip-client.js";
 
 const DEFAULT_MAX_ALTITUDE = 3050;
 const LONG_PRESS_MS = 550;
@@ -34,7 +35,7 @@ const EMPTY_PATH = {
 const info = document.getElementById("info");
 const airspaceInfoEl = document.getElementById("airspace-info");
 const statusEl = document.getElementById("status");
-const hoverTip = document.getElementById("hover-tip");
+const cellInfoEl = document.getElementById("cell-info");
 const paramsForm = document.getElementById("params");
 const vizModeSelect = document.getElementById("viz-mode");
 const previewFieldEl = document.getElementById("preview-field");
@@ -65,11 +66,13 @@ let contourLayersReady = false;
 let lastHoverCell = null;
 let pendingSeeds = [];
 let seedLayersReady = false;
-let openAipApiKey = null;
+let openAipConfig = null;
 let touchHandledRecently = false;
 let longPressTimer = null;
 let longPressDone = false;
 let touchStartPoint = null;
+let footerStatusText = "Loading WebGPU…";
+let footerCellHtml = null;
 
 const interaction = {
   hoverPath: false,
@@ -132,18 +135,35 @@ function cancelLongPress() {
   }
 }
 
-function showCellInspect(cell, point) {
+function updateParamsFooter() {
+  if (!cellInfoEl || !statusEl) {
+    return;
+  }
+  if (footerCellHtml) {
+    cellInfoEl.innerHTML = footerCellHtml;
+    cellInfoEl.hidden = false;
+    statusEl.hidden = true;
+    return;
+  }
+  cellInfoEl.hidden = true;
+  statusEl.hidden = false;
+  statusEl.textContent = footerStatusText;
+}
+
+function clearCellInspect() {
+  footerCellHtml = null;
+  lastHoverCell = null;
+  clearGlidePath();
+  updateParamsFooter();
+}
+
+function showCellInspect(cell) {
   if (!cell) {
-    hoverTip.style.display = "none";
-    lastHoverCell = null;
-    clearGlidePath();
+    clearCellInspect();
     return;
   }
 
-  hoverTip.style.display = "block";
-  hoverTip.style.left = `${point.x + 14}px`;
-  hoverTip.style.top = `${point.y + 14}px`;
-  hoverTip.innerHTML = formatHoverTip(cell);
+  footerCellHtml = formatHoverTip(cell);
 
   if (cell.isReachable) {
     lastHoverCell = cell;
@@ -152,6 +172,8 @@ function showCellInspect(cell, point) {
     lastHoverCell = null;
     clearGlidePath();
   }
+
+  updateParamsFooter();
 }
 
 function startComputeSession() {
@@ -318,6 +340,7 @@ function initParamPanel() {
     window.matchMedia(query).addEventListener("change", detectInteractionMode);
   }
   syncCompareLosButton();
+  updateParamsFooter();
 }
 
 initParamPanel();
@@ -426,7 +449,8 @@ function updateAirspaceInfo(lng, lat) {
 }
 
 function setStatus(text) {
-  statusEl.textContent = text;
+  footerStatusText = text;
+  updateParamsFooter();
 }
 
 function setTerrainTileMaxZoom(zoom) {
@@ -918,9 +942,7 @@ function clearAllOverlays() {
   clearRasterOverlay();
   clearContourOverlay();
   clearCompareOverlay();
-  clearGlidePath();
-  hoverTip.style.display = "none";
-  lastHoverCell = null;
+  clearCellInspect();
   setDownloadContoursVisible(false);
   syncCompareLosButton();
   setStatus("Overlay cleared");
@@ -1027,39 +1049,6 @@ function updateConeVisualization(result, dem, glideParams) {
   if (result.imageData) {
     updateOverlay(result.imageData, dem);
   }
-}
-
-function needsRecomputeForViz(glideParams) {
-  if (!coneState) {
-    return true;
-  }
-  if (glideParams.contours) {
-    return !coneState.altitudes;
-  }
-  if (glideParams.raw) {
-    return !coneState.imageData || !coneState.raw;
-  }
-  return !coneState.imageData || coneState.raw || coneState.contours;
-}
-
-function refreshOverlayFromConeState() {
-  if (!coneState || computing) {
-    return;
-  }
-  const glideParams = getGlideParams();
-  if (needsRecomputeForViz(glideParams)) {
-    recomputeFromConeState();
-    return;
-  }
-  const result = {
-    altitudes: coneState.altitudes,
-    ground: coneState.ground,
-    originX: coneState.originX,
-    imageData: coneState.imageData,
-  };
-  coneState.raw = glideParams.raw;
-  coneState.contours = glideParams.contours;
-  updateConeVisualization(result, coneState.dem, glideParams);
 }
 
 function updateOverlay(imageData, dem) {
@@ -1212,15 +1201,15 @@ map.on("load", async () => {
   ensurePathLayer();
 
   try {
-    const { OPENAIP_API_KEY } = await import("./openaip-config.js");
-    openAipApiKey = OPENAIP_API_KEY;
-    if (initOpenAipTiles(map, OPENAIP_API_KEY)) {
+    openAipConfig = await loadOpenAipConfig();
+    if (initOpenAipTiles(map, openAipConfig)) {
       console.info("OpenAIP vector tiles enabled");
       updateSeedMarkers();
     }
   } catch (error) {
     console.warn(
-      "OpenAIP vector tiles disabled — copy js/openaip-config.example.js to js/openaip-config.js"
+      "OpenAIP disabled — check OPENAIP_PROXY_BASE in js/openaip-config.public.js",
+      error
     );
   }
 
@@ -1244,22 +1233,18 @@ map.on("mousemove", (event) => {
 
   const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
   if (cell === null) {
-    hoverTip.style.display = "none";
-    lastHoverCell = null;
-    clearGlidePath();
+    clearCellInspect();
     return;
   }
 
-  showCellInspect(cell, event.point);
+  showCellInspect(cell);
 });
 
 map.on("mouseleave", () => {
   if (!interaction.hoverPath) {
     return;
   }
-  hoverTip.style.display = "none";
-  lastHoverCell = null;
-  clearGlidePath();
+  clearCellInspect();
 });
 
 map.on("touchstart", (event) => {
@@ -1324,7 +1309,7 @@ map.on("touchend", (event) => {
 
   const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
   if (cell?.isReachable) {
-    showCellInspect(cell, event.point);
+    showCellInspect(cell);
   }
 });
 
@@ -1356,7 +1341,9 @@ paramsForm.addEventListener("submit", (event) => {
 
 vizModeSelect?.addEventListener("change", () => {
   syncParamVisibility();
-  refreshOverlayFromConeState();
+  if (coneState && !computing) {
+    setStatus("Overlay type changed — click Run to refresh");
+  }
 });
 
 stopComputeBtn.addEventListener("click", () => {
@@ -1364,36 +1351,6 @@ stopComputeBtn.addEventListener("click", () => {
     requestStopCompute();
   }
 });
-
-async function recomputeFromConeState() {
-  if (!coneState || computing) {
-    return;
-  }
-
-  startComputeSession();
-  clearGlidePath();
-  setStatus("Recomputing overlay…");
-
-  try {
-    const glideParams = getGlideParams();
-    const gpu = await ensureEngine();
-    const result = await gpu.compute(coneState.dem, glideParams, makeComputeOptions(coneState.dem, glideParams));
-    setConeState(coneState.dem, result, glideParams);
-    updateConeVisualization(result, coneState.dem, glideParams);
-    syncCompareLosButton();
-    setStatus(
-      formatComputeDone(
-        result,
-        glideParams.raw ? " (raw)" : glideParams.contours ? " (contours)" : " (stripes)"
-      )
-    );
-  } catch (error) {
-    setStatus(`Error: ${error.message}`);
-    console.error(error);
-  } finally {
-    endComputeSession();
-  }
-}
 
 compareLosBtn.addEventListener("click", () => {
   runFullBresenhamCompare();
@@ -1447,7 +1404,7 @@ async function runComputation(seedsOverride = null) {
   const glideParams = getGlideParams();
   info.classList.add("visible");
   setStatus("Sampling terrain…");
-  hoverTip.style.display = "none";
+  clearCellInspect();
   clearGlidePath();
   clearCompareOverlay();
   setCompareButtonVisible(false);
@@ -1465,7 +1422,7 @@ async function runComputation(seedsOverride = null) {
     );
     const dem = await buildDemGrid(seeds, {
       ...glideParams,
-      openAipApiKey,
+      openAipConfig,
     });
 
     if (computeShouldStop) {

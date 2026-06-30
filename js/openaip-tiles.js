@@ -1,7 +1,5 @@
-const TILE_URL =
-  "https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.pbf";
-
 import { pointInGeoJson } from "./airspace.js";
+import { openAipConfigured, openAipTileUrls } from "./openaip-client.js";
 
 const AIRSPACE_TYPE_COLOR = [
   "match",
@@ -146,8 +144,8 @@ export function queryOpenAipAirspacesAt(map, lng, lat) {
   return matches;
 }
 
-export function initOpenAipTiles(map, apiKey) {
-  if (!apiKey) {
+export function initOpenAipTiles(map, config) {
+  if (!openAipConfigured(config)) {
     return false;
   }
 
@@ -155,7 +153,10 @@ export function initOpenAipTiles(map, apiKey) {
     return true;
   }
 
-  const tiles = [`${TILE_URL}?apiKey=${encodeURIComponent(apiKey)}`];
+  const tiles = openAipTileUrls(config);
+  if (!tiles.length) {
+    return false;
+  }
 
   map.addSource("openaip", {
     type: "vector",

@@ -1,4 +1,5 @@
 import { globalPixelToLngLat } from "./geo.js";
+import { openAipAirspacesUrl, openAipConfigured } from "./openaip-client.js";
 
 export const AIRSPACE_TYPE_PROHIBITED = 3;
 export const AIRSPACE_TYPE_ADVISORY = 29;
@@ -303,8 +304,8 @@ export function demBbox(dem) {
   };
 }
 
-export async function fetchOverlayAirspaces(bbox, apiKey) {
-  if (!apiKey) {
+export async function fetchOverlayAirspaces(bbox, config) {
+  if (!openAipConfigured(config)) {
     return [];
   }
 
@@ -312,7 +313,6 @@ export async function fetchOverlayAirspaces(bbox, apiKey) {
   const query = new URLSearchParams({
     bbox: `${minLng},${minLat},${maxLng},${maxLat}`,
     limit: "500",
-    apiKey,
   });
 
   const items = [];
@@ -321,7 +321,11 @@ export async function fetchOverlayAirspaces(bbox, apiKey) {
 
   while (page <= totalPages) {
     query.set("page", String(page));
-    const response = await fetch(`https://api.core.openaip.net/api/airspaces?${query}`);
+    const url = openAipAirspacesUrl(config, query);
+    if (!url) {
+      return [];
+    }
+    const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`OpenAIP airspaces ${response.status}`);
     }

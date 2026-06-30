@@ -6,6 +6,7 @@ import {
   terrariumElevation,
 } from "./geo.js";
 import { applyAirspaceToDem, demBbox, fetchOverlayAirspaces } from "./airspace.js";
+import { openAipConfigured } from "./openaip-client.js";
 
 const tileCache = new Map();
 
@@ -148,10 +149,10 @@ export async function buildDemGrid(seeds, params) {
 
   let airspaces = [];
   let airspaceAffectedCells = 0;
-  if (params.openAipApiKey) {
+  if (params.openAipConfig && openAipConfigured(params.openAipConfig)) {
     airspaces = await fetchOverlayAirspaces(
       demBbox({ gx0, gy0, width, height, zoom: z }),
-      params.openAipApiKey
+      params.openAipConfig
     );
   }
 

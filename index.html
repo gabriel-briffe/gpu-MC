@@ -39,7 +39,29 @@
         backdrop-filter: blur(8px);
         font-size: 0.85rem;
         max-width: min(96vw, 54rem);
+        max-height: calc(100dvh - 1.25rem);
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      #params-panel {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      #params-scroll {
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        max-height: min(62dvh, calc(100dvh - 11rem));
+      }
+
+      #params-panel:not([open]) #params-scroll {
+        display: none;
       }
 
       #params-panel > summary {
@@ -251,40 +273,6 @@
         max-width: 14rem;
       }
 
-      .params-advanced {
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 0.45rem;
-        padding: 0.35rem 0.55rem 0.5rem;
-        background: rgba(255, 255, 255, 0.02);
-      }
-
-      .params-advanced > summary {
-        cursor: pointer;
-        color: #9aa4b2;
-        font-size: 0.72rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        user-select: none;
-        list-style: none;
-      }
-
-      .params-advanced > summary::-webkit-details-marker {
-        display: none;
-      }
-
-      .params-advanced > summary::after {
-        content: " ▸";
-        opacity: 0.65;
-      }
-
-      .params-advanced[open] > summary::after {
-        content: " ▾";
-      }
-
-      .params-advanced .params-fields {
-        margin-top: 0.45rem;
-      }
-
       .params-actions {
         display: flex;
         flex-wrap: wrap;
@@ -368,18 +356,41 @@
 
       #params-footer {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 0.75rem;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
         padding: 0.45rem 0.75rem;
+        flex-shrink: 0;
+      }
+
+      #params-footer-info {
+        flex: 1;
+        min-width: 0;
+        font-size: 0.72rem;
+        line-height: 1.35;
+        font-variant-numeric: tabular-nums;
       }
 
       #params-footer #status {
         color: #b8c5d6;
-        font-size: 0.78rem;
-        flex: 1;
-        min-width: 0;
-        line-height: 1.35;
+      }
+
+      #cell-info {
+        color: #e8f0ff;
+        white-space: pre-line;
+      }
+
+      #cell-info[hidden],
+      #status[hidden] {
+        display: none;
+      }
+
+      #cell-info .delta-pos {
+        color: #6dd96d;
+      }
+
+      #cell-info .delta-neg {
+        color: #f07070;
       }
 
       #params button.action-btn.btn-blue {
@@ -526,30 +537,6 @@
         display: none;
       }
 
-      #hover-tip {
-        position: fixed;
-        z-index: 4;
-        display: none;
-        pointer-events: none;
-        padding: 0.3rem 0.55rem;
-        border-radius: 0.4rem;
-        background: rgba(18, 22, 28, 0.94);
-        color: #e8f0ff;
-        font-size: 0.82rem;
-        font-variant-numeric: tabular-nums;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-        white-space: pre-line;
-        line-height: 1.35;
-      }
-
-      #hover-tip .delta-pos {
-        color: #6dd96d;
-      }
-
-      #hover-tip .delta-neg {
-        color: #f07070;
-      }
-
       #info {
         position: fixed;
         left: 50%;
@@ -647,6 +634,15 @@
       }
 
       @media (max-width: 640px) {
+        #params-shell {
+          top: 0.5rem;
+          max-height: calc(100dvh - 1rem);
+        }
+
+        #params-scroll {
+          max-height: min(55dvh, calc(100dvh - 9.5rem));
+        }
+
         #info .row {
           gap: 0.3rem 0.55rem;
         }
@@ -672,6 +668,7 @@
     <div id="params-shell">
       <details id="params-panel">
         <summary>Parameters</summary>
+        <div id="params-scroll">
         <form id="params" aria-label="Glide parameters">
           <div class="params-section">
             <div class="params-section-title">Flight</div>
@@ -705,12 +702,6 @@
                 <input id="max-alt" type="number" min="1" step="50" value="3050" />
                 <span class="param-hint" id="grid-radius-hint"></span>
               </div>
-            </div>
-          </div>
-
-          <details class="params-advanced">
-            <summary>Advanced</summary>
-            <div class="params-fields">
               <div class="param-field">
                 <div class="param-label-row">
                   <span class="param-label">LOS run N</span>
@@ -719,7 +710,7 @@
                 <input id="los-run" type="number" min="0" step="1" value="0" />
               </div>
             </div>
-          </details>
+          </div>
 
           <div class="params-section">
             <div class="params-section-title">Display</div>
@@ -772,14 +763,17 @@
             </div>
           </div>
         </form>
+        </div>
       </details>
       <div id="params-footer">
-        <div id="status">Loading WebGPU…</div>
+        <div id="params-footer-info">
+          <div id="cell-info" hidden aria-live="polite"></div>
+          <div id="status">Loading WebGPU…</div>
+        </div>
         <button type="button" id="stop-compute" hidden>Stop</button>
       </div>
     </div>
     <div id="param-help-popover" hidden role="tooltip"></div>
-    <div id="hover-tip" aria-hidden="true"></div>
     <div id="map"></div>
     <div id="info" aria-live="polite">
       <div class="row airspace-row">
