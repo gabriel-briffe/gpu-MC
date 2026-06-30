@@ -2134,33 +2134,50 @@ function sampleDemCell(lng, lat) {
 }
 
 function formatDistanceKm(distanceM) {
-  return `${(distanceM / 1000).toFixed(1)} km`;
+  const km = (distanceM / 1000).toFixed(1);
+  return `<span class="tooltip-num">${km} km</span>`;
+}
+
+function tooltipNum(value, { warn = false, unit = "m" } = {}) {
+  const classes = warn ? "tooltip-num tooltip-num-warn" : "tooltip-num";
+  return `<span class="${classes}">${value}${unit ? ` ${unit}` : ""}</span>`;
 }
 
 function formatHoverTip(cell) {
   const minAltVal = cell.alt;
-  const minAlt = minAltVal !== null ? `${Math.round(minAltVal)} m` : "—";
-  const groundElev = `${Math.round(cell.groundElev)} m`;
+  const groundClearance = coneState?.groundClearance ?? 100;
+  const minAlt = minAltVal !== null ? tooltipNum(Math.round(minAltVal)) : "—";
+  const groundElev = tooltipNum(Math.round(cell.groundElev));
+
+  let aboveGroundLine = "—";
+  if (minAltVal !== null) {
+    const aboveGround = Math.round(minAltVal - cell.groundElev);
+    const warn = aboveGround < 1.2 * groundClearance;
+    aboveGroundLine = tooltipNum(aboveGround, { warn });
+  }
+
   const metrics = seedPathMetrics(cell);
   const pathLengthLine =
     metrics !== null ? formatDistanceKm(metrics.distanceM) : "—";
   const requiredLine =
-    metrics !== null ? `${Math.round(metrics.requiredAlt)} m` : "—";
+    metrics !== null ? tooltipNum(Math.round(metrics.requiredAlt)) : "—";
 
   let deltaLine = "—";
   if (minAltVal !== null && metrics !== null) {
     const delta = Math.round(minAltVal - metrics.requiredAlt);
     const sign = delta > 0 ? "+" : "";
     const cls = delta >= 0 ? "delta-pos" : "delta-neg";
-    deltaLine = `<span class="${cls}">${sign}${delta} m</span>`;
+    deltaLine = `<span class="${cls} tooltip-num">${sign}${delta} m</span>`;
   }
 
   let text =
-    `minimum alt: ${minAlt}\n` + `ground elevation: ${groundElev}`;
+    `minimum alt: ${minAlt}\n` +
+    `ground elevation: ${groundElev}\n` +
+    `above ground: ${aboveGroundLine}`;
 
   if (isDebugMode()) {
     text +=
-      `\n<span class="path-info-heading">comparison with measured path length (haversine):</span>\n` +
+      `\n\n<span class="path-info-heading">comparison with measured path length (haversine):</span>\n` +
       `path length: ${pathLengthLine}\n` +
       `required alt: ${requiredLine}\n` +
       `delta: ${deltaLine}\n` +
