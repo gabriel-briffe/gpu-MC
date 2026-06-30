@@ -100,6 +100,42 @@
         content: " ▾";
       }
 
+      .params-mode-bar {
+        display: flex;
+        gap: 0.35rem;
+        padding: 0.45rem 0.85rem 0.4rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .params-mode-btn {
+        flex: 1;
+        padding: 0.4rem 0.65rem;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 0.4rem;
+        background: rgba(255, 255, 255, 0.04);
+        color: #b8c4d4;
+        font-size: 0.78rem;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .params-mode-btn:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: #e8eef4;
+      }
+
+      .params-mode-btn[aria-pressed="true"] {
+        border-color: rgba(120, 180, 255, 0.55);
+        background: rgba(80, 140, 255, 0.2);
+        color: #f0f6ff;
+      }
+
+      #params-shell.auto-mode .params-manual-only {
+        display: none !important;
+      }
+
       #params {
         display: flex;
         flex-direction: column;
@@ -766,6 +802,14 @@
     <div id="params-shell">
       <details id="params-panel">
         <summary>Parameters</summary>
+        <div class="params-mode-bar" role="group" aria-label="Parameter mode">
+          <button type="button" class="params-mode-btn" id="params-mode-auto" aria-pressed="false">
+            Auto
+          </button>
+          <button type="button" class="params-mode-btn" id="params-mode-manual" aria-pressed="true">
+            Manual
+          </button>
+        </div>
         <div id="params-scroll">
         <form id="params" aria-label="Glide parameters">
           <div class="params-section">
@@ -831,7 +875,7 @@
                   </button>
                 </div>
               </div>
-              <div class="param-field" id="los-run-field">
+              <div class="param-field params-manual-only" id="los-run-field">
                 <div class="param-label-row">
                   <span class="param-label">LOS run N</span>
                   <button type="button" class="param-help" data-help="los-run" aria-label="Help: LOS run N">ⓘ</button>
@@ -841,7 +885,7 @@
             </div>
           </div>
 
-          <div class="params-section">
+          <div class="params-section params-manual-only">
             <div class="params-section-title">Display</div>
             <div class="params-fields">
               <div class="param-field">
@@ -870,7 +914,7 @@
             </div>
           </div>
 
-          <div class="params-section" id="seeds-section">
+          <div class="params-section params-manual-only" id="seeds-section">
             <div class="params-section-title">Airports</div>
             <p class="param-section-desc">
               Add airports with Manual selection or Draw airport areas.
@@ -907,7 +951,7 @@
                   <span>Black path on downhill ground segments</span>
                 </label>
               </div>
-              <div class="param-field param-field-full">
+              <div class="param-field param-field-full params-manual-only">
                 <label class="param-check" for="debug-mode">
                   <input id="debug-mode" type="checkbox" />
                   <span>Debug mode</span>

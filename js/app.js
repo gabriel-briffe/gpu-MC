@@ -83,6 +83,8 @@ const computeContextParamsEl = document.getElementById("compute-context-params")
 const seedListEl = document.getElementById("seed-list");
 const paramsPanel = document.getElementById("params-panel");
 const paramsShell = document.getElementById("params-shell");
+const paramsModeAutoBtn = document.getElementById("params-mode-auto");
+const paramsModeManualBtn = document.getElementById("params-mode-manual");
 const paramsScrollEl = document.getElementById("params-scroll");
 const seedsSectionEl = document.getElementById("seeds-section");
 const airportAreaSelectPanel = document.getElementById("airport-area-select-panel");
@@ -503,6 +505,36 @@ function syncParamVisibility() {
   }
 }
 
+function isAutoParamsMode() {
+  return paramsShell?.classList.contains("auto-mode") ?? false;
+}
+
+function setParamsMode(mode) {
+  const auto = mode === "auto";
+  paramsShell?.classList.toggle("auto-mode", auto);
+  paramsModeAutoBtn?.setAttribute("aria-pressed", String(auto));
+  paramsModeManualBtn?.setAttribute("aria-pressed", String(!auto));
+  if (auto) {
+    if (manualAirportSelectMode) {
+      exitManualAirportSelectMode(true);
+    }
+    if (airportAreaSelectMode) {
+      exitAirportAreaSelectMode(true);
+    }
+    if (openParamHelpButton?.dataset.help) {
+      const manualOnlyHelp = new Set([
+        "viz-mode",
+        "preview",
+        "compare-los",
+        "los-run",
+      ]);
+      if (manualOnlyHelp.has(openParamHelpButton.dataset.help)) {
+        closeParamHelp();
+      }
+    }
+  }
+}
+
 function isDebugMode() {
   return debugModeInput?.checked ?? false;
 }
@@ -629,8 +661,12 @@ function openParamHelp(button) {
 
 function initParamPanel() {
   syncParamVisibility();
+  setParamsMode("manual");
   updateGridRadiusHint();
   updateTerrainResolutionHint();
+
+  paramsModeAutoBtn?.addEventListener("click", () => setParamsMode("auto"));
+  paramsModeManualBtn?.addEventListener("click", () => setParamsMode("manual"));
 
   for (const button of document.querySelectorAll(".param-help")) {
     button.addEventListener("click", (event) => {
