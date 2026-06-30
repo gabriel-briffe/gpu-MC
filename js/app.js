@@ -36,6 +36,8 @@ const INITIAL_TERRAIN_Z = pickTerrainZoom(MAP_CENTER.lat);
 const MAP_MAX_ZOOM = 22;
 let map;
 
+const MANUAL_INSPECT_MS = 5000;
+
 const EMPTY_PATH = {
   type: "Feature",
   geometry: { type: "LineString", coordinates: [] },
@@ -72,8 +74,12 @@ const finishManualAirportBtn = document.getElementById("finish-manual-airport");
 const manualAirportNameInput = document.getElementById("manual-airport-name");
 const manualAirportListEl = document.getElementById("manual-airport-list");
 const debugModeInput = document.getElementById("debug-mode");
+const highlightDownhillGroundPathInput = document.getElementById("highlight-downhill-ground-path");
 const losRunInput = document.getElementById("los-run");
 const computeContextBarEl = document.getElementById("compute-context-bar");
+const computeContextMinAltEl = document.getElementById("compute-context-min-alt");
+const computeContextMinAltValueEl = document.getElementById("compute-context-min-alt-value");
+const computeContextParamsEl = document.getElementById("compute-context-params");
 const seedListEl = document.getElementById("seed-list");
 const paramsPanel = document.getElementById("params-panel");
 const paramsShell = document.getElementById("params-shell");
@@ -93,7 +99,7 @@ let compareOverlayCanvas = null;
 let coneState = null;
 let pathLayerReady = false;
 let contourLayersReady = false;
-let lastHoverCell = null;
+let lastInspectCell = null;
 let pendingSeeds = [];
 let seedLayersReady = false;
 let openAipConfig = null;
@@ -103,6 +109,9 @@ let footerCellHtml = null;
 let lastInspectAnchor = null;
 let lastInspectLngLat = null;
 let lastPathScreenBounds = null;
+let manualInspectTimeout = null;
+let lastGeoLngLat = null;
+let geolocateControl = null;
 let airportAreaSelectMode = false;
 let airportAreaDrawMode = false;
 let airportSelectRects = [];
@@ -283,13 +292,63 @@ function updateCellTooltip() {
   window.requestAnimationFrame(() => positionCellTooltip());
 }
 
+function clearManualInspectTimer() {
+  if (manualInspectTimeout !== null) {
+    window.clearTimeout(manualInspectTimeout);
+    manualInspectTimeout = null;
+  }
+}
+
+function isManualInspectActive() {
+  return manualInspectTimeout !== null;
+}
+
+function isGeoTrackingOn() {
+  if (!geolocateControl) {
+    return false;
+  }
+  const state = geolocateControl._watchState;
+  return state === "ACTIVE_LOCK" || state === "BACKGROUND" || state === "WAITING_ACTIVE";
+}
+
+function scheduleManualInspectClear() {
+  clearManualInspectTimer();
+  manualInspectTimeout = window.setTimeout(() => {
+    manualInspectTimeout = null;
+    clearCellInspect();
+  }, MANUAL_INSPECT_MS);
+}
+
+function getGeoSampleCell() {
+  if (!lastGeoLngLat || !coneState) {
+    return null;
+  }
+  return sampleDemCell(lastGeoLngLat.lng, lastGeoLngLat.lat);
+}
+
+function updateGeoLocationPath() {
+  if (!isGeoTrackingOn() || !coneState || !lastGeoLngLat) {
+    clearGeoPath();
+    return;
+  }
+
+  const cell = getGeoSampleCell();
+  if (!cell?.isReachable) {
+    clearGeoPath();
+    return;
+  }
+
+  refreshGeoPath(cell);
+}
+
 function clearCellInspect() {
+  clearManualInspectTimer();
   footerCellHtml = null;
-  lastHoverCell = null;
   lastInspectAnchor = null;
   lastInspectLngLat = null;
+  lastInspectCell = null;
   lastPathScreenBounds = null;
-  clearGlidePath();
+  clearInspectPath();
   updateCellTooltip();
   updateParamsFooter();
 }
@@ -302,7 +361,7 @@ function isPointerOverParams(clientX, clientY) {
   return Boolean(target && paramsShell.contains(target));
 }
 
-function showCellInspect(cell, anchorPoint = null) {
+function showCellInspect(cell, anchorPoint = null, { temporary = false } = {}) {
   if (!cell) {
     clearCellInspect();
     return;
@@ -323,25 +382,29 @@ function showCellInspect(cell, anchorPoint = null) {
   }
 
   if (cell.isReachable) {
-    lastHoverCell = cell;
-    refreshHoverPath(cell);
+    lastInspectCell = cell;
+    refreshInspectPath(cell);
   } else {
-    lastHoverCell = null;
+    lastInspectCell = null;
     lastPathScreenBounds = null;
-    clearGlidePath();
+    clearInspectPath();
     updateCellTooltip();
+  }
+
+  if (temporary) {
+    scheduleManualInspectClear();
   }
 
   updateParamsFooter();
 }
 
-function syncCellTooltipOnMapMove() {
-  if (!lastHoverCell || !lastInspectLngLat) {
+function syncInspectOnMapMove() {
+  if (!lastInspectCell || !lastInspectLngLat || !footerCellHtml) {
     return;
   }
   const projected = map.project([lastInspectLngLat.lng, lastInspectLngLat.lat]);
   lastInspectAnchor = { x: projected.x, y: projected.y };
-  refreshHoverPath(lastHoverCell);
+  refreshInspectPath(lastInspectCell);
 }
 
 function startComputeSession() {
@@ -441,6 +504,10 @@ function isDebugMode() {
   return debugModeInput?.checked ?? false;
 }
 
+function isHighlightDownhillGroundPathEnabled() {
+  return highlightDownhillGroundPathInput?.checked ?? false;
+}
+
 function getParamHelpText(key) {
   let text = PARAM_HELP[key];
   if (!text) {
@@ -470,8 +537,8 @@ function syncDebugUi() {
   }
   syncCompareLosButton();
   syncDownloadContoursButton();
-  if (lastHoverCell) {
-    showCellInspect(lastHoverCell);
+  if (lastInspectCell) {
+    showCellInspect(lastInspectCell);
   }
 }
 
@@ -602,6 +669,15 @@ function initParamPanel() {
 
   debugModeInput?.addEventListener("change", syncDebugUi);
 
+  highlightDownhillGroundPathInput?.addEventListener("change", () => {
+    if (lastInspectCell) {
+      refreshInspectPath(lastInspectCell);
+    }
+    if (isGeoTrackingOn()) {
+      updateGeoLocationPath();
+    }
+  });
+
   document.getElementById("los-run")?.addEventListener("input", syncCompareLosButton);
   detectInteractionMode();
   for (const query of ["(pointer: coarse)", "(pointer: fine)", "(hover: hover)"]) {
@@ -689,13 +765,33 @@ map = new maplibregl.Map({
 });
 
 map.addControl(new maplibregl.NavigationControl(), "top-right");
-map.addControl(
-  new maplibregl.GeolocateControl({
-    positionOptions: { enableHighAccuracy: true },
-    trackUserLocation: true,
-  }),
-  "top-right"
-);
+geolocateControl = new maplibregl.GeolocateControl({
+  positionOptions: { enableHighAccuracy: true },
+  trackUserLocation: true,
+});
+map.addControl(geolocateControl, "top-right");
+
+geolocateControl.on("geolocate", (event) => {
+  lastGeoLngLat = {
+    lng: event.coords.longitude,
+    lat: event.coords.latitude,
+  };
+  updateGeoLocationPath();
+  syncComputeContextBar();
+});
+
+geolocateControl.on("trackuserlocationstart", () => {
+  updateGeoLocationPath();
+  syncComputeContextBar();
+});
+
+geolocateControl.on("trackuserlocationend", () => {
+  if (!isGeoTrackingOn()) {
+    lastGeoLngLat = null;
+    clearGeoPath();
+    syncComputeContextBar();
+  }
+});
 
 function updateAirspaceInfo(lng, lat) {
   if (!isIncludeAirspaceEnabled()) {
@@ -1632,29 +1728,44 @@ function raisePathLayer() {
   if (pendingManualAirportLayerReady && map.getLayer("pending-manual-airport-circle")) {
     map.moveLayer("pending-manual-airport-circle");
   }
+  if (pathLayerReady && map.getLayer("glide-path-geo")) {
+    map.moveLayer("glide-path-geo");
+  }
   if (pathLayerReady && map.getLayer("glide-path")) {
     map.moveLayer("glide-path");
   }
 }
 
+const GLIDE_PATH_PAINT = {
+  "line-color": [
+    "match",
+    ["get", "segment"],
+    "downhill-ground",
+    "#111111",
+    "#8b1515",
+  ],
+  "line-width": 3,
+  "line-opacity": 0.95,
+};
+
 function ensurePathLayer() {
   if (pathLayerReady) {
     return;
   }
-  map.addSource("glide-path", {
-    type: "geojson",
-    data: EMPTY_PATH,
-  });
-  map.addLayer({
-    id: "glide-path",
-    type: "line",
-    source: "glide-path",
-    paint: {
-      "line-color": "#8b1515",
-      "line-width": 3,
-      "line-opacity": 0.95,
-    },
-  });
+
+  for (const sourceId of ["glide-path-geo", "glide-path"]) {
+    map.addSource(sourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+    map.addLayer({
+      id: sourceId,
+      type: "line",
+      source: sourceId,
+      paint: GLIDE_PATH_PAINT,
+    });
+  }
+
   pathLayerReady = true;
   raisePathLayer();
 }
@@ -1676,6 +1787,7 @@ function setConeState(dem, result, glideParams) {
     contourGeojson: null,
   };
   syncComputeContextBar();
+  updateGeoLocationPath();
 }
 
 function syncComputeContextBar() {
@@ -1684,15 +1796,40 @@ function syncComputeContextBar() {
   }
   if (!coneState) {
     computeContextBarEl.hidden = true;
-    computeContextBarEl.textContent = "";
+    if (computeContextMinAltEl) {
+      computeContextMinAltEl.hidden = true;
+    }
+    if (computeContextMinAltValueEl) {
+      computeContextMinAltValueEl.textContent = "";
+    }
+    if (computeContextParamsEl) {
+      computeContextParamsEl.textContent = "";
+    }
     document.body.classList.remove("has-compute-context");
     return;
   }
+
   const { glideRatio, groundClearance, circuitHeight } = coneState;
-  computeContextBarEl.textContent = `L/D : ${glideRatio} - Ground : ${groundClearance} m - Circuit : ${circuitHeight} m`;
+  const geoCell = isGeoTrackingOn() ? getGeoSampleCell() : null;
+
+  if (computeContextMinAltEl && computeContextMinAltValueEl) {
+    if (geoCell?.isReachable && geoCell.alt !== null) {
+      computeContextMinAltValueEl.textContent = `${Math.round(geoCell.alt)} m`;
+      computeContextMinAltEl.hidden = false;
+    } else {
+      computeContextMinAltEl.hidden = true;
+      computeContextMinAltValueEl.textContent = "";
+    }
+  }
+
+  if (computeContextParamsEl) {
+    computeContextParamsEl.textContent = `L/D : ${glideRatio} - Ground : ${groundClearance} m - Circuit : ${circuitHeight} m`;
+  }
+
   computeContextBarEl.hidden = false;
   document.body.classList.add("has-compute-context");
-  if (lastHoverCell) {
+
+  if (lastInspectCell && footerCellHtml) {
     window.requestAnimationFrame(() => positionCellTooltip());
   }
 }
@@ -1775,9 +1912,87 @@ function pushPathPoint(coordinates, x, y, dem) {
   coordinates.push([pt.lng, pt.lat]);
 }
 
+function terrainMslAtCell(x, y, dem) {
+  const idx = cellIndex(x, y, dem);
+  return dem.terrainMsl
+    ? dem.terrainMsl[idx]
+    : dem.elevation[idx] - dem.groundClearance;
+}
+
+function isDownhillGroundSegment(from, to, ground, dem) {
+  const fromIdx = cellIndex(from.x, from.y, dem);
+  const toIdx = cellIndex(to.x, to.y, dem);
+  if (ground[fromIdx] !== 1 || ground[toIdx] !== 1) {
+    return false;
+  }
+  return terrainMslAtCell(to.x, to.y, dem) < terrainMslAtCell(from.x, from.y, dem);
+}
+
+function cellToLngLatCoord(x, y, dem) {
+  const pt = gridCellToLngLat(x, y, dem);
+  return [pt.lng, pt.lat];
+}
+
+function buildPathGeoJson(cells, dem, ground, coordinates) {
+  if (!isHighlightDownhillGroundPathEnabled() || cells.length < 2) {
+    return {
+      type: "FeatureCollection",
+      features:
+        coordinates.length >= 2
+          ? [
+              {
+                type: "Feature",
+                geometry: { type: "LineString", coordinates },
+                properties: {},
+              },
+            ]
+          : [],
+    };
+  }
+
+  const features = [];
+  let segmentCoords = [];
+  let segmentKind = null;
+
+  for (let i = 1; i < cells.length; i += 1) {
+    const from = cells[i - 1];
+    const to = cells[i];
+    const kind = isDownhillGroundSegment(from, to, ground, dem)
+      ? "downhill-ground"
+      : "default";
+    const fromCoord = cellToLngLatCoord(from.x, from.y, dem);
+    const toCoord = cellToLngLatCoord(to.x, to.y, dem);
+
+    if (segmentKind === kind && segmentCoords.length > 0) {
+      segmentCoords.push(toCoord);
+    } else {
+      if (segmentCoords.length >= 2) {
+        features.push({
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: segmentCoords },
+          properties: { segment: segmentKind },
+        });
+      }
+      segmentKind = kind;
+      segmentCoords = [fromCoord, toCoord];
+    }
+  }
+
+  if (segmentCoords.length >= 2) {
+    features.push({
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: segmentCoords },
+      properties: { segment: segmentKind },
+    });
+  }
+
+  return { type: "FeatureCollection", features };
+}
+
 function traceGlidePath(gi, gj) {
   const { dem, originX, originY } = coneState;
   const coordinates = [];
+  const cells = [];
   const visited = new Set();
   let x = gi;
   let y = gj;
@@ -1790,6 +2005,7 @@ function traceGlidePath(gi, gj) {
     }
     visited.add(key);
 
+    cells.push({ x, y });
     pushPathPoint(coordinates, x, y, dem);
 
     if (isSeedCell(x, y, dem)) {
@@ -1807,23 +2023,86 @@ function traceGlidePath(gi, gj) {
     y = ny;
   }
 
-  return { coordinates };
+  return { coordinates, cells };
 }
 
-function refreshHoverPath(cell) {
-  const { coordinates } = traceGlidePath(cell.gi, cell.gj);
-  if (coordinates.length >= 2) {
-    updateGlidePath(coordinates);
-    lastPathScreenBounds = pathScreenBounds(coordinates);
-  } else if (coordinates.length === 1) {
-    const pt = coordinates[0];
-    updateGlidePath([pt, pt]);
+function refreshGeoPath(cell) {
+  const path = traceGlidePath(cell.gi, cell.gj);
+  if (path.coordinates.length >= 2) {
+    setPathSourceData("glide-path-geo", path);
+  } else if (path.coordinates.length === 1) {
+    const pt = path.coordinates[0];
+    setPathSourceData("glide-path-geo", { coordinates: [pt, pt], cells: path.cells });
+  } else {
+    clearGeoPath();
+  }
+}
+
+function refreshInspectPath(cell) {
+  const path = traceGlidePath(cell.gi, cell.gj);
+  if (path.coordinates.length >= 2) {
+    setPathSourceData("glide-path", path);
+    lastPathScreenBounds = pathScreenBounds(path.coordinates);
+  } else if (path.coordinates.length === 1) {
+    const pt = path.coordinates[0];
+    setPathSourceData("glide-path", { coordinates: [pt, pt], cells: path.cells });
     lastPathScreenBounds = pathScreenBounds([pt, pt]);
   } else {
-    clearGlidePath();
+    clearInspectPath();
     lastPathScreenBounds = null;
   }
   updateCellTooltip();
+}
+
+function setPathSourceData(sourceId, pathData) {
+  ensurePathLayer();
+  const coordinates = pathData.coordinates ?? pathData;
+  const cells = pathData.cells ?? [];
+  const { dem, ground } = coneState ?? {};
+
+  map.getSource(sourceId).setData(
+    dem && ground
+      ? buildPathGeoJson(cells, dem, ground, coordinates)
+      : {
+          type: "FeatureCollection",
+          features:
+            coordinates.length >= 2
+              ? [
+                  {
+                    type: "Feature",
+                    geometry: { type: "LineString", coordinates },
+                    properties: {},
+                  },
+                ]
+              : [],
+        }
+  );
+  raisePathLayer();
+}
+
+function clearGeoPath() {
+  if (!pathLayerReady || !map.getSource("glide-path-geo")) {
+    return;
+  }
+  map.getSource("glide-path-geo").setData({
+    type: "FeatureCollection",
+    features: [],
+  });
+}
+
+function clearInspectPath() {
+  if (!pathLayerReady || !map.getSource("glide-path")) {
+    return;
+  }
+  map.getSource("glide-path").setData({
+    type: "FeatureCollection",
+    features: [],
+  });
+}
+
+function clearAllGlidePaths() {
+  clearGeoPath();
+  clearInspectPath();
 }
 
 function syncCompareLosButton() {
@@ -1927,6 +2206,7 @@ function clearComputeResults() {
   clearContourOverlay();
   clearCompareOverlay();
   clearCellInspect();
+  clearAllGlidePaths();
   setDownloadContoursVisible(false);
   syncCompareLosButton();
 }
@@ -2187,24 +2467,12 @@ function formatHoverTip(cell) {
   return text;
 }
 
-function updateGlidePath(coordinates) {
-  ensurePathLayer();
-  map.getSource("glide-path").setData({
-    type: "Feature",
-    geometry: {
-      type: "LineString",
-      coordinates,
-    },
-    properties: {},
-  });
-  raisePathLayer();
+function updateGlidePath(pathData) {
+  setPathSourceData("glide-path", pathData);
 }
 
 function clearGlidePath() {
-  if (!pathLayerReady) {
-    return;
-  }
-  map.getSource("glide-path").setData(EMPTY_PATH);
+  clearAllGlidePaths();
 }
 
 function makeComputeProgressHandler(dem, glideParams) {
@@ -2294,8 +2562,15 @@ map.on("mousemove", (event) => {
   showCellInspect(cell, event.point);
 });
 
-map.on("move", syncCellTooltipOnMapMove);
-map.on("zoom", syncCellTooltipOnMapMove);
+function syncPathsOnMapMove() {
+  if (isGeoTrackingOn()) {
+    updateGeoLocationPath();
+  }
+  syncInspectOnMapMove();
+}
+
+map.on("move", syncPathsOnMapMove);
+map.on("zoom", syncPathsOnMapMove);
 
 map.on("mousedown", (event) => {
   if (event.originalEvent.button !== 0 || !airportAreaSelectMode) {
@@ -2384,7 +2659,7 @@ map.on("touchend", (event) => {
 
   const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
   if (cell?.isReachable) {
-    showCellInspect(cell, event.point);
+    showCellInspect(cell, event.point, { temporary: true });
   }
 });
 

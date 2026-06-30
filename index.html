@@ -565,17 +565,45 @@
         right: 0;
         bottom: 0;
         z-index: 3;
-        padding: 0.7rem 1rem;
+        padding: 0.55rem 1rem 0.7rem;
         text-align: center;
-        font-size: 1rem;
-        font-weight: 650;
-        letter-spacing: 0.03em;
         color: #f0fff4;
         background: linear-gradient(180deg, rgba(18, 72, 42, 0.97), rgba(10, 48, 28, 0.98));
         border-top: 3px solid #4ade80;
         box-shadow: 0 -6px 28px rgba(0, 0, 0, 0.45);
         font-variant-numeric: tabular-nums;
         pointer-events: none;
+      }
+
+      #compute-context-min-alt {
+        margin-bottom: 0.15rem;
+      }
+
+      #compute-context-min-alt[hidden] {
+        display: none;
+      }
+
+      .compute-context-min-alt-label {
+        font-size: 0.62rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.78);
+        margin-bottom: 0.08rem;
+      }
+
+      #compute-context-min-alt-value {
+        font-size: 1.75rem;
+        font-weight: 800;
+        color: #ffffff;
+        line-height: 1.1;
+        letter-spacing: 0.02em;
+      }
+
+      #compute-context-params {
+        font-size: 1rem;
+        font-weight: 650;
+        letter-spacing: 0.03em;
       }
 
       #compute-context-bar[hidden] {
@@ -874,6 +902,12 @@
           <div class="params-section">
             <div class="params-fields">
               <div class="param-field param-field-full">
+                <label class="param-check" for="highlight-downhill-ground-path">
+                  <input id="highlight-downhill-ground-path" type="checkbox" />
+                  <span>Black path on downhill ground segments</span>
+                </label>
+              </div>
+              <div class="param-field param-field-full">
                 <label class="param-check" for="debug-mode">
                   <input id="debug-mode" type="checkbox" />
                   <span>Debug mode</span>
@@ -938,7 +972,13 @@
     </div>
     <div id="param-help-popover" hidden role="tooltip"></div>
     <div id="cell-tooltip" hidden aria-live="polite"></div>
-    <div id="compute-context-bar" hidden aria-live="polite"></div>
+    <div id="compute-context-bar" hidden aria-live="polite">
+      <div id="compute-context-min-alt" hidden>
+        <div class="compute-context-min-alt-label">minimum alt</div>
+        <div id="compute-context-min-alt-value"></div>
+      </div>
+      <div id="compute-context-params"></div>
+    </div>
     <div id="map"></div>
     <div id="info" aria-live="polite">
       <div class="row airspace-row">
