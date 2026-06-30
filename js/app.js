@@ -1492,6 +1492,21 @@ function clearContourOverlay() {
   });
 }
 
+function contourLabelSymbolSpacing() {
+  return Math.min(window.innerWidth, window.innerHeight) / 3;
+}
+
+function syncContourLabelSpacing() {
+  if (!contourLayersReady || !map.getLayer("glide-contours-label")) {
+    return;
+  }
+  map.setLayoutProperty(
+    "glide-contours-label",
+    "symbol-spacing",
+    contourLabelSymbolSpacing()
+  );
+}
+
 function ensureContourLayers() {
   if (contourLayersReady) {
     return;
@@ -1523,7 +1538,7 @@ function ensureContourLayers() {
       "text-font": ["Noto Sans Regular"],
       "text-size": 11,
       "text-max-angle": 25,
-      "symbol-spacing": 280,
+      "symbol-spacing": contourLabelSymbolSpacing(),
       "text-keep-upright": true,
     },
     paint: {
@@ -1534,10 +1549,12 @@ function ensureContourLayers() {
   });
 
   contourLayersReady = true;
+  syncContourLabelSpacing();
 }
 
 function updateContourOverlay(geojson) {
   ensureContourLayers();
+  syncContourLabelSpacing();
   map.getSource("glide-contours").setData(geojson);
   raisePathLayer();
 }
@@ -1730,6 +1747,8 @@ map.on("load", async () => {
   syncTerrainTileMaxZoom();
   ensurePathLayer();
   map.on("moveend", updateTerrainResolutionHint);
+  map.on("resize", syncContourLabelSpacing);
+  window.addEventListener("resize", syncContourLabelSpacing);
 
   try {
     openAipConfig = await loadOpenAipConfig();
