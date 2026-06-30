@@ -2646,21 +2646,6 @@ map.on("touchend", (event) => {
     setPendingManualAirport(event.lngLat.lng, event.lngLat.lat);
     return;
   }
-
-  if (!interaction.tapPath) {
-    return;
-  }
-
-  markTouchHandled();
-
-  if (!coneState) {
-    return;
-  }
-
-  const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
-  if (cell?.isReachable) {
-    showCellInspect(cell, event.point, { temporary: true });
-  }
 });
 
 map.on("touchcancel", () => {
@@ -2683,6 +2668,21 @@ map.on("click", (event) => {
 
   if (manualAirportSelectMode) {
     setPendingManualAirport(event.lngLat.lng, event.lngLat.lat);
+    return;
+  }
+
+  if (!interaction.tapPath || !coneState) {
+    return;
+  }
+
+  const { clientX, clientY } = event.originalEvent;
+  if (isPointerOverParams(clientX, clientY)) {
+    return;
+  }
+
+  const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
+  if (cell?.isReachable) {
+    showCellInspect(cell, event.point, { temporary: true });
   }
 });
 
