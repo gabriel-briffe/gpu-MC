@@ -510,6 +510,29 @@
         display: none;
       }
 
+      #compute-context-bar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 3;
+        padding: 0.7rem 1rem;
+        text-align: center;
+        font-size: 1rem;
+        font-weight: 650;
+        letter-spacing: 0.03em;
+        color: #f0fff4;
+        background: linear-gradient(180deg, rgba(18, 72, 42, 0.97), rgba(10, 48, 28, 0.98));
+        border-top: 3px solid #4ade80;
+        box-shadow: 0 -6px 28px rgba(0, 0, 0, 0.45);
+        font-variant-numeric: tabular-nums;
+        pointer-events: none;
+      }
+
+      #compute-context-bar[hidden] {
+        display: none;
+      }
+
       #info {
         position: fixed;
         left: 50%;
@@ -533,6 +556,10 @@
 
       #info.visible {
         display: block;
+      }
+
+      body.has-compute-context #info.visible {
+        bottom: 3.35rem;
       }
 
       #info .label {
@@ -861,6 +888,7 @@
       </div>
     </div>
     <div id="param-help-popover" hidden role="tooltip"></div>
+    <div id="compute-context-bar" hidden aria-live="polite"></div>
     <div id="map"></div>
     <div id="info" aria-live="polite">
       <div class="row airspace-row">

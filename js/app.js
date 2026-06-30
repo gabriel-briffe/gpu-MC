@@ -72,6 +72,7 @@ const manualAirportNameInput = document.getElementById("manual-airport-name");
 const manualAirportListEl = document.getElementById("manual-airport-list");
 const debugModeInput = document.getElementById("debug-mode");
 const losRunInput = document.getElementById("los-run");
+const computeContextBarEl = document.getElementById("compute-context-bar");
 const seedListEl = document.getElementById("seed-list");
 const paramsPanel = document.getElementById("params-panel");
 const paramsShell = document.getElementById("params-shell");
@@ -1522,8 +1523,26 @@ function setConeState(dem, result, glideParams) {
     contours: glideParams?.contours ?? false,
     glideRatio: glideParams?.glideRatio ?? 20,
     circuitHeight: glideParams?.circuitHeight ?? 250,
+    groundClearance: glideParams?.groundClearance ?? 100,
     contourGeojson: null,
   };
+  syncComputeContextBar();
+}
+
+function syncComputeContextBar() {
+  if (!computeContextBarEl) {
+    return;
+  }
+  if (!coneState) {
+    computeContextBarEl.hidden = true;
+    computeContextBarEl.textContent = "";
+    document.body.classList.remove("has-compute-context");
+    return;
+  }
+  const { glideRatio, groundClearance, circuitHeight } = coneState;
+  computeContextBarEl.textContent = `L/D : ${glideRatio} - Ground : ${groundClearance} m - Circuit : ${circuitHeight} m`;
+  computeContextBarEl.hidden = false;
+  document.body.classList.add("has-compute-context");
 }
 
 function traceOriginRelayPath(x, y, dem, originX, originY) {
@@ -1747,6 +1766,7 @@ function updateCompareOverlay(imageData, dem) {
 
 function clearComputeResults() {
   coneState = null;
+  syncComputeContextBar();
   clearRasterOverlay();
   clearContourOverlay();
   clearCompareOverlay();
