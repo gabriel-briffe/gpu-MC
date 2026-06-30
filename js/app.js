@@ -538,6 +538,13 @@ map = new maplibregl.Map({
 });
 
 map.addControl(new maplibregl.NavigationControl(), "top-right");
+map.addControl(
+  new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true,
+  }),
+  "top-right"
+);
 
 function updateAirspaceInfo(lng, lat) {
   if (!isIncludeAirspaceEnabled()) {
