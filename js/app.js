@@ -105,6 +105,9 @@ let seedLayersReady = false;
 let openAipConfig = null;
 let touchHandledRecently = false;
 let footerStatusText = "Loading WebGPU…";
+let statusClearTimer = null;
+
+const COMPUTE_DONE_STATUS_CLEAR_MS = 10000;
 let footerCellHtml = null;
 let lastInspectAnchor = null;
 let lastInspectLngLat = null;
@@ -833,9 +836,23 @@ function updateAirspaceInfo(lng, lat) {
   }
 }
 
-function setStatus(text) {
+function setStatus(text, { clearAfterMs } = {}) {
+  if (statusClearTimer !== null) {
+    window.clearTimeout(statusClearTimer);
+    statusClearTimer = null;
+  }
   footerStatusText = text;
   updateParamsFooter();
+  if (clearAfterMs) {
+    const snapshot = text;
+    statusClearTimer = window.setTimeout(() => {
+      statusClearTimer = null;
+      if (footerStatusText === snapshot) {
+        footerStatusText = "";
+        updateParamsFooter();
+      }
+    }, clearAfterMs);
+  }
 }
 
 function setTerrainTileMaxZoom(zoom) {
@@ -2730,7 +2747,7 @@ async function runFullBresenhamCompare() {
       shouldStop: () => computeShouldStop,
     });
     updateCompareOverlay(result.imageData, coneState.dem);
-    setStatus(formatComputeDone(result));
+    setStatus(formatComputeDone(result), { clearAfterMs: COMPUTE_DONE_STATUS_CLEAR_MS });
   } catch (error) {
     setStatus(`Error: ${error.message}`);
     console.error(error);
@@ -2801,7 +2818,8 @@ async function runComputation(seedsOverride = null) {
       formatComputeDone(
         result,
         ` — z${dem.zoom}, ${dem.width}×${dem.height}, ${seeds.length} airports`
-      )
+      ),
+      { clearAfterMs: COMPUTE_DONE_STATUS_CLEAR_MS }
     );
   } catch (error) {
     setStatus(`Error: ${error.message}`);
