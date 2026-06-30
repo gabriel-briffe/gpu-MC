@@ -27,8 +27,8 @@ const DEFAULT_MAX_ALTITUDE = 3050;
 const MIN_SEEDS = 1;
 const AUTO_WINDOW_SIZE_DEFAULT_KM = 100;
 const AUTO_MAX_OFFSET_FROM_CENTER = 0.25;
-const AUTO_PARAM_DEBOUNCE_MS = 100;
-const AUTO_MAP_IDLE_TIMEOUT_MS = 3000;
+const AUTO_COMPUTE_DEBOUNCE_MS = 400;
+const AUTO_OPENAIP_TILES_MAX_WAIT_MS = 2000;
 const AIRPORT_RECT_MIN_DEG = 1e-5;
 const AIRPORT_HANDLE_HIT_PX = 12;
 const AIRPORT_HANDLE_CURSORS = {
@@ -116,6 +116,7 @@ let touchHandledRecently = false;
 let footerStatusText = "Loading WebGPU…";
 let autoComputePending = false;
 let autoComputeDebounceTimer = null;
+let autoComputeNeedsAirportRefresh = false;
 let autoComputeRegion = null;
 let statusClearTimer = null;
 
@@ -127,6 +128,8 @@ let lastPathScreenBounds = null;
 let manualInspectTimeout = null;
 let lastGeoLngLat = null;
 let geolocateControl = null;
+let geoTrackPanZoom = null;
+let geoTrackInitialPanPending = false;
 let airportAreaSelectMode = false;
 let airportAreaDrawMode = false;
 let airportSelectRects = [];
@@ -547,11 +550,12 @@ function setParamsMode(mode) {
         closeParamHelp();
       }
     }
-    scheduleAutoCompute();
+    scheduleAutoCompute({ refreshAirports: true });
   } else {
     clearTimeout(autoComputeDebounceTimer);
     autoComputeDebounceTimer = null;
     autoComputePending = false;
+    autoComputeNeedsAirportRefresh = false;
     autoComputeRegion = null;
   }
 }
@@ -561,32 +565,55 @@ function getAutoWindowSizeKm() {
   return Number.isFinite(value) && value > 0 ? value : AUTO_WINDOW_SIZE_DEFAULT_KM;
 }
 
-function waitForMapIdle(timeoutMs = AUTO_MAP_IDLE_TIMEOUT_MS) {
-  if (!map) {
-    return Promise.resolve();
+function areOpenAipViewportTilesReady() {
+  return Boolean(
+    map?.getSource("openaip") && !map.isMoving() && map.areTilesLoaded()
+  );
+}
+
+async function waitForOpenAipViewportTiles() {
+  if (!map?.getSource("openaip") || areOpenAipViewportTilesReady()) {
+    return;
   }
-  return new Promise((resolve) => {
+
+  setStatus("Loading OpenAIP airport tiles…");
+  await new Promise((resolve) => {
     let settled = false;
     const finish = () => {
       if (settled) {
         return;
       }
       settled = true;
+      map.off("sourcedata", onSourceData);
+      map.off("idle", tryFinish);
+      window.clearTimeout(timer);
       resolve();
     };
-    const timer = window.setTimeout(finish, timeoutMs);
-    map.once("idle", () => {
-      window.clearTimeout(timer);
-      finish();
-    });
+    const tryFinish = () => {
+      if (areOpenAipViewportTilesReady()) {
+        finish();
+      }
+    };
+    const onSourceData = (event) => {
+      if (event.sourceId === "openaip") {
+        tryFinish();
+      }
+    };
+    const timer = window.setTimeout(finish, AUTO_OPENAIP_TILES_MAX_WAIT_MS);
+    map.on("sourcedata", onSourceData);
+    map.on("idle", tryFinish);
+    tryFinish();
   });
 }
 
-function scheduleAutoCompute({ debounce = false } = {}) {
+function scheduleAutoCompute({ debounce = false, refreshAirports = false } = {}) {
   if (!isAutoParamsMode()) {
     return;
   }
   autoComputePending = true;
+  if (refreshAirports) {
+    autoComputeNeedsAirportRefresh = true;
+  }
   if (computing) {
     computeShouldStop = true;
     return;
@@ -596,7 +623,7 @@ function scheduleAutoCompute({ debounce = false } = {}) {
     autoComputeDebounceTimer = window.setTimeout(() => {
       autoComputeDebounceTimer = null;
       void flushAutoCompute();
-    }, AUTO_PARAM_DEBOUNCE_MS);
+    }, AUTO_COMPUTE_DEBOUNCE_MS);
     return;
   }
   void flushAutoCompute();
@@ -607,7 +634,9 @@ async function flushAutoCompute() {
     return;
   }
   autoComputePending = false;
-  await runAutoComputation();
+  const refreshAirports = autoComputeNeedsAirportRefresh;
+  autoComputeNeedsAirportRefresh = false;
+  await runAutoComputation({ refreshAirports });
 }
 
 function onAutoModeMapMoveEnd() {
@@ -625,10 +654,10 @@ function onAutoModeMapMoveEnd() {
   ) {
     return;
   }
-  scheduleAutoCompute();
+  scheduleAutoCompute({ debounce: true, refreshAirports: true });
 }
 
-async function runAutoComputation() {
+async function runAutoComputation({ refreshAirports = false } = {}) {
   if (!isAutoParamsMode() || !map?.getSource("openaip")) {
     if (isAutoParamsMode()) {
       setStatus("Auto mode needs OpenAIP tiles — check configuration");
@@ -641,32 +670,44 @@ async function runAutoComputation() {
   const bounds = kmBoxAroundLngLat(center.lng, center.lat, windowSizeKm);
   autoComputeRegion = { ...bounds, windowSizeKm };
 
-  await waitForMapIdle();
+  let seedsForCompute;
 
-  const airports = getOpenAipAirportsInBounds(
-    map,
-    bounds.west,
-    bounds.south,
-    bounds.east,
-    bounds.north
-  );
-
-  if (airports.length < MIN_SEEDS) {
-    setStatus(
-      `Auto: no airports in ${windowSizeKm * 2} km window — pan or zoom to z${OPENAIP_AIRPORT_MIN_ZOOM}+`
+  if (refreshAirports) {
+    await waitForOpenAipViewportTiles();
+    setStatus(`Finding airports in ${windowSizeKm * 2} km window…`);
+    const airports = getOpenAipAirportsInBounds(
+      map,
+      bounds.west,
+      bounds.south,
+      bounds.east,
+      bounds.north
     );
+
+    if (airports.length < MIN_SEEDS) {
+      setStatus(
+        `Auto: no airports in ${windowSizeKm * 2} km window — pan or zoom to z${OPENAIP_AIRPORT_MIN_ZOOM}+`
+      );
+      return;
+    }
+
+    pendingSeeds = airports.map((airport) => ({
+      lng: airport.lng,
+      lat: airport.lat,
+      label: formatAirportLabel(airport),
+      source: "airport",
+    }));
+    updateSeedMarkers();
+    setStatus(`Found ${airports.length} airports — fetching terrain…`);
+    seedsForCompute = pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
+  } else if (pendingSeeds.length >= MIN_SEEDS) {
+    setStatus(`Recomputing ${pendingSeeds.length} airports…`);
+    seedsForCompute = pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
+  } else {
+    await runAutoComputation({ refreshAirports: true });
     return;
   }
 
-  pendingSeeds = airports.map((airport) => ({
-    lng: airport.lng,
-    lat: airport.lat,
-    label: formatAirportLabel(airport),
-    source: "airport",
-  }));
-  updateSeedMarkers();
-
-  await runComputation(pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat })));
+  await runComputation(seedsForCompute);
 }
 
 function isDebugMode() {
@@ -838,13 +879,19 @@ function initParamPanel() {
     });
   }
 
-  for (const id of ["circuit", "clearance", "auto-window-size"]) {
+  for (const id of ["circuit", "clearance"]) {
     document.getElementById(id)?.addEventListener("input", () => {
       if (isAutoParamsMode()) {
         scheduleAutoCompute({ debounce: true });
       }
     });
   }
+
+  autoWindowSizeInput?.addEventListener("input", () => {
+    if (isAutoParamsMode()) {
+      scheduleAutoCompute({ debounce: true, refreshAirports: true });
+    }
+  });
 
   terrainZoomInput?.addEventListener("input", onTerrainZoomChange);
 
@@ -855,7 +902,7 @@ function initParamPanel() {
       updateAirspaceInfo(center.lng, center.lat);
     }
     if (isAutoParamsMode()) {
-      scheduleAutoCompute();
+      scheduleAutoCompute({ debounce: true });
     }
   });
 
@@ -867,9 +914,6 @@ function initParamPanel() {
     }
     if (isGeoTrackingOn()) {
       updateGeoLocationPath();
-    }
-    if (isAutoParamsMode()) {
-      scheduleAutoCompute();
     }
   });
 
@@ -959,28 +1003,63 @@ map = new maplibregl.Map({
   },
 });
 
+function lockGeolocatePanZoom() {
+  if (!map || !geolocateControl) {
+    return;
+  }
+  geoTrackPanZoom = map.getZoom();
+  geoTrackInitialPanPending = true;
+  geolocateControl.options.fitBoundsOptions = {
+    maxZoom: geoTrackPanZoom,
+    minZoom: geoTrackPanZoom,
+    linear: true,
+  };
+}
+
+function panGeolocateToPosition(coords) {
+  if (geoTrackPanZoom === null) {
+    return;
+  }
+  map.easeTo(
+    {
+      center: [coords.longitude, coords.latitude],
+      zoom: geoTrackPanZoom,
+      bearing: map.getBearing(),
+      duration: 500,
+    },
+    { geolocateSource: true }
+  );
+  geoTrackInitialPanPending = false;
+}
+
 map.addControl(new maplibregl.NavigationControl(), "top-right");
 geolocateControl = new maplibregl.GeolocateControl({
   positionOptions: { enableHighAccuracy: true },
   trackUserLocation: true,
 });
 map.addControl(geolocateControl, "top-right");
+geolocateControl._container?.addEventListener("click", lockGeolocatePanZoom, true);
 
 geolocateControl.on("geolocate", (event) => {
   lastGeoLngLat = {
     lng: event.coords.longitude,
     lat: event.coords.latitude,
   };
+  if (geoTrackInitialPanPending) {
+    panGeolocateToPosition(event.coords);
+  }
   updateGeoLocationPath();
   syncComputeContextBar();
 });
 
 geolocateControl.on("trackuserlocationstart", () => {
+  lockGeolocatePanZoom();
   updateGeoLocationPath();
   syncComputeContextBar();
 });
 
 geolocateControl.on("trackuserlocationend", () => {
+  geoTrackInitialPanPending = false;
   if (!isGeoTrackingOn()) {
     lastGeoLngLat = null;
     clearGeoPath();
@@ -2720,7 +2799,7 @@ map.on("load", async () => {
       raisePathLayer();
       updateSeedMarkers();
       if (isAutoParamsMode()) {
-        scheduleAutoCompute();
+        scheduleAutoCompute({ refreshAirports: true });
       }
     }
   } catch (error) {
@@ -2977,16 +3056,10 @@ async function runComputation(seedsOverride = null) {
   startComputeSession();
 
   try {
-    const centerLat = seeds.reduce((sum, seed) => sum + seed.lat, 0) / seeds.length;
-    const terrainZ = glideParams.terrainZoom;
-    const cellSizeM = metersPerPixel(centerLat, terrainZ);
-
-    setStatus(
-      `Fetching DEM z${terrainZ} (~${Math.round(cellSizeM)} m) — ${seeds.length} airports, L/D ${glideParams.glideRatio}, max alt ${glideParams.maxAltitude} m…`
-    );
     const dem = await buildDemGrid(seeds, {
       ...glideParams,
       openAipConfig,
+      onStatus: setStatus,
     });
 
     if (computeShouldStop) {

@@ -121,12 +121,23 @@ export async function buildDemGrid(seeds, params) {
   const maxTileY = Math.floor((gy0 + height - 1) / TILE_SIZE);
 
   const tiles = new Map();
+  const tileCount = (maxTileX - minTileX + 1) * (maxTileY - minTileY + 1);
+  const onStatus = params.onStatus;
+  onStatus?.(
+    `Fetching DEM z${z} (~${Math.round(cellSizeM)} m) — ${seeds.length} airports, ${tileCount} terrain tiles…`
+  );
+
+  let tilesLoaded = 0;
   const fetches = [];
   for (let ty = minTileY; ty <= maxTileY; ty += 1) {
     for (let tx = minTileX; tx <= maxTileX; tx += 1) {
       fetches.push(
         fetchTileDecoded(z, tx, ty).then((tile) => {
           tiles.set(`${z}/${tx}/${ty}`, tile);
+          tilesLoaded += 1;
+          onStatus?.(
+            `Fetching DEM z${z} — terrain tiles ${tilesLoaded}/${tileCount}…`
+          );
         })
       );
     }
@@ -155,9 +166,15 @@ export async function buildDemGrid(seeds, params) {
     params.openAipConfig &&
     openAipConfigured(params.openAipConfig)
   ) {
+    onStatus?.("Fetching airspace volumes…");
     airspaces = await fetchOverlayAirspaces(
       demBbox({ gx0, gy0, width, height, zoom: z }),
       params.openAipConfig
+    );
+    onStatus?.(
+      airspaces.length > 0
+        ? `Fetched ${airspaces.length} airspace volumes — applying to grid…`
+        : "No airspace volumes in grid area"
     );
   }
 
