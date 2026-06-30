@@ -64,12 +64,14 @@
         display: none;
       }
 
-      #airport-area-select-panel {
+      #airport-area-select-panel,
+      #manual-airport-select-panel {
         padding: 0.55rem 0.85rem;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
       }
 
-      #airport-area-select-panel[hidden] {
+      #airport-area-select-panel[hidden],
+      #manual-airport-select-panel[hidden] {
         display: none;
       }
 
@@ -237,7 +239,8 @@
         display: none;
       }
 
-      #seed-list {
+      #seed-list,
+      #manual-airport-list {
         display: flex;
         flex-direction: column;
         max-height: 8.5rem;
@@ -246,6 +249,14 @@
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 0.4rem;
         background: rgba(0, 0, 0, 0.15);
+      }
+
+      #manual-airport-list {
+        max-height: 4.05rem;
+      }
+
+      #manual-airport-list[hidden] {
+        display: none;
       }
 
       .seed-list-empty {
@@ -440,6 +451,14 @@
 
       #preview-field[hidden] {
         display: none;
+      }
+
+      #los-run-field {
+        display: none;
+      }
+
+      #params-shell.debug-mode #los-run-field {
+        display: flex;
       }
 
       #params-shell button.action-btn {
@@ -708,7 +727,7 @@
                   </button>
                 </div>
               </div>
-              <div class="param-field">
+              <div class="param-field" id="los-run-field">
                 <div class="param-label-row">
                   <span class="param-label">LOS run N</span>
                   <button type="button" class="param-help" data-help="los-run" aria-label="Help: LOS run N">ⓘ</button>
@@ -748,18 +767,20 @@
           </div>
 
           <div class="params-section" id="seeds-section">
-            <div class="params-section-title">Seeds</div>
-            <p class="param-section-desc" id="seed-input-hint"></p>
+            <div class="params-section-title">Airports</div>
+            <p class="param-section-desc">
+              Add airports with Manual selection or Draw airport areas.
+            </p>
             <div class="params-actions">
-              <button type="button" class="action-btn btn-blue" id="select-viewport-airports" disabled>
-                Select viewport airports
+              <button type="button" class="action-btn btn-blue" id="toggle-manual-airport-select">
+                Manual selection
               </button>
               <button type="button" class="action-btn btn-blue" id="toggle-airport-area-select" disabled>
                 Draw airport areas
               </button>
-              <button type="button" class="action-btn btn-red" id="clear-all-seeds">Clear all seeds</button>
+              <button type="button" class="action-btn btn-red" id="clear-all-seeds">Clear all airports</button>
             </div>
-            <div id="seed-list" class="seed-list" aria-label="Selected seeds"></div>
+            <div id="seed-list" class="seed-list" aria-label="Selected airports"></div>
             <div class="params-actions">
               <button type="button" class="action-btn btn-green" id="run-compute" disabled>Run</button>
             </div>
@@ -787,6 +808,34 @@
         </form>
         </div>
       </details>
+      <div id="manual-airport-select-panel" hidden>
+        <p class="param-section-desc">Click the map to place an airport.</p>
+        <div class="params-fields">
+          <div class="param-field param-field-full">
+            <label for="manual-airport-name">Name</label>
+            <input
+              type="text"
+              id="manual-airport-name"
+              placeholder="e.g. EGLL — London Heathrow"
+              autocomplete="off"
+            />
+          </div>
+        </div>
+        <div id="manual-airport-list" class="seed-list" hidden aria-label="Picked airports"></div>
+        <div class="params-actions">
+          <button type="button" class="action-btn btn-blue" id="add-manual-airport" disabled>
+            Add airport
+          </button>
+        </div>
+        <div class="params-actions">
+          <button type="button" class="action-btn btn-red" id="clear-manual-airport" disabled>
+            Clear
+          </button>
+          <button type="button" class="action-btn btn-green" id="finish-manual-airport" hidden>
+            Finished
+          </button>
+        </div>
+      </div>
       <div id="airport-area-select-panel" hidden>
         <p class="param-section-desc">
           Drag to draw the first area, then pan/zoom freely. Use Add new area to draw more, or drag corner handles to resize.
