@@ -82,6 +82,21 @@ function computeGridExtents(seedPixels, radiusPx) {
   };
 }
 
+function computeGridExtentsFromLngLatBounds(bounds, z) {
+  const nw = lngLatToGlobalPixel(bounds.west, bounds.north, z);
+  const se = lngLatToGlobalPixel(bounds.east, bounds.south, z);
+  const gx0 = Math.floor(nw.gx);
+  const gy0 = Math.floor(nw.gy);
+  const gx1 = Math.ceil(se.gx);
+  const gy1 = Math.ceil(se.gy);
+  return {
+    gx0,
+    gy0,
+    width: Math.max(1, gx1 - gx0),
+    height: Math.max(1, gy1 - gy0),
+  };
+}
+
 /**
  * Build a DEM grid large enough for every seed, with glide radius on each side.
  */
@@ -107,13 +122,23 @@ export async function buildDemGrid(seeds, params) {
     };
   });
 
-  const { minGx, minGy, width, height, radiusPx: gridRadiusPx } = computeGridExtents(
-    seedPixels,
-    radiusPx
-  );
+  let gx0;
+  let gy0;
+  let width;
+  let height;
+  let gridRadiusPx;
 
-  const gx0 = minGx - gridRadiusPx;
-  const gy0 = minGy - gridRadiusPx;
+  if (params.gridBounds) {
+    ({ gx0, gy0, width, height } = computeGridExtentsFromLngLatBounds(params.gridBounds, z));
+    gridRadiusPx = radiusPx;
+  } else {
+    const extents = computeGridExtents(seedPixels, radiusPx);
+    gridRadiusPx = extents.radiusPx;
+    gx0 = extents.minGx - gridRadiusPx;
+    gy0 = extents.minGy - gridRadiusPx;
+    width = extents.width;
+    height = extents.height;
+  }
 
   const minTileX = Math.floor(gx0 / TILE_SIZE);
   const maxTileX = Math.floor((gx0 + width - 1) / TILE_SIZE);
@@ -178,12 +203,18 @@ export async function buildDemGrid(seeds, params) {
     );
   }
 
-  const gridSeeds = seedPixels.map((seed) => ({
-    x: seed.gx - gx0,
-    y: seed.gy - gy0,
-    lng: seed.lng,
-    lat: seed.lat,
-  }));
+  const gridSeeds = seedPixels
+    .map((seed) => ({
+      x: seed.gx - gx0,
+      y: seed.gy - gy0,
+      lng: seed.lng,
+      lat: seed.lat,
+    }))
+    .filter((seed) => seed.x >= 0 && seed.x < width && seed.y >= 0 && seed.y < height);
+
+  if (gridSeeds.length === 0) {
+    throw new Error("No airports fall inside the compute grid");
+  }
 
   const dem = {
     elevation,

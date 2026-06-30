@@ -707,7 +707,7 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
     return;
   }
 
-  await runComputation(seedsForCompute);
+  await runComputation(seedsForCompute, { gridBounds: bounds });
 }
 
 function isDebugMode() {
@@ -2553,7 +2553,7 @@ function ensureContourLayers() {
     type: "line",
     source: "glide-contours",
     paint: {
-      "line-color": "#2878f0",
+      "line-color": "#000000",
       "line-width": 1.5,
       "line-opacity": 0.85,
     },
@@ -3034,7 +3034,7 @@ async function runFullBresenhamCompare() {
   }
 }
 
-async function runComputation(seedsOverride = null) {
+async function runComputation(seedsOverride = null, { gridBounds = null } = {}) {
   if (computing) {
     return;
   }
@@ -3060,6 +3060,7 @@ async function runComputation(seedsOverride = null) {
       ...glideParams,
       openAipConfig,
       onStatus: setStatus,
+      gridBounds,
     });
 
     if (computeShouldStop) {
