@@ -358,6 +358,47 @@
         color: #9aa4b2;
       }
 
+      #cell-tooltip {
+        position: fixed;
+        z-index: 4;
+        max-width: min(20rem, 88vw);
+        padding: 0.55rem 0.7rem;
+        border-radius: 0.55rem;
+        background: rgba(18, 22, 28, 0.94);
+        color: #e8f0ff;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(8px);
+        font-size: 0.78rem;
+        line-height: 1.4;
+        white-space: pre-line;
+        font-variant-numeric: tabular-nums;
+        pointer-events: none;
+      }
+
+      #cell-tooltip[hidden] {
+        display: none;
+      }
+
+      #cell-tooltip .delta-pos {
+        color: #6dd96d;
+      }
+
+      #cell-tooltip .delta-neg {
+        color: #f07070;
+      }
+
+      #cell-tooltip .path-info-heading {
+        display: block;
+        font-weight: 700;
+        margin-bottom: 0.15rem;
+      }
+
+      #cell-tooltip .path-info-note {
+        display: block;
+        margin-top: 0.2rem;
+        color: #9aa4b2;
+      }
+
       #params-shell button.action-btn.btn-blue {
         border-color: rgba(90, 159, 255, 0.55);
         background: rgba(90, 159, 255, 0.2);
@@ -888,6 +929,7 @@
       </div>
     </div>
     <div id="param-help-popover" hidden role="tooltip"></div>
+    <div id="cell-tooltip" hidden aria-live="polite"></div>
     <div id="compute-context-bar" hidden aria-live="polite"></div>
     <div id="map"></div>
     <div id="info" aria-live="polite">

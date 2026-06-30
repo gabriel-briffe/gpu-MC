@@ -46,6 +46,7 @@ const info = document.getElementById("info");
 const airspaceInfoEl = document.getElementById("airspace-info");
 const statusEl = document.getElementById("status");
 const cellInfoEl = document.getElementById("cell-info");
+const cellTooltipEl = document.getElementById("cell-tooltip");
 const paramsForm = document.getElementById("params");
 const vizModeSelect = document.getElementById("viz-mode");
 const previewFieldEl = document.getElementById("preview-field");
@@ -99,6 +100,9 @@ let openAipConfig = null;
 let touchHandledRecently = false;
 let footerStatusText = "Loading WebGPU…";
 let footerCellHtml = null;
+let lastInspectAnchor = null;
+let lastInspectLngLat = null;
+let lastPathScreenBounds = null;
 let airportAreaSelectMode = false;
 let airportAreaDrawMode = false;
 let airportSelectRects = [];
@@ -158,28 +162,147 @@ function markTouchHandled() {
 }
 
 function updateParamsFooter() {
-  if (!cellInfoEl || !statusEl) {
+  if (!statusEl) {
     return;
   }
-  if (footerCellHtml) {
-    cellInfoEl.innerHTML = footerCellHtml;
-    cellInfoEl.hidden = false;
-    statusEl.hidden = true;
-    return;
-  }
-  cellInfoEl.hidden = true;
   statusEl.hidden = false;
   statusEl.textContent = footerStatusText;
+}
+
+function pathScreenBounds(coordinates) {
+  if (!coordinates?.length) {
+    return null;
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const [lng, lat] of coordinates) {
+    const pt = map.project([lng, lat]);
+    minX = Math.min(minX, pt.x);
+    minY = Math.min(minY, pt.y);
+    maxX = Math.max(maxX, pt.x);
+    maxY = Math.max(maxY, pt.y);
+  }
+
+  const pad = 14;
+  return {
+    minX: minX - pad,
+    minY: minY - pad,
+    maxX: maxX + pad,
+    maxY: maxY + pad,
+  };
+}
+
+function tooltipOverlapsPath(left, top, width, height) {
+  if (!lastPathScreenBounds) {
+    return false;
+  }
+  const { minX, minY, maxX, maxY } = lastPathScreenBounds;
+  return left < maxX && left + width > minX && top < maxY && top + height > minY;
+}
+
+function viewportInsets() {
+  const pad = 10;
+  const bottomPad =
+    pad +
+    (document.body.classList.contains("has-compute-context")
+      ? computeContextBarEl?.offsetHeight ?? 48
+      : 0);
+  return {
+    left: pad,
+    top: pad,
+    right: window.innerWidth - pad,
+    bottom: window.innerHeight - bottomPad,
+  };
+}
+
+function positionCellTooltip() {
+  if (!cellTooltipEl || cellTooltipEl.hidden || !lastInspectAnchor) {
+    return;
+  }
+
+  const { x, y } = lastInspectAnchor;
+  const gap = 16;
+  const width = cellTooltipEl.offsetWidth;
+  const height = cellTooltipEl.offsetHeight;
+  const { left: minLeft, top: minTop, right: maxRight, bottom: maxBottom } = viewportInsets();
+
+  const placements = [
+    { left: x + gap, top: y + gap },
+    { left: x - gap - width, top: y + gap },
+    { left: x + gap, top: y - gap - height },
+    { left: x - gap - width, top: y - gap - height },
+  ];
+
+  let chosen = placements.find(
+    (place) =>
+      place.left >= minLeft &&
+      place.top >= minTop &&
+      place.left + width <= maxRight &&
+      place.top + height <= maxBottom &&
+      !tooltipOverlapsPath(place.left, place.top, width, height)
+  );
+
+  if (!chosen && lastPathScreenBounds) {
+    const pcx = (lastPathScreenBounds.minX + lastPathScreenBounds.maxX) / 2;
+    const pcy = (lastPathScreenBounds.minY + lastPathScreenBounds.maxY) / 2;
+    const dx = x - pcx;
+    const dy = y - pcy;
+    const len = Math.hypot(dx, dy) || 1;
+    const push = Math.max(width, height) / 2 + gap + 24;
+    chosen = {
+      left: x + (dx / len) * push - width / 2,
+      top: y + (dy / len) * push - height / 2,
+    };
+  }
+
+  chosen ??= placements[0];
+
+  chosen.left = Math.max(minLeft, Math.min(chosen.left, maxRight - width));
+  chosen.top = Math.max(minTop, Math.min(chosen.top, maxBottom - height));
+
+  cellTooltipEl.style.left = `${chosen.left}px`;
+  cellTooltipEl.style.top = `${chosen.top}px`;
+}
+
+function updateCellTooltip() {
+  if (!cellTooltipEl) {
+    return;
+  }
+  if (!footerCellHtml) {
+    cellTooltipEl.hidden = true;
+    cellTooltipEl.innerHTML = "";
+    return;
+  }
+
+  cellTooltipEl.innerHTML = footerCellHtml;
+  cellTooltipEl.hidden = false;
+  window.requestAnimationFrame(() => positionCellTooltip());
 }
 
 function clearCellInspect() {
   footerCellHtml = null;
   lastHoverCell = null;
+  lastInspectAnchor = null;
+  lastInspectLngLat = null;
+  lastPathScreenBounds = null;
   clearGlidePath();
+  updateCellTooltip();
   updateParamsFooter();
 }
 
-function showCellInspect(cell) {
+function isPointerOverParams(clientX, clientY) {
+  if (!paramsShell) {
+    return false;
+  }
+  const target = document.elementFromPoint(clientX, clientY);
+  return Boolean(target && paramsShell.contains(target));
+}
+
+function showCellInspect(cell, anchorPoint = null) {
   if (!cell) {
     clearCellInspect();
     return;
@@ -187,15 +310,38 @@ function showCellInspect(cell) {
 
   footerCellHtml = formatHoverTip(cell);
 
+  if (coneState?.dem) {
+    const pt = gridCellToLngLat(cell.gi, cell.gj, coneState.dem);
+    lastInspectLngLat = { lng: pt.lng, lat: pt.lat };
+  }
+
+  if (anchorPoint) {
+    lastInspectAnchor = { x: anchorPoint.x, y: anchorPoint.y };
+  } else if (lastInspectLngLat) {
+    const projected = map.project([lastInspectLngLat.lng, lastInspectLngLat.lat]);
+    lastInspectAnchor = { x: projected.x, y: projected.y };
+  }
+
   if (cell.isReachable) {
     lastHoverCell = cell;
     refreshHoverPath(cell);
   } else {
     lastHoverCell = null;
+    lastPathScreenBounds = null;
     clearGlidePath();
+    updateCellTooltip();
   }
 
   updateParamsFooter();
+}
+
+function syncCellTooltipOnMapMove() {
+  if (!lastHoverCell || !lastInspectLngLat) {
+    return;
+  }
+  const projected = map.project([lastInspectLngLat.lng, lastInspectLngLat.lat]);
+  lastInspectAnchor = { x: projected.x, y: projected.y };
+  refreshHoverPath(lastHoverCell);
 }
 
 function startComputeSession() {
@@ -464,6 +610,9 @@ function initParamPanel() {
   syncCompareLosButton();
   syncDebugUi();
   updateParamsFooter();
+
+  paramsShell?.addEventListener("pointerenter", clearCellInspect);
+  paramsShell?.addEventListener("touchstart", clearCellInspect, { passive: true });
 }
 
 initParamPanel();
@@ -1543,6 +1692,9 @@ function syncComputeContextBar() {
   computeContextBarEl.textContent = `L/D : ${glideRatio} - Ground : ${groundClearance} m - Circuit : ${circuitHeight} m`;
   computeContextBarEl.hidden = false;
   document.body.classList.add("has-compute-context");
+  if (lastHoverCell) {
+    window.requestAnimationFrame(() => positionCellTooltip());
+  }
 }
 
 function traceOriginRelayPath(x, y, dem, originX, originY) {
@@ -1662,12 +1814,16 @@ function refreshHoverPath(cell) {
   const { coordinates } = traceGlidePath(cell.gi, cell.gj);
   if (coordinates.length >= 2) {
     updateGlidePath(coordinates);
+    lastPathScreenBounds = pathScreenBounds(coordinates);
   } else if (coordinates.length === 1) {
     const pt = coordinates[0];
     updateGlidePath([pt, pt]);
+    lastPathScreenBounds = pathScreenBounds([pt, pt]);
   } else {
     clearGlidePath();
+    lastPathScreenBounds = null;
   }
+  updateCellTooltip();
 }
 
 function syncCompareLosButton() {
@@ -2105,6 +2261,11 @@ map.on("mousemove", (event) => {
     return;
   }
 
+  const { clientX, clientY } = event.originalEvent;
+  if (isPointerOverParams(clientX, clientY)) {
+    return;
+  }
+
   const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
   if (cell === null) {
     if (!isDebugMode()) {
@@ -2113,8 +2274,11 @@ map.on("mousemove", (event) => {
     return;
   }
 
-  showCellInspect(cell);
+  showCellInspect(cell, event.point);
 });
+
+map.on("move", syncCellTooltipOnMapMove);
+map.on("zoom", syncCellTooltipOnMapMove);
 
 map.on("mousedown", (event) => {
   if (event.originalEvent.button !== 0 || !airportAreaSelectMode) {
@@ -2203,7 +2367,7 @@ map.on("touchend", (event) => {
 
   const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
   if (cell?.isReachable) {
-    showCellInspect(cell);
+    showCellInspect(cell, event.point);
   }
 });
 
