@@ -64,10 +64,27 @@ import {
   EMPTY_PATH,
   CACHE_HIDDEN_LAYER_IDS,
   COMPUTE_DONE_STATUS_CLEAR_MS,
-  PARAM_HELP,
-  VIZ_HINTS,
   GLIDE_PATH_PAINT,
 } from "./constants.js";
+import { createApp } from "./app-state.js";
+import { formatAirportLabel, seedDisplayLabel } from "./airport-label.js";
+import {
+  formatComputeDone,
+  formatHoverTip as formatHoverTipCore,
+} from "./compute/format.js";
+import {
+  initParamsPanel,
+  parseVizMode,
+  syncParamVisibility,
+  syncSectorsOpacityUi,
+  applySectorsOverlayOpacity,
+  syncDebugUi,
+  isDebugMode,
+  isAutoParamsMode,
+  getSectorsOverlayOpacity,
+} from "./params/panel.js";
+
+const app = createApp();
 
 let map;
 
@@ -180,20 +197,14 @@ let restAirspaceLayersReady = false;
 let cachedAirportMapReady = false;
 let cacheDownloadInProgress = false;
 let overlayVisibilityBeforeCache = null;
-const selectedCacheCells = new Set();
-
-const interaction = {
-  hoverPath: false,
-  tapPath: false,
-};
 
 function detectInteractionMode() {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   const fine = window.matchMedia("(pointer: fine)").matches;
   const hover = window.matchMedia("(hover: hover)").matches;
 
-  interaction.hoverPath = hover && fine;
-  interaction.tapPath = coarse;
+  app.interaction.hoverPath = hover && fine;
+  app.interaction.tapPath = coarse;
 
   updateInteractionHints();
 }
@@ -211,10 +222,10 @@ function updateInteractionHints() {
   const { pathOnly } = parseVizMode();
   const surface = pathOnly ? "map" : "overlay";
 
-  if (interaction.hoverPath) {
+  if (app.interaction.hoverPath) {
     pathParts.push(`Hover over the ${surface} to show the glide path`);
   }
-  if (interaction.tapPath) {
+  if (app.interaction.tapPath) {
     pathParts.push(`tap the ${surface} to show the glide path`);
   }
 
@@ -503,131 +514,11 @@ function requestStopCompute() {
   setStatus("Stopping after current GPU step…");
 }
 
-function formatComputeDone(result, extra = "") {
-  const suffix = result.stopped ? " (stopped)" : "";
-  return `Done — ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms GPU${suffix}${extra}`;
-}
-
 function makeComputeOptions(dem, glideParams) {
   return {
     onProgress: makeComputeProgressHandler(dem, glideParams),
     shouldStop: () => computeShouldStop,
   };
-}
-
-let openParamHelpButton = null;
-
-function parseVizMode() {
-  let mode = vizModeSelect?.value ?? "contours";
-  if (!isDebugMode() && (mode === "stripes" || mode === "raw")) {
-    mode = "contours";
-  }
-  return {
-    mode,
-    pathOnly: mode === "path-only",
-    sectors: mode === "sectors",
-    raw: mode === "raw",
-    contours: mode === "contours",
-  };
-}
-
-function syncVizModeDebugOptions() {
-  if (!vizModeSelect) {
-    return;
-  }
-  const debug = isDebugMode();
-  for (const option of vizModeSelect.querySelectorAll(".viz-mode-debug-only")) {
-    option.hidden = !debug;
-    option.disabled = !debug;
-  }
-  const mode = vizModeSelect.value;
-  if (!debug && (mode === "stripes" || mode === "raw")) {
-    vizModeSelect.value = "contours";
-    syncParamVisibility();
-    if (coneState && !computing) {
-      setStatus("Overlay type changed — click Run to refresh");
-    }
-  }
-}
-
-function syncParamVisibility() {
-  const { mode } = parseVizMode();
-  if (previewFieldEl) {
-    previewFieldEl.hidden = mode === "contours" || mode === "path-only";
-  }
-  if (vizHintEl) {
-    vizHintEl.textContent = VIZ_HINTS[mode] ?? "";
-  }
-  syncSectorsOpacityUi();
-  updateInteractionHints();
-}
-
-function getSectorsOverlayOpacity() {
-  const value = Number.parseInt(sectorsOpacityInput?.value ?? "50", 10);
-  if (!Number.isFinite(value)) {
-    return 0.5;
-  }
-  return Math.max(0, Math.min(100, value)) / 100;
-}
-
-function syncSectorsOpacityUi() {
-  const show = parseVizMode().sectors;
-  if (sectorsOpacityFieldEl) {
-    sectorsOpacityFieldEl.hidden = !show;
-  }
-  if (sectorsOpacityHintEl && sectorsOpacityInput) {
-    sectorsOpacityHintEl.textContent = `${sectorsOpacityInput.value}%`;
-  }
-}
-
-function applySectorsOverlayOpacity() {
-  if (!parseVizMode().sectors || !map) {
-    return;
-  }
-  const opacity = getSectorsOverlayOpacity();
-  if (map.getLayer("glide-cone")) {
-    map.setPaintProperty("glide-cone", "raster-opacity", opacity);
-  }
-  if (map.getLayer("glide-sectors-line")) {
-    map.setPaintProperty("glide-sectors-line", "line-opacity", opacity);
-  }
-}
-
-function isAutoParamsMode() {
-  return paramsShell?.classList.contains("auto-mode") ?? false;
-}
-
-function setParamsMode(mode) {
-  const auto = mode === "auto";
-  paramsShell?.classList.toggle("auto-mode", auto);
-  paramsModeAutoBtn?.setAttribute("aria-pressed", String(auto));
-  paramsModeManualBtn?.setAttribute("aria-pressed", String(!auto));
-  if (auto) {
-    if (manualAirportSelectMode) {
-      exitManualAirportSelectMode(true);
-    }
-    if (airportAreaSelectMode) {
-      exitAirportAreaSelectMode(true);
-    }
-    if (openParamHelpButton?.dataset.help) {
-      const manualOnlyHelp = new Set([
-        "preview",
-        "compare-los",
-        "los-run",
-      ]);
-      if (manualOnlyHelp.has(openParamHelpButton.dataset.help)) {
-        closeParamHelp();
-      }
-    }
-    scheduleAutoCompute({ refreshAirports: true });
-  } else {
-    clearTimeout(autoComputeDebounceTimer);
-    autoComputeDebounceTimer = null;
-    autoComputePending = false;
-    autoComputeNeedsAirportRefresh = false;
-    autoComputeRegion = null;
-  }
-  syncSeedLayerVisibility();
 }
 
 function computeAutoWindowSizeFromGlideKm() {
@@ -697,6 +588,9 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
     if (isAutoParamsMode()) {
       setStatus("Auto mode needs OpenAIP — check configuration");
     }
+    return;
+  }
+  if (!map) {
     return;
   }
 
@@ -780,6 +674,9 @@ async function flushAutoCompute() {
   if (!autoComputePending || !isAutoParamsMode() || cacheSelectMode || computing) {
     return;
   }
+  if (!map) {
+    return;
+  }
   autoComputePending = false;
   const refreshAirports = autoComputeNeedsAirportRefresh;
   autoComputeNeedsAirportRefresh = false;
@@ -804,47 +701,8 @@ function onAutoModeMapMoveEnd() {
   scheduleAutoCompute({ debounce: true, refreshAirports: true });
 }
 
-function isDebugMode() {
-  return debugModeInput?.checked ?? false;
-}
-
 function isHighlightDownhillGroundPathEnabled() {
   return highlightDownhillGroundPathInput?.checked ?? false;
-}
-
-function getParamHelpText(key) {
-  let text = PARAM_HELP[key];
-  if (!text) {
-    return null;
-  }
-  if (key === "los-run" && isDebugMode()) {
-    text +=
-      "\n\nFull Bresenham comparison and path-length diagnostics are available in Debug mode.";
-  }
-  return text;
-}
-
-function syncDebugUi() {
-  const debug = isDebugMode();
-  paramsShell?.classList.toggle("debug-mode", debug);
-  if (!debug && losRunInput) {
-    losRunInput.value = "0";
-  }
-  if (!debug && openParamHelpButton?.dataset.help === "los-run") {
-    closeParamHelp();
-  }
-  if (openParamHelpButton?.dataset.help === "los-run" && paramHelpPopover) {
-    const text = getParamHelpText("los-run");
-    if (text) {
-      paramHelpPopover.textContent = text;
-    }
-  }
-  syncCompareLosButton();
-  syncDownloadContoursButton();
-  syncVizModeDebugOptions();
-  if (lastInspectCell) {
-    showCellInspect(lastInspectCell);
-  }
 }
 
 function isIncludeAirspaceEnabled() {
@@ -920,141 +778,6 @@ function onTerrainZoomChange() {
   }
 }
 
-function closeParamHelp() {
-  if (!paramHelpPopover) {
-    return;
-  }
-  paramHelpPopover.hidden = true;
-  openParamHelpButton = null;
-}
-
-function openParamHelp(button) {
-  const key = button.dataset.help;
-  const text = getParamHelpText(key);
-  if (!text || !paramHelpPopover) {
-    return;
-  }
-  if (openParamHelpButton === button) {
-    closeParamHelp();
-    return;
-  }
-  paramHelpPopover.textContent = text;
-  paramHelpPopover.hidden = false;
-  const rect = button.getBoundingClientRect();
-  paramHelpPopover.style.top = `${rect.bottom + 6}px`;
-  paramHelpPopover.style.left = `${Math.min(rect.left, window.innerWidth - 290)}px`;
-  openParamHelpButton = button;
-}
-
-function initParamPanel() {
-  syncParamVisibility();
-  setParamsMode("auto");
-  updateGridRadiusHint();
-  updateTerrainResolutionHint();
-  syncAutoWindowSizeUi();
-
-  paramsModeAutoBtn?.addEventListener("click", () => setParamsMode("auto"));
-  paramsModeManualBtn?.addEventListener("click", () => setParamsMode("manual"));
-
-  for (const button of document.querySelectorAll(".param-help")) {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      openParamHelp(button);
-    });
-  }
-
-  document.addEventListener("click", (event) => {
-    if (
-      openParamHelpButton &&
-      event.target !== openParamHelpButton &&
-      event.target !== paramHelpPopover
-    ) {
-      closeParamHelp();
-    }
-  });
-
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closeParamHelp();
-    }
-  });
-
-  for (const id of ["ld", "max-alt"]) {
-    document.getElementById(id)?.addEventListener("input", () => {
-      updateGridRadiusHint();
-      syncAutoWindowSizeUi();
-      if (isAutoParamsMode()) {
-        scheduleAutoCompute({ debounce: true });
-      }
-    });
-  }
-
-  for (const id of ["circuit", "clearance"]) {
-    document.getElementById(id)?.addEventListener("input", () => {
-      if (isAutoParamsMode()) {
-        scheduleAutoCompute({ debounce: true });
-      }
-    });
-  }
-
-  autoWindowSizeInput?.addEventListener("input", () => {
-    if (isAutoParamsMode()) {
-      scheduleAutoCompute({ debounce: true, refreshAirports: true });
-    }
-  });
-
-  autoWindowFromGlideInput?.addEventListener("change", () => {
-    syncAutoWindowSizeUi();
-    if (isAutoParamsMode()) {
-      scheduleAutoCompute({ debounce: true, refreshAirports: true });
-    }
-  });
-
-  terrainZoomInput?.addEventListener("input", onTerrainZoomChange);
-
-  includeAirspaceInput?.addEventListener("change", () => {
-    syncAirspaceUi();
-    if (isIncludeAirspaceEnabled() && map?.getSource("openaip")) {
-      const center = map.getCenter();
-      updateAirspaceInfo(center.lng, center.lat);
-    }
-    if (isAutoParamsMode()) {
-      scheduleAutoCompute({ debounce: true });
-    }
-  });
-
-  debugModeInput?.addEventListener("change", syncDebugUi);
-
-  sectorsOpacityInput?.addEventListener("input", () => {
-    syncSectorsOpacityUi();
-    applySectorsOverlayOpacity();
-  });
-
-  highlightDownhillGroundPathInput?.addEventListener("change", () => {
-    if (lastInspectCell) {
-      refreshInspectPath(lastInspectCell);
-    }
-    if (isGeoTrackingOn()) {
-      updateGeoLocationPath();
-    }
-  });
-
-  document.getElementById("los-run")?.addEventListener("input", syncCompareLosButton);
-  detectInteractionMode();
-  for (const query of ["(pointer: coarse)", "(pointer: fine)", "(hover: hover)"]) {
-    window.matchMedia(query).addEventListener("change", detectInteractionMode);
-  }
-  syncCompareLosButton();
-  syncDebugUi();
-  updateParamsFooter();
-
-  paramsShell?.addEventListener("pointerenter", clearCellInspect);
-  paramsShell?.addEventListener("touchstart", clearCellInspect, { passive: true });
-}
-
-initParamPanel();
-
 function getGlideParams() {
   const glideRatio = Number.parseFloat(document.getElementById("ld").value);
   const circuitHeight = Number.parseFloat(document.getElementById("circuit").value);
@@ -1093,6 +816,45 @@ function getGlideParams() {
       Number.isFinite(updateMapMs) && updateMapMs >= 0 ? updateMapMs : 100,
   };
 }
+
+app.hooks = {
+  getMap: () => map,
+  getConeState: () => coneState,
+  isComputing: () => computing,
+  getLastInspectCell: () => lastInspectCell,
+  getManualAirportSelectMode: () => manualAirportSelectMode,
+  getAirportAreaSelectMode: () => airportAreaSelectMode,
+  clearAutoComputeScheduling: () => {
+    clearTimeout(autoComputeDebounceTimer);
+    autoComputeDebounceTimer = null;
+    autoComputePending = false;
+    autoComputeNeedsAirportRefresh = false;
+    autoComputeRegion = null;
+  },
+  exitManualAirportSelectMode,
+  exitAirportAreaSelectMode,
+  scheduleAutoCompute,
+  syncSeedLayerVisibility,
+  syncCompareLosButton,
+  syncDownloadContoursButton,
+  showCellInspect,
+  setStatus,
+  syncAirspaceUi,
+  updateAirspaceInfo,
+  refreshInspectPath,
+  updateGeoLocationPath,
+  isGeoTrackingOn,
+  clearCellInspect,
+  updateParamsFooter,
+  detectInteractionMode,
+  onTerrainZoomChange,
+  updateGridRadiusHint,
+  updateTerrainResolutionHint,
+  syncAutoWindowSizeUi,
+  updateInteractionHints,
+  isIncludeAirspaceEnabled,
+};
+initParamsPanel(app, dom);
 
 registerTerrainTileProtocol();
 
@@ -1349,13 +1111,6 @@ function syncSeedLayerVisibility() {
 
 function seedKey(seed) {
   return `${seed.lng.toFixed(5)},${seed.lat.toFixed(5)}`;
-}
-
-function formatAirportLabel(airport) {
-  const props = airport.properties ?? {};
-  const name = props.name;
-  const icao = props.icao_code ?? props.icaoCode;
-  return name ?? icao ?? `${airport.lat.toFixed(4)}°, ${airport.lng.toFixed(4)}°`;
 }
 
 function normalizeAirportSelectRect(a, b) {
@@ -2013,13 +1768,6 @@ function clearAirportSelectAreas() {
   syncAirportAreaSelectUi();
 }
 
-function seedDisplayLabel(seed) {
-  if (seed.label) {
-    return seed.label;
-  }
-  return `${seed.lat.toFixed(4)}°, ${seed.lng.toFixed(4)}°`;
-}
-
 function sortedSeedEntries() {
   return pendingSeeds
     .map((seed, index) => ({ seed, index }))
@@ -2644,7 +2392,7 @@ function syncCacheDownloadButton() {
     return;
   }
   runCacheDownloadBtn.disabled =
-    !cacheSelectMode || selectedCacheCells.size === 0 || cacheDownloadInProgress;
+    !cacheSelectMode || app.selectedCacheCells.size === 0 || cacheDownloadInProgress;
 }
 
 function buildCacheGridFeatures() {
@@ -2666,7 +2414,7 @@ function buildCacheGridFeatures() {
         type: "Feature",
         properties: {
           cellKey,
-          selected: selectedCacheCells.has(cellKey),
+          selected: app.selectedCacheCells.has(cellKey),
         },
         geometry: {
           type: "Polygon",
@@ -3070,9 +2818,9 @@ function enterCacheSelectMode() {
 
   cancelPendingAutoCompute();
   cacheSelectMode = true;
-  selectedCacheCells.clear();
+  app.selectedCacheCells.clear();
   for (const cellKey of getLastCachedCellKeysForSelection()) {
-    selectedCacheCells.add(cellKey);
+    app.selectedCacheCells.add(cellKey);
   }
   paramsShell?.classList.add("cache-select-mode");
   if (paramsPanel) {
@@ -3089,9 +2837,9 @@ function enterCacheSelectMode() {
   refreshCacheSelectOverlays();
   syncCacheDownloadButton();
   setStatus(
-    selectedCacheCells.size === 0
+    app.selectedCacheCells.size === 0
       ? "Click 1° cells to select areas to cache"
-      : `${selectedCacheCells.size} cell${selectedCacheCells.size === 1 ? "" : "s"} selected — click Cache to verify or add cells`
+      : `${app.selectedCacheCells.size} cell${app.selectedCacheCells.size === 1 ? "" : "s"} selected — click Cache to verify or add cells`
   );
 }
 
@@ -3101,7 +2849,7 @@ function exitCacheSelectMode() {
   }
 
   cacheSelectMode = false;
-  selectedCacheCells.clear();
+  app.selectedCacheCells.clear();
   paramsShell?.classList.remove("cache-select-mode");
   if (cacheDataPanel) {
     cacheDataPanel.hidden = true;
@@ -3119,29 +2867,29 @@ function exitCacheSelectMode() {
 
 function toggleCacheCellSelection(lng, lat) {
   const key = cacheCellKey(lng, lat);
-  if (selectedCacheCells.has(key)) {
-    selectedCacheCells.delete(key);
+  if (app.selectedCacheCells.has(key)) {
+    app.selectedCacheCells.delete(key);
   } else {
-    selectedCacheCells.add(key);
+    app.selectedCacheCells.add(key);
   }
   updateCacheGridData();
   syncCacheDownloadButton();
   setStatus(
-    selectedCacheCells.size === 0
+    app.selectedCacheCells.size === 0
       ? "Click 1° cells to select areas to cache"
-      : `${selectedCacheCells.size} cell${selectedCacheCells.size === 1 ? "" : "s"} selected`
+      : `${app.selectedCacheCells.size} cell${app.selectedCacheCells.size === 1 ? "" : "s"} selected`
   );
 }
 
 async function runCacheDownload() {
-  if (!cacheSelectMode || selectedCacheCells.size === 0 || cacheDownloadInProgress) {
+  if (!cacheSelectMode || app.selectedCacheCells.size === 0 || cacheDownloadInProgress) {
     return;
   }
 
   cacheDownloadInProgress = true;
   syncCacheDownloadButton();
   try {
-    await buildCacheBundle([...selectedCacheCells], openAipConfig, setStatus);
+    await buildCacheBundle([...app.selectedCacheCells], openAipConfig, setStatus);
     refreshCacheSelectOverlays();
     refreshCachedAirportMapLayer();
     refreshRestAirspaceLayerData({ allCells: cacheSelectMode });
@@ -3435,58 +3183,12 @@ function sampleDemCell(lng, lat) {
   };
 }
 
-function formatDistanceKm(distanceM) {
-  const km = (distanceM / 1000).toFixed(1);
-  return `<span class="tooltip-num">${km} km</span>`;
-}
-
-function tooltipNum(value, { warn = false, unit = "m" } = {}) {
-  const classes = warn ? "tooltip-num tooltip-num-warn" : "tooltip-num";
-  return `<span class="${classes}">${value}${unit ? ` ${unit}` : ""}</span>`;
-}
-
 function formatHoverTip(cell) {
-  const minAltVal = cell.alt;
-  const groundClearance = coneState?.groundClearance ?? 100;
-  const minAlt = minAltVal !== null ? tooltipNum(Math.round(minAltVal)) : "—";
-  const groundElev = tooltipNum(Math.round(cell.groundElev));
-
-  let aboveGroundLine = "—";
-  if (minAltVal !== null) {
-    const aboveGround = Math.round(minAltVal - cell.groundElev);
-    const warn = aboveGround < 1.2 * groundClearance;
-    aboveGroundLine = tooltipNum(aboveGround, { warn });
-  }
-
-  const metrics = seedPathMetrics(cell);
-  const pathLengthLine =
-    metrics !== null ? formatDistanceKm(metrics.distanceM) : "—";
-  const requiredLine =
-    metrics !== null ? tooltipNum(Math.round(metrics.requiredAlt)) : "—";
-
-  let deltaLine = "—";
-  if (minAltVal !== null && metrics !== null) {
-    const delta = Math.round(minAltVal - metrics.requiredAlt);
-    const sign = delta > 0 ? "+" : "";
-    const cls = delta >= 0 ? "delta-pos" : "delta-neg";
-    deltaLine = `<span class="${cls} tooltip-num">${sign}${delta} m</span>`;
-  }
-
-  let text =
-    `minimum alt: ${minAlt}\n` +
-    `ground elevation: ${groundElev}\n` +
-    `above ground: ${aboveGroundLine}`;
-
-  if (isDebugMode()) {
-    text +=
-      `\n\n<span class="path-info-heading">comparison with measured path length (haversine):</span>\n` +
-      `path length: ${pathLengthLine}\n` +
-      `required alt: ${requiredLine}\n` +
-      `delta: ${deltaLine}\n` +
-      `<span class="path-info-note">delta heavily positive might mean path went over a saddle, or starts from a mountain well above glide, no issue in that case. use this on flatland at your latitude to check for unacceptable errors</span>`;
-  }
-
-  return text;
+  return formatHoverTipCore(cell, {
+    groundClearance: coneState?.groundClearance ?? 100,
+    debugMode: isDebugMode(),
+    metrics: seedPathMetrics(cell),
+  });
 }
 
 function updateGlidePath(pathData) {
@@ -3580,7 +3282,7 @@ map.on("mousemove", (event) => {
     return;
   }
 
-  if (!interaction.hoverPath) {
+  if (!app.interaction.hoverPath) {
     return;
   }
 
@@ -3626,7 +3328,7 @@ map.on("mouseleave", () => {
     cancelAirportRectInteraction();
     syncAirportAreaSelectUi();
   }
-  if (!interaction.hoverPath) {
+  if (!app.interaction.hoverPath) {
     return;
   }
   if (!isDebugMode()) {
@@ -3717,7 +3419,7 @@ map.on("click", (event) => {
     return;
   }
 
-  if (!interaction.tapPath || !coneState) {
+  if (!app.interaction.tapPath || !coneState) {
     return;
   }
 
