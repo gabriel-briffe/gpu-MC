@@ -752,6 +752,16 @@ function clearGeoContextReadings() {
   }
 }
 
+function formatReqLdDisplay(reqLd) {
+  if (reqLd === null) {
+    return "—";
+  }
+  if (reqLd > 100) {
+    return "100+";
+  }
+  return reqLd.toFixed(1);
+}
+
 function setGeoContextReadings({ minAlt, userAlt, reqLd }) {
   if (computeContextMinAltReadingEl) {
     computeContextMinAltReadingEl.textContent =
@@ -767,8 +777,7 @@ function setGeoContextReadings({ minAlt, userAlt, reqLd }) {
     }
   }
   if (computeContextReqLdReadingEl) {
-    computeContextReqLdReadingEl.textContent =
-      reqLd !== null ? reqLd.toFixed(1) : "—";
+    computeContextReqLdReadingEl.textContent = formatReqLdDisplay(reqLd);
   }
 }
 
