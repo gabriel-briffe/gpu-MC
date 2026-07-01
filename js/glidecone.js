@@ -508,17 +508,76 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+const COLOR_SHADER_SECTORS = /* wgsl */ `
+struct Params {
+  width: u32,
+  height: u32,
+  homeX: i32,
+  homeY: i32,
+  cellSizeM: f32,
+  glideRatio: f32,
+  maxAlt: f32,
+  homeAlt: f32,
+};
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> alt: array<f32>;
+@group(0) @binding(2) var<storage, read> origin: array<vec2<i32>>;
+@group(0) @binding(3) var<storage, read> ground: array<u32>;
+@group(0) @binding(4) var<storage, read_write> rgba: array<u32>;
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let x = i32(gid.x);
+  let y = i32(gid.y);
+  if (x >= i32(params.width) || y >= i32(params.height)) {
+    return;
+  }
+
+  let i = u32(y) * params.width + u32(x);
+  let o = origin[i];
+  let a = alt[i];
+
+  if (ground[i] == 1u) {
+    if (o.x == x && o.y == y) {
+      let r = 255u;
+      let g = 48u;
+      let b = 48u;
+      let alpha = 220u;
+      rgba[i] = r | (g << 8u) | (b << 16u) | (alpha << 24u);
+    } else {
+      rgba[i] = 0u;
+    }
+    return;
+  }
+
+  if (o.x < 0 || a >= params.maxAlt) {
+    rgba[i] = 0u;
+    return;
+  }
+
+  let r = 40u;
+  let g = 120u;
+  let b = 255u;
+  let alpha = 170u;
+  rgba[i] = r | (g << 8u) | (b << 16u) | (alpha << 24u);
+}
+`;
+
 const COLOR_SHADER_RED = COLOR_SHADER.replace(
   "let r = 40u;",
   "let r = 255u;"
 ).replace("let g = 120u;", "let g = 48u;").replace("let b = 255u;", "let b = 48u;");
 
-function pickColorPipeline(pipelines, overlayColor, raw) {
+function pickColorPipeline(pipelines, overlayColor, { raw = false, sectors = false } = {}) {
   if (overlayColor === "red") {
     return { pipeline: pipelines.colorRed.pipeline, layout: pipelines.colorRed.layout };
   }
   if (raw) {
     return { pipeline: pipelines.colorRaw.pipeline, layout: pipelines.colorRaw.layout };
+  }
+  if (sectors) {
+    return { pipeline: pipelines.colorSectors.pipeline, layout: pipelines.colorSectors.layout };
   }
   return { pipeline: pipelines.color.pipeline, layout: pipelines.color.layout };
 }
@@ -739,6 +798,13 @@ export class GlideConeEngine {
         "read-only-storage",
         "storage",
       ]),
+      colorSectors: await createPipeline(this.device, COLOR_SHADER_SECTORS, [
+        "uniform",
+        "read-only-storage",
+        "read-only-storage",
+        "read-only-storage",
+        "storage",
+      ]),
     };
   }
 
@@ -763,11 +829,15 @@ export class GlideConeEngine {
       originRunN = 0,
       raw: rawParam = true,
       contours: contoursParam = false,
+      pathOnly: pathOnlyParam = false,
+      sectors: sectorsParam = false,
       updateMapMs = 100,
     } = params;
     const raw = rawOverride !== undefined ? rawOverride : rawParam;
     const contours = contoursParam;
-    const needsRaster = imageOnly || raw || !contours;
+    const pathOnly = pathOnlyParam;
+    const sectors = sectorsParam;
+    const needsRaster = imageOnly || raw || sectors || (!contours && !pathOnly);
     const useFullBresenham = fullBresenham || originRunN === 0;
     const losShortcut = useFullBresenham ? 0 : 1;
     const shaderOriginRunN = originRunN === 0 ? 1 : originRunN;
@@ -845,7 +915,7 @@ export class GlideConeEngine {
     const { pipeline: colorPipeline, layout: colorLayout } = pickColorPipeline(
       pipelines,
       overlayColor,
-      raw
+      { raw, sectors }
     );
     const readBuffer = device.createBuffer({
       size: count * 4,

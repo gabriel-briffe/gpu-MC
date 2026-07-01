@@ -1013,18 +1013,6 @@
           <div class="params-section params-manual-only">
             <div class="params-section-title">Display</div>
             <div class="params-fields">
-              <div class="param-field">
-                <div class="param-label-row">
-                  <span class="param-label">Overlay</span>
-                  <button type="button" class="param-help" data-help="viz-mode" aria-label="Help: overlay mode">ⓘ</button>
-                </div>
-                <select id="viz-mode">
-                  <option value="stripes">Stripes</option>
-                  <option value="raw">Raw raster</option>
-                  <option value="contours" selected>Contours</option>
-                </select>
-                <span class="param-hint" id="viz-hint"></span>
-              </div>
               <div class="param-field" id="preview-field">
                 <div class="param-label-row">
                   <span class="param-label">Preview interval (ms)</span>
@@ -1033,7 +1021,6 @@
                 <input id="update-map" type="number" min="0" step="50" value="100" />
               </div>
             </div>
-            <p class="param-section-desc" id="path-input-hint"></p>
             <div class="params-section-actions">
               <button type="button" class="action-btn btn-red" id="clear-overlay">Clear overlay</button>
             </div>
@@ -1071,6 +1058,21 @@
           <div class="params-section">
             <div class="params-section-title">Options</div>
             <div class="params-fields">
+              <div class="param-field param-field-full">
+                <div class="param-label-row">
+                  <span class="param-label">Overlay</span>
+                  <button type="button" class="param-help" data-help="viz-mode" aria-label="Help: overlay mode">ⓘ</button>
+                </div>
+                <select id="viz-mode">
+                  <option value="contours" selected>Contours</option>
+                  <option value="path-only">Path only</option>
+                  <option value="sectors">Sectors</option>
+                  <option value="stripes" class="viz-mode-debug-only" hidden disabled>Stripes</option>
+                  <option value="raw" class="viz-mode-debug-only" hidden disabled>Raw raster</option>
+                </select>
+                <span class="param-hint" id="viz-hint"></span>
+              </div>
+              <p class="param-section-desc param-field-full" id="path-input-hint"></p>
               <div class="param-field param-field-full">
                 <label class="param-check" for="highlight-downhill-ground-path">
                   <input id="highlight-downhill-ground-path" type="checkbox" />

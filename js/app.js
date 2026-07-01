@@ -225,12 +225,14 @@ function airportCountTotal(count) {
 
 function updateInteractionHints() {
   const pathParts = [];
+  const { pathOnly } = parseVizMode();
+  const surface = pathOnly ? "map" : "overlay";
 
   if (interaction.hoverPath) {
-    pathParts.push("Hover over the overlay to show the glide path");
+    pathParts.push(`Hover over the ${surface} to show the glide path`);
   }
   if (interaction.tapPath) {
-    pathParts.push("tap the overlay to show the glide path");
+    pathParts.push(`tap the ${surface} to show the glide path`);
   }
 
   if (pathInputHintEl) {
@@ -551,36 +553,63 @@ const PARAM_HELP = {
   "los-run":
     "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate, but slower.\n\nANYTHING ELSE THAN N=0 IS EXPERIMENTAL, MIGHT INTRODUCE MISTAKES, BUGS, PATH ENDING TOO EARLY.. DON'T USE IF YOU DON'T UNDERSTAND THE CODE BEHIND\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source. Faster, and often accurate enough.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule). Fast, but usually not accurate enough.",
   "viz-mode":
-    "Stripes — 100 m altitude bands. Raw raster — per-cell altitude colors. Contours — 100 m isolines with labels; exportable as GeoJSON after a run.",
+    "Path only — glide paths on hover/tap, no overlay. Sectors — solid glide cone fill; ground transparent. Contours — 100 m isolines with labels; exportable as GeoJSON. Stripes and raw raster (debug) — alternating 100 m bands or per-cell colors.",
   preview:
-    "How often the map refreshes during GPU compute (stripes and raw raster only). 0 = update once at the end.",
+    "How often the map refreshes during GPU compute (sectors, stripes, and raw raster). 0 = update once at the end.",
   "compare-los":
     "Runs a full Bresenham line-of-sight overlay in red on the current grid, without the LOS run N shortcut. Use this to check how accurate your shortcut is compared to the exact raytrace.",
 };
 
 const VIZ_HINTS = {
+  "path-only": "No overlay — hover or tap the map to inspect glide paths.",
+  sectors: "Solid glide cone fill; ground cells stay transparent.",
   stripes: "100 m bands relative to airport altitude.",
   raw: "Per-cell altitude colors.",
   contours: "100 m isolines with labels; GeoJSON export after run.",
 };
 
 function parseVizMode() {
-  const mode = vizModeSelect?.value ?? "contours";
+  let mode = vizModeSelect?.value ?? "contours";
+  if (!isDebugMode() && (mode === "stripes" || mode === "raw")) {
+    mode = "contours";
+  }
   return {
     mode,
+    pathOnly: mode === "path-only",
+    sectors: mode === "sectors",
     raw: mode === "raw",
     contours: mode === "contours",
   };
 }
 
+function syncVizModeDebugOptions() {
+  if (!vizModeSelect) {
+    return;
+  }
+  const debug = isDebugMode();
+  for (const option of vizModeSelect.querySelectorAll(".viz-mode-debug-only")) {
+    option.hidden = !debug;
+    option.disabled = !debug;
+  }
+  const mode = vizModeSelect.value;
+  if (!debug && (mode === "stripes" || mode === "raw")) {
+    vizModeSelect.value = "contours";
+    syncParamVisibility();
+    if (coneState && !computing) {
+      setStatus("Overlay type changed — click Run to refresh");
+    }
+  }
+}
+
 function syncParamVisibility() {
   const { mode } = parseVizMode();
   if (previewFieldEl) {
-    previewFieldEl.hidden = mode === "contours";
+    previewFieldEl.hidden = mode === "contours" || mode === "path-only";
   }
   if (vizHintEl) {
     vizHintEl.textContent = VIZ_HINTS[mode] ?? "";
   }
+  updateInteractionHints();
 }
 
 function isAutoParamsMode() {
@@ -601,7 +630,6 @@ function setParamsMode(mode) {
     }
     if (openParamHelpButton?.dataset.help) {
       const manualOnlyHelp = new Set([
-        "viz-mode",
         "preview",
         "compare-los",
         "los-run",
@@ -832,6 +860,7 @@ function syncDebugUi() {
   }
   syncCompareLosButton();
   syncDownloadContoursButton();
+  syncVizModeDebugOptions();
   if (lastInspectCell) {
     showCellInspect(lastInspectCell);
   }
@@ -1053,7 +1082,7 @@ function getGlideParams() {
   );
   const includeAirspace = isIncludeAirspaceEnabled();
   const updateMapMs = Number.parseInt(document.getElementById("update-map").value, 10);
-  const { raw, contours } = parseVizMode();
+  const { raw, contours, pathOnly, sectors } = parseVizMode();
 
   return {
     glideRatio: Number.isFinite(glideRatio) && glideRatio > 0 ? glideRatio : 20,
@@ -1072,6 +1101,8 @@ function getGlideParams() {
           : 0,
     raw,
     contours,
+    pathOnly,
+    sectors,
     updateMapMs:
       Number.isFinite(updateMapMs) && updateMapMs >= 0 ? updateMapMs : 100,
   };
@@ -2195,6 +2226,8 @@ function setConeState(dem, result, glideParams) {
     maxAltitude: glideParams?.maxAltitude ?? DEFAULT_MAX_ALTITUDE,
     raw: glideParams?.raw ?? false,
     contours: glideParams?.contours ?? false,
+    pathOnly: glideParams?.pathOnly ?? false,
+    sectors: glideParams?.sectors ?? false,
     glideRatio: glideParams?.glideRatio ?? 20,
     circuitHeight: glideParams?.circuitHeight ?? 250,
     groundClearance: glideParams?.groundClearance ?? 100,
@@ -3234,6 +3267,14 @@ function updateContourOverlay(geojson) {
 }
 
 function updateConeVisualization(result, dem, glideParams) {
+  if (glideParams.pathOnly) {
+    coneState.contourGeojson = null;
+    setDownloadContoursVisible(false);
+    clearRasterOverlay();
+    clearContourOverlay();
+    return;
+  }
+
   if (glideParams.raw) {
     coneState.contourGeojson = null;
     setDownloadContoursVisible(false);
@@ -3406,7 +3447,11 @@ function clearGlidePath() {
 
 function makeComputeProgressHandler(dem, glideParams) {
   return ({ imageData, iteration, elapsedMs }) => {
-    if ((glideParams.raw || !glideParams.contours) && imageData) {
+    if (
+      !glideParams.pathOnly &&
+      (glideParams.raw || !glideParams.contours) &&
+      imageData
+    ) {
       updateOverlay(imageData, dem);
     }
     setStatus(`Computing… iter ${iteration}, ${elapsedMs.toFixed(0)} ms GPU`);
@@ -3641,6 +3686,16 @@ paramsForm.addEventListener("submit", (event) => {
 
 vizModeSelect?.addEventListener("change", () => {
   syncParamVisibility();
+  if (parseVizMode().pathOnly && coneState && !computing) {
+    clearRasterOverlay();
+    clearContourOverlay();
+    coneState.contourGeojson = null;
+    setDownloadContoursVisible(false);
+  }
+  if (isAutoParamsMode()) {
+    scheduleAutoCompute({ debounce: false });
+    return;
+  }
   if (coneState && !computing) {
     setStatus("Overlay type changed — click Run to refresh");
   }
