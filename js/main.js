@@ -84,6 +84,7 @@ import {
   isAutoParamsMode,
   isManualParamsMode,
   isSingleParamsMode,
+  getParamsMode,
 } from "./params/panel.js";
 import {
   initSeeds,
@@ -200,12 +201,23 @@ function updateInteractionHints() {
   }
 }
 
+function paramsFooterFallbackText() {
+  switch (getParamsMode()) {
+    case "single":
+      return "click airport to compute";
+    case "auto":
+    case "manual":
+    default:
+      return "click airport to enable/disable";
+  }
+}
+
 function updateParamsFooter() {
   if (!statusEl) {
     return;
   }
   statusEl.hidden = false;
-  statusEl.textContent = app.footerStatusText;
+  statusEl.textContent = app.footerStatusText || paramsFooterFallbackText();
 }
 
 function isGeoTrackingOn() {
@@ -436,6 +448,7 @@ app.hooks = {
   exitAirportAreaSelectMode,
   scheduleAutoCompute,
   scheduleSingleAirportCompute,
+  getParamsMode,
   syncSeedLayerVisibility,
   syncCompareLosButton,
   syncDownloadContoursButton,
@@ -861,7 +874,7 @@ app.map.on("load", async () => {
   updateSeedMarkers();
   try {
     await ensureEngine();
-    setStatus("WebGPU ready — add airports, then Run");
+    setStatus("");
   } catch (error) {
     setStatus(error.message);
     console.error(error);

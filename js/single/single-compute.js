@@ -22,6 +22,7 @@ export function clearSingleComputeScheduling() {
   app.singleComputeDebounceTimer = null;
   app.singleComputePending = null;
   app.singleLastPick = null;
+  hooks.schedulePersistParamsState?.();
 }
 
 export function getSingleComputePending() {
@@ -41,6 +42,7 @@ export function scheduleSingleAirportCompute(pick, { debounce = false } = {}) {
   }
 
   app.singleComputePending = target;
+  hooks.schedulePersistParamsState?.();
   if (hooks.isComputing()) {
     hooks.setComputeShouldStop(true);
     return;

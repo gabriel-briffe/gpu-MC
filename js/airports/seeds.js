@@ -309,6 +309,7 @@ export function updateSeedMarkers() {
   }
   hooks.syncAirportAreaSelectUi?.();
   updateSeedList();
+  hooks.schedulePersistParamsState?.();
 }
 
 export function addPendingSeed({ id, lng, lat, label, source = "map", quiet = false } = {}) {

@@ -1,5 +1,10 @@
 import { PARAM_HELP, VIZ_HINTS } from "../constants.js";
 import { parseVizMode as parseVizModeCore } from "./viz-mode.js";
+import {
+  initParamsPersistence,
+  loadParamsState,
+  restoreParamsState,
+} from "./persist.js";
 
 let app;
 let dom;
@@ -114,7 +119,7 @@ export function syncVizModeDebugOptions() {
   }
 }
 
-export function setParamsMode(mode) {
+export function setParamsMode(mode, { initial = false } = {}) {
   paramsMode = mode;
   for (const name of ["single", "auto", "manual"]) {
     dom.paramsShell?.classList.toggle(`params-mode-${name}`, mode === name);
@@ -123,37 +128,41 @@ export function setParamsMode(mode) {
   dom.paramsModeAutoBtn?.setAttribute("aria-pressed", String(mode === "auto"));
   dom.paramsModeManualBtn?.setAttribute("aria-pressed", String(mode === "manual"));
 
-  if (mode !== "manual") {
-    if (app.hooks.getManualAirportSelectMode()) {
-      app.hooks.exitManualAirportSelectMode(true);
-    }
-    if (app.hooks.getAirportAreaSelectMode()) {
-      app.hooks.exitAirportAreaSelectMode(true);
-    }
-    if (app.openParamHelpButton?.dataset.help) {
-      const manualOnlyHelp = new Set(["preview", "compare-los", "los-run"]);
-      if (manualOnlyHelp.has(app.openParamHelpButton.dataset.help)) {
-        closeParamHelp();
+  if (!initial) {
+    if (mode !== "manual") {
+      if (app.hooks.getManualAirportSelectMode()) {
+        app.hooks.exitManualAirportSelectMode(true);
+      }
+      if (app.hooks.getAirportAreaSelectMode()) {
+        app.hooks.exitAirportAreaSelectMode(true);
+      }
+      if (app.openParamHelpButton?.dataset.help) {
+        const manualOnlyHelp = new Set(["preview", "compare-los", "los-run"]);
+        if (manualOnlyHelp.has(app.openParamHelpButton.dataset.help)) {
+          closeParamHelp();
+        }
       }
     }
-  }
 
-  app.hooks.clearAutoComputeScheduling();
-  app.hooks.clearSingleComputeScheduling?.();
+    app.hooks.clearAutoComputeScheduling();
+    app.hooks.clearSingleComputeScheduling?.();
 
-  if (mode === "single") {
-    if (app.hooks.isComputing()) {
-      app.hooks.setComputeShouldStop(true);
+    if (mode === "single") {
+      if (app.hooks.isComputing()) {
+        app.hooks.setComputeShouldStop(true);
+      }
+      app.hooks.clearPendingSeedsSelection?.();
+      app.hooks.clearComputeResults();
+      app.hooks.syncComputeContextBar?.();
+      app.hooks.setStatus("");
+    } else if (mode === "auto") {
+      app.hooks.scheduleAutoCompute({ refreshAirports: true });
     }
-    app.hooks.clearPendingSeedsSelection?.();
-    app.hooks.clearComputeResults();
-    app.hooks.syncComputeContextBar?.();
-    app.hooks.setStatus("Click an airport on the map");
-  } else if (mode === "auto") {
-    app.hooks.scheduleAutoCompute({ refreshAirports: true });
   }
 
   app.hooks.syncSeedLayerVisibility();
+  app.hooks.persistParamsState?.();
+  app.hooks.updateParamsFooter?.();
 }
 
 export function syncDebugUi() {
@@ -210,15 +219,26 @@ export function initParamsPanel(appState, domRefs) {
   app = appState;
   dom = domRefs;
 
+  initParamsPersistence(app.hooks, dom, app, getParamsMode);
+  const saved = loadParamsState();
+  restoreParamsState(dom, app, saved);
+
   syncParamVisibility();
-  setParamsMode("auto");
+  setParamsMode(saved?.mode ?? "auto", { initial: true });
   app.hooks.updateGridRadiusHint();
   app.hooks.updateTerrainResolutionHint();
   app.hooks.syncAutoWindowSizeUi();
+  app.hooks.syncAirspaceUi?.();
 
   dom.paramsModeSingleBtn?.addEventListener("click", () => setParamsMode("single"));
   dom.paramsModeAutoBtn?.addEventListener("click", () => setParamsMode("auto"));
   dom.paramsModeManualBtn?.addEventListener("click", () => setParamsMode("manual"));
+
+  const onParamsEdited = () => {
+    app.hooks.schedulePersistParamsState?.();
+  };
+  dom.paramsForm?.addEventListener("input", onParamsEdited);
+  dom.paramsForm?.addEventListener("change", onParamsEdited);
 
   for (const button of document.querySelectorAll(".param-help")) {
     button.addEventListener("click", (event) => {

@@ -53,7 +53,7 @@ export const CACHE_HIDDEN_LAYER_IDS = [
   "airport-select-handles",
 ];
 
-export const COMPUTE_DONE_STATUS_CLEAR_MS = 10000;
+export const COMPUTE_DONE_STATUS_CLEAR_MS = 2000;
 
 export const PARAM_HELP = {
   ld: "Glide ratio (distance : altitude loss). Horizontal reach from an airport is roughly (altitude − terrain) × L/D. Together with max altitude, this also sets the grid extent (radius ≈ max altitude × L/D).",
