@@ -104,26 +104,31 @@ export function queryOpenAipAirspacesAt(map, lng, lat) {
     return [];
   }
 
-  const features = map.querySourceFeatures("openaip", {
-    sourceLayer: "airspaces",
-  });
+  try {
+    const features = map.querySourceFeatures("openaip", {
+      sourceLayer: "airspaces",
+    });
 
-  const seen = new Set();
-  const matches = [];
+    const seen = new Set();
+    const matches = [];
 
-  for (const feature of features) {
-    if (!pointInGeoJson(lng, lat, feature.geometry)) {
-      continue;
+    for (const feature of features) {
+      if (!pointInGeoJson(lng, lat, feature.geometry)) {
+        continue;
+      }
+      const key = airspaceFeatureKey(feature);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      matches.push(feature);
     }
-    const key = airspaceFeatureKey(feature);
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    matches.push(feature);
+
+    return matches;
+  } catch (error) {
+    console.warn("OpenAIP vector query skipped", error);
+    return [];
   }
-
-  return matches;
 }
 
 export function initOpenAipAirspaceTiles(map, config) {
@@ -159,16 +164,47 @@ export function initOpenAipTiles(map, config) {
   return initOpenAipAirspaceTiles(map, config);
 }
 
+let removeOpenAipVectorTilesFrame = null;
+
 export function removeOpenAipVectorTiles(map) {
   if (!map?.getSource("openaip")) {
     return;
   }
+
   for (const layerId of OPENAIP_AIRSPACE_LAYERS) {
     if (map.getLayer(layerId)) {
-      map.removeLayer(layerId);
+      try {
+        map.setLayoutProperty(layerId, "visibility", "none");
+      } catch {
+        // Style may be mid-update while toggling debug mode.
+      }
     }
   }
-  map.removeSource("openaip");
+
+  if (removeOpenAipVectorTilesFrame !== null) {
+    cancelAnimationFrame(removeOpenAipVectorTilesFrame);
+  }
+
+  removeOpenAipVectorTilesFrame = requestAnimationFrame(() => {
+    removeOpenAipVectorTilesFrame = null;
+    if (!map?.getSource("openaip")) {
+      return;
+    }
+    for (const layerId of OPENAIP_AIRSPACE_LAYERS) {
+      if (map.getLayer(layerId)) {
+        try {
+          map.removeLayer(layerId);
+        } catch {
+          // Ignore teardown races with in-flight vector tiles.
+        }
+      }
+    }
+    try {
+      map.removeSource("openaip");
+    } catch {
+      // Ignore teardown races with in-flight vector tiles.
+    }
+  });
 }
 
 export function setOpenAipAirspaceVisible(map, visible) {

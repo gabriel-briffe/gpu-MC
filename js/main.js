@@ -240,8 +240,11 @@ function syncOpenAipVectorTiles() {
   if (!app.map) {
     return;
   }
-  const wantTiles =
-    isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable() && isDebugMode();
+  if (!isDebugMode()) {
+    removeOpenAipVectorTiles(app.map);
+    return;
+  }
+  const wantTiles = isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable();
   if (wantTiles) {
     if (initOpenAipAirspaceTiles(app.map, app.openAipConfig)) {
       setOpenAipAirspaceVisible(app.map, true);
@@ -266,11 +269,6 @@ function syncAirspaceUi() {
     refreshRestAirspaceLayerData();
     setRestAirspaceFillVisible(true);
     setRestAirspaceLineVisible(false);
-    if (isDebugMode() && app.map?.getSource("openaip")) {
-      setOpenAipAirspaceVisible(app.map, true);
-    } else if (app.map?.getSource("openaip")) {
-      setOpenAipAirspaceVisible(app.map, false);
-    }
     if (isDebugMode()) {
       info.classList.add("visible");
     } else {
@@ -280,9 +278,6 @@ function syncAirspaceUi() {
       }
     }
   } else {
-    if (app.map?.getSource("openaip")) {
-      setOpenAipAirspaceVisible(app.map, false);
-    }
     setRestAirspaceFillVisible(false);
     setRestAirspaceLineVisible(false);
     info.classList.remove("visible");
@@ -387,6 +382,7 @@ const sharedHooks = {
   raisePathLayer,
   syncAirspaceUi,
   updateAirspaceInfo,
+  isIncludeAirspaceEnabled,
   refreshCachedAirportMapLayer,
   refreshRestAirspaceLayerData,
   clearAllGlidePaths,
@@ -478,6 +474,7 @@ app.hooks = {
   syncAutoWindowSizeUi,
   updateInteractionHints,
   isIncludeAirspaceEnabled,
+  isDebugMode,
   clearComputeResults,
   setComputeShouldStop: (value) => {
     app.computeShouldStop = value;

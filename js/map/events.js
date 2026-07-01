@@ -1,4 +1,4 @@
-import { parseVizMode, syncParamVisibility, isAutoParamsMode, isSingleParamsMode, applySectorsOverlayOpacity } from "../params/panel.js";
+import { parseVizMode, syncParamVisibility, isAutoParamsMode, isSingleParamsMode, isDebugMode, applySectorsOverlayOpacity } from "../params/panel.js";
 import {
   clearRasterOverlay,
   clearContourOverlay,
@@ -18,11 +18,18 @@ function markTouchHandled(app) {
   }, 400);
 }
 
+function maybeUpdateAirspaceInfo(hooks, lng, lat) {
+  if (!isDebugMode() || !hooks.isIncludeAirspaceEnabled?.()) {
+    return;
+  }
+  hooks.updateAirspaceInfo(lng, lat);
+}
+
 export function bindMapEvents(app, hooks) {
   const map = hooks.getMap();
 
   map.on("mousemove", (event) => {
-    hooks.updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
+    maybeUpdateAirspaceInfo(hooks, event.lngLat.lng, event.lngLat.lat);
 
     if (hooks.getAirportAreaSelectMode()) {
       if (hooks.hasAirportRectInteraction()) {
@@ -100,7 +107,7 @@ export function bindMapEvents(app, hooks) {
   });
 
   map.on("touchmove", (event) => {
-    hooks.updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
+    maybeUpdateAirspaceInfo(hooks, event.lngLat.lng, event.lngLat.lat);
 
     if (hooks.getAirportAreaSelectMode() && hooks.hasAirportRectInteraction()) {
       hooks.updateAirportAreaInteraction(event.lngLat);
@@ -117,7 +124,7 @@ export function bindMapEvents(app, hooks) {
   });
 
   map.on("touchend", (event) => {
-    hooks.updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
+    maybeUpdateAirspaceInfo(hooks, event.lngLat.lng, event.lngLat.lat);
 
     if (hooks.getAirportAreaSelectMode() && hooks.hasAirportRectInteraction()) {
       hooks.finishAirportAreaInteraction(event.lngLat);
