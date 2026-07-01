@@ -8,6 +8,7 @@ import {
   getCachedAirportsInBounds,
 } from "../cache-area.js";
 import { formatAirportLabel } from "../airport-label.js";
+import { seedFromOpenAipAirport } from "./airport-id.js";
 
 let hooks;
 let app;
@@ -425,7 +426,7 @@ async function addAirportsFromSelectAreas() {
   }
 
   const pendingSeeds = hooks.getPendingSeeds();
-  const existing = new Set(pendingSeeds.map((seed) => hooks.seedKey(seed)));
+  const existing = new Set(pendingSeeds.map((seed) => hooks.airportIdFromSeed(seed)));
   let added = 0;
   for (const rect of app.airportSelectRects) {
     await ensureAirportCellsCachedForBbox(rect, hooks.getOpenAipConfig(), hooks.setStatus);
@@ -436,17 +437,14 @@ async function addAirportsFromSelectAreas() {
       rect.north
     );
     for (const airport of airports) {
-      const seed = {
-        lng: airport.lng,
-        lat: airport.lat,
+      const seed = seedFromOpenAipAirport(airport, {
         label: formatAirportLabel(airport),
         source: "airport",
-      };
-      const key = hooks.seedKey(seed);
-      if (existing.has(key)) {
+      });
+      if (existing.has(seed.id)) {
         continue;
       }
-      existing.add(key);
+      existing.add(seed.id);
       pendingSeeds.push(seed);
       added += 1;
     }

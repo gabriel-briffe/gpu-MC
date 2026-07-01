@@ -3,6 +3,7 @@ import { fetchTerrainTileBlob } from "./terrain-tiles.js";
 import { airspacesToGeoJsonFeatures, dedupeAirspaces, fetchOverlayAirspaces } from "./airspace.js";
 import { dedupeAirports, fetchAirportsInBbox } from "./openaip-airports.js";
 import { openAipConfigured } from "./openaip-client.js";
+import { airportPropertiesWithId } from "./airports/airport-id.js";
 
 export const CACHE_TERRAIN_Z_MIN = 3;
 export const CACHE_TERRAIN_Z_MAX = 8;
@@ -316,7 +317,7 @@ export function getCachedAirportsInBounds(west, south, east, north) {
 export function cachedAirportsToGeoJsonFeatures(west, south, east, north) {
   return getCachedAirportsInBounds(west, south, east, north).map((airport) => ({
     type: "Feature",
-    properties: airport.properties ?? {},
+    properties: airportPropertiesWithId(airport.properties ?? {}, airport.lng, airport.lat),
     geometry: {
       type: "Point",
       coordinates: [airport.lng, airport.lat],
@@ -327,7 +328,7 @@ export function cachedAirportsToGeoJsonFeatures(west, south, east, north) {
 export function mergedCachedAirportsToGeoJsonFeatures(cellKeys = null) {
   return mergeCachedAirports(cellKeys).map((airport) => ({
     type: "Feature",
-    properties: airport.properties ?? {},
+    properties: airportPropertiesWithId(airport.properties ?? {}, airport.lng, airport.lat),
     geometry: {
       type: "Point",
       coordinates: [airport.lng, airport.lat],

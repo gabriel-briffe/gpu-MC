@@ -1,7 +1,15 @@
 import { MIN_SEEDS } from "../constants.js";
-import { seedDisplayLabel } from "../airport-label.js";
+import { seedDisplayLabel, formatAirportLabel } from "../airport-label.js";
 import { ensureSeedLayers, getSeedLayersReady } from "../map/layers.js";
 import { isAutoParamsMode } from "../params/panel.js";
+import {
+  airportIdFromFeature,
+  airportIdFromManualPlacement,
+  airportIdFromSeed,
+  seedFromOpenAipAirport,
+} from "./airport-id.js";
+
+const AIRPORT_PICK_LAYERS = ["seeds-hit", "airports-cached-hit"];
 
 let hooks;
 let app;
@@ -14,10 +22,14 @@ export function initSeeds(h) {
   hooks.syncSeedLayerVisibility = syncSeedLayerVisibility;
   hooks.setPendingSeedsFromAirports = setPendingSeedsFromAirports;
   hooks.clearPendingSeeds = clearPendingSeeds;
-  hooks.seedKey = seedKey;
+  hooks.seedKey = airportIdFromSeed;
+  hooks.airportIdFromSeed = airportIdFromSeed;
   hooks.scrollToSeedsSection = scrollToSeedsSection;
   hooks.airportCountStatus = airportCountStatus;
   hooks.airportCountTotal = airportCountTotal;
+  hooks.pickAirportAtMapPoint = pickAirportAtMapPoint;
+  hooks.togglePendingSeedAt = togglePendingSeedAt;
+  hooks.isAirportPickMode = isAirportPickMode;
 
   hooks.clearAllSeedsBtn?.addEventListener("click", () => {
     if (hooks.isComputing()) {
@@ -31,8 +43,113 @@ export function getPendingSeeds() {
   return app.pendingSeeds;
 }
 
+/** @deprecated Use airportIdFromSeed */
 export function seedKey(seed) {
-  return `${seed.lng.toFixed(5)},${seed.lat.toFixed(5)}`;
+  return airportIdFromSeed(seed);
+}
+
+export function isAirportPickMode() {
+  if (
+    hooks.getManualAirportSelectMode?.() ||
+    hooks.getAirportAreaSelectMode?.() ||
+    hooks.getCacheSelectMode?.()
+  ) {
+    return false;
+  }
+  if (isAutoParamsMode()) {
+    return hooks.areOpenAipAirportsAvailable?.() ?? false;
+  }
+  return !hooks.isComputing();
+}
+
+function findPendingSeedIndexById(id) {
+  if (!id) {
+    return -1;
+  }
+  return app.pendingSeeds.findIndex((seed) => airportIdFromSeed(seed) === id);
+}
+
+function pickFromFeature(feature) {
+  const [lng, lat] = feature.geometry.coordinates;
+  const props = feature.properties ?? {};
+  const id = airportIdFromFeature(feature);
+  const label =
+    props.label ??
+    formatAirportLabel({
+      lng,
+      lat,
+      properties: props,
+    });
+  return {
+    id,
+    lng,
+    lat,
+    label,
+    source: props.source ?? "airport",
+    fromSeedLayer: feature.layer.id === "seeds-hit",
+  };
+}
+
+function featurePickDistanceSq(map, point, feature) {
+  const [lng, lat] = feature.geometry.coordinates;
+  const projected = map.project([lng, lat]);
+  const dx = projected.x - point.x;
+  const dy = projected.y - point.y;
+  return dx * dx + dy * dy;
+}
+
+export function pickAirportAtMapPoint(point) {
+  const map = hooks.getMap();
+  if (!map || !isAirportPickMode()) {
+    return null;
+  }
+
+  const layers = AIRPORT_PICK_LAYERS.filter((layerId) => map.getLayer(layerId));
+  if (!layers.length) {
+    return null;
+  }
+
+  const features = map.queryRenderedFeatures(point, { layers });
+  if (!features.length) {
+    return null;
+  }
+
+  const ranked = features
+    .map((feature) => ({
+      feature,
+      distanceSq: featurePickDistanceSq(map, point, feature),
+      isSeed: feature.layer.id === "seeds-hit",
+    }))
+    .sort((a, b) => {
+      if (a.isSeed !== b.isSeed) {
+        return a.isSeed ? -1 : 1;
+      }
+      return a.distanceSq - b.distanceSq;
+    });
+
+  return pickFromFeature(ranked[0].feature);
+}
+
+export function togglePendingSeedAt(pick) {
+  if (!isAirportPickMode() || !pick?.id) {
+    return false;
+  }
+
+  if (isAutoParamsMode()) {
+    return hooks.toggleDisabledAirportAt?.(pick) ?? false;
+  }
+
+  const index = findPendingSeedIndexById(pick.id);
+  if (index >= 0) {
+    removePendingSeed(index);
+    return true;
+  }
+
+  if (pick.fromSeedLayer) {
+    return false;
+  }
+
+  return addPendingSeed(pick);
 }
 
 export function airportCountStatus(count) {
@@ -44,12 +161,30 @@ export function airportCountTotal(count) {
 }
 
 export function setPendingSeedsFromAirports(airports) {
-  app.pendingSeeds = airports.map((airport) => ({
-    lng: airport.lng,
-    lat: airport.lat,
-    label: airport.label,
-    source: airport.source ?? "airport",
-  }));
+  app.pendingSeeds = airports.map((airport) => {
+    if (airport.id) {
+      return {
+        id: airport.id,
+        lng: airport.lng,
+        lat: airport.lat,
+        label: airport.label,
+        source: airport.source ?? "airport",
+      };
+    }
+    if (airport.properties) {
+      return seedFromOpenAipAirport(airport, {
+        label: airport.label ?? formatAirportLabel(airport),
+        source: airport.source ?? "airport",
+      });
+    }
+    return {
+      id: airportIdFromManualPlacement(airport.lng, airport.lat),
+      lng: airport.lng,
+      lat: airport.lat,
+      label: airport.label,
+      source: airport.source ?? "airport",
+    };
+  });
   updateSeedMarkers();
 }
 
@@ -84,7 +219,7 @@ function updateSeedList() {
   if (app.pendingSeeds.length === 0) {
     const empty = document.createElement("div");
     empty.className = "seed-list-empty";
-    empty.textContent = "Use Manual selection or Draw airport areas";
+    empty.textContent = "Click airports on the map or use Manual selection / Draw airport areas";
     seedListEl.append(empty);
     return;
   }
@@ -130,7 +265,7 @@ export function syncSeedLayerVisibility() {
     return;
   }
   const visibility = isAutoParamsMode() ? "none" : "visible";
-  for (const layerId of ["seeds-circle", "seeds-label"]) {
+  for (const layerId of ["seeds-circle", "seeds-label", "seeds-hit"]) {
     if (map.getLayer(layerId)) {
       map.setLayoutProperty(layerId, "visibility", visibility);
     }
@@ -151,7 +286,9 @@ export function updateSeedMarkers() {
       coordinates: [seed.lng, seed.lat],
     },
     properties: {
+      airport_id: airportIdFromSeed(seed),
       label: seedDisplayLabel(seed),
+      source: seed.source ?? "airport",
     },
   }));
 
@@ -168,20 +305,24 @@ export function updateSeedMarkers() {
   updateSeedList();
 }
 
-export function addPendingSeed(lng, lat, { label, source = "map" } = {}) {
-  const key = seedKey({ lng, lat });
-  if (app.pendingSeeds.some((seed) => seedKey(seed) === key)) {
-    hooks.setStatus("Airport already in list");
+export function addPendingSeed({ id, lng, lat, label, source = "map", quiet = false } = {}) {
+  const airportId = id ?? airportIdFromManualPlacement(lng, lat);
+  if (app.pendingSeeds.some((seed) => airportIdFromSeed(seed) === airportId)) {
+    if (!quiet) {
+      hooks.setStatus("Airport already in list");
+    }
     return false;
   }
-  const seed = { lng, lat, source };
+  const seed = { id: airportId, lng, lat, source };
   if (label) {
     seed.label = label;
   }
   app.pendingSeeds.push(seed);
   updateSeedMarkers();
   hooks.updateAirspaceInfo?.(lng, lat);
-  hooks.setStatus(airportCountStatus(app.pendingSeeds.length));
+  if (!quiet) {
+    hooks.setStatus(airportCountStatus(app.pendingSeeds.length));
+  }
   return true;
 }
 

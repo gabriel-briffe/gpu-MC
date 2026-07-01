@@ -9,6 +9,7 @@ export const AUTO_MAX_OFFSET_FROM_CENTER = 0.25;
 export const AUTO_COMPUTE_DEBOUNCE_MS = 400;
 export const AIRPORT_RECT_MIN_DEG = 1e-5;
 export const AIRPORT_HANDLE_HIT_PX = 12;
+export const AIRPORT_PICK_HIT_PX = 14;
 export const AIRPORT_HANDLE_CURSORS = {
   nw: "nwse-resize",
   se: "nwse-resize",
@@ -39,9 +40,11 @@ export const CACHE_HIDDEN_LAYER_IDS = [
   "glide-sectors-line",
   "airports-cached",
   "airports-cached-labels",
+  "airports-cached-hit",
   OPENAIP_AIRSPACE_LAYER,
   "seeds-circle",
   "seeds-label",
+  "seeds-hit",
   "pending-manual-airport-circle",
   "glide-path",
   "glide-path-geo",

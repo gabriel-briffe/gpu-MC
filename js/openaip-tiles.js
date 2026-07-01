@@ -40,6 +40,44 @@ export const OPENAIP_AIRPORT_LAYERS = ["openaip-airports", "openaip-airport-labe
 export const OPENAIP_AIRSPACE_LAYER = "openaip-airspaces-line";
 export const OPENAIP_AIRSPACE_LAYERS = [OPENAIP_AIRSPACE_LAYER];
 
+/** Cached / map airport dots (px) — size ramp delayed one zoom vs label appearance. */
+export const OPENAIP_AIRPORT_CIRCLE_RADIUS = [
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  5,
+  3,
+  7,
+  5,
+  8,
+  6.5,
+  10,
+  7.5,
+  13,
+  8.5,
+  15,
+  10,
+];
+
+/** Selected seed markers — slightly larger than cached airports. */
+export const OPENAIP_SEED_CIRCLE_RADIUS = [
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  5,
+  4,
+  7,
+  6,
+  8,
+  7.5,
+  10,
+  8.5,
+  13,
+  9.5,
+  15,
+  11,
+];
+
 export function isIncludedAirportType(type) {
   return isIncludedOpenAipAirportType(type);
 }

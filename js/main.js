@@ -88,6 +88,7 @@ import {
   updateSeedMarkers,
   syncSeedLayerVisibility,
 } from "./airports/seeds.js";
+import { initDisabledAirports } from "./airports/disabled.js";
 import {
   initManualSelect,
   exitManualAirportSelectMode,
@@ -399,6 +400,7 @@ const sharedHooks = {
   syncComputeContextBar,
 };
 
+initDisabledAirports(sharedHooks);
 initSeeds(sharedHooks);
 initManualSelect(sharedHooks);
 initAreaSelect(sharedHooks);

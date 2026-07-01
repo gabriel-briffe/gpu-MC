@@ -101,45 +101,64 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
   const bounds = kmBoxAroundLngLat(center.lng, center.lat, windowSizeKm);
   app.autoComputeRegion = { ...bounds, windowSizeKm };
 
-  let seedsForCompute;
-
   if (refreshAirports) {
     await ensureAirportCellsCachedForBbox(bounds, hooks.getOpenAipConfig(), hooks.setStatus);
     hooks.refreshCachedAirportMapLayer?.();
     hooks.refreshRestAirspaceLayerData?.();
-    hooks.setStatus(`Finding airports in ${windowSizeKm * 2} km window…`);
-    const airports = getCachedAirportsInBounds(
-      bounds.west,
-      bounds.south,
-      bounds.east,
-      bounds.north
-    );
+  }
 
-    if (airports.length < MIN_SEEDS) {
-      hooks.setStatus(
-        `Auto: no airports in ${windowSizeKm * 2} km window — pan map or cache cells first`
-      );
-      return;
-    }
+  hooks.setStatus(`Finding airports in ${windowSizeKm * 2} km window…`);
+  const airportsInWindow = getCachedAirportsInBounds(
+    bounds.west,
+    bounds.south,
+    bounds.east,
+    bounds.north
+  );
+  const enabledAirports = hooks.filterDisabledAirports(airportsInWindow);
 
-    hooks.setPendingSeedsFromAirports(
-      airports.map((airport) => ({
-        lng: airport.lng,
-        lat: airport.lat,
-        label: formatAirportLabel(airport),
-        source: "airport",
-      }))
+  hooks.setPendingSeedsFromAirports(
+    enabledAirports.map((airport) => ({
+      ...airport,
+      label: formatAirportLabel(airport),
+      source: "airport",
+    }))
+  );
+
+  if (airportsInWindow.length === 0) {
+    hooks.clearComputeResults?.();
+    hooks.setStatus(
+      `Auto: no airports in ${windowSizeKm * 2} km window — pan map or cache cells first`
     );
-    hooks.setStatus(`Found ${airports.length} airports — fetching terrain…`);
-    seedsForCompute = hooks.getPendingSeeds().map((seed) => ({ lng: seed.lng, lat: seed.lat }));
-  } else if (hooks.getPendingSeeds().length >= MIN_SEEDS) {
-    hooks.setStatus(`Recomputing ${hooks.getPendingSeeds().length} airports…`);
-    seedsForCompute = hooks.getPendingSeeds().map((seed) => ({ lng: seed.lng, lat: seed.lat }));
-  } else {
-    await runAutoComputation({ refreshAirports: true });
     return;
   }
 
+  if (enabledAirports.length < MIN_SEEDS) {
+    hooks.clearComputeResults?.();
+    const disabledCount = airportsInWindow.length - enabledAirports.length;
+    if (disabledCount > 0) {
+      hooks.setStatus(
+        `Auto: all airports in window disabled — click one on the map to enable`
+      );
+    } else {
+      hooks.setStatus(
+        `Auto: no airports in ${windowSizeKm * 2} km window — pan map or cache cells first`
+      );
+    }
+    return;
+  }
+
+  const disabledCount = airportsInWindow.length - enabledAirports.length;
+  const disabledSuffix =
+    disabledCount > 0
+      ? ` (${disabledCount} disabled)`
+      : "";
+  hooks.setStatus(
+    `Computing ${enabledAirports.length} airport${enabledAirports.length === 1 ? "" : "s"}${disabledSuffix}…`
+  );
+  const seedsForCompute = enabledAirports.map((airport) => ({
+    lng: airport.lng,
+    lat: airport.lat,
+  }));
   await hooks.runComputation(seedsForCompute, { gridBounds: bounds });
 }
 

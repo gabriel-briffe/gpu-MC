@@ -1,5 +1,6 @@
-import { OPENAIP_AIRPORT_MIN_ZOOM } from "../openaip-tiles.js";
+import { OPENAIP_SEED_CIRCLE_RADIUS } from "../openaip-tiles.js";
 import { seedDisplayLabel } from "../airport-label.js";
+import { airportIdFromManualPlacement, airportIdFromSeed } from "./airport-id.js";
 
 let hooks;
 let app;
@@ -68,15 +69,7 @@ function ensurePendingManualAirportLayer() {
     type: "circle",
     source: "pending-manual-airport",
     paint: {
-      "circle-radius": [
-        "interpolate",
-        ["linear"],
-        ["zoom"],
-        OPENAIP_AIRPORT_MIN_ZOOM,
-        4,
-        14,
-        10,
-      ],
+      "circle-radius": OPENAIP_SEED_CIRCLE_RADIUS,
       "circle-color": "#ffcc00",
       "circle-stroke-width": 3,
       "circle-stroke-color": "#4da3ff",
@@ -265,17 +258,17 @@ function commitPendingManualAirport() {
 
   const { lng, lat } = app.pendingManualAirport;
   const name = hooks.manualAirportNameInput?.value.trim() ?? "";
-  const key = hooks.seedKey({ lng, lat });
+  const id = airportIdFromManualPlacement(lng, lat);
   const pendingSeeds = hooks.getPendingSeeds();
   if (
-    pendingSeeds.some((seed) => hooks.seedKey(seed) === key) ||
-    app.manualStagingAirports.some((seed) => hooks.seedKey(seed) === key)
+    pendingSeeds.some((seed) => airportIdFromSeed(seed) === id) ||
+    app.manualStagingAirports.some((seed) => airportIdFromSeed(seed) === id)
   ) {
     hooks.setStatus("Airport already in list");
     return;
   }
 
-  const seed = { lng, lat, source: "map" };
+  const seed = { id, lng, lat, source: "map" };
   if (name) {
     seed.label = name;
   }
@@ -299,15 +292,15 @@ function finishManualAirportSelection() {
   }
 
   const pendingSeeds = hooks.getPendingSeeds();
-  const existing = new Set(pendingSeeds.map((seed) => hooks.seedKey(seed)));
+  const existing = new Set(pendingSeeds.map((seed) => airportIdFromSeed(seed)));
   let added = 0;
   for (const seed of app.manualStagingAirports) {
-    const key = hooks.seedKey(seed);
-    if (existing.has(key)) {
+    const id = airportIdFromSeed(seed);
+    if (existing.has(id)) {
       continue;
     }
-    existing.add(key);
-    pendingSeeds.push({ ...seed });
+    existing.add(id);
+    pendingSeeds.push({ ...seed, id });
     added += 1;
   }
 

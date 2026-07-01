@@ -37,6 +37,18 @@ export function bindMapEvents(app, hooks) {
       return;
     }
 
+    if (hooks.isAirportPickMode?.()) {
+      const map = hooks.getMap();
+      const pickable = hooks.pickAirportAtMapPoint?.(event.point);
+      if (map) {
+        map.getCanvas().style.cursor = pickable ? "pointer" : "";
+      }
+      if (pickable) {
+        hooks.onMapMouseLeave?.();
+        return;
+      }
+    }
+
     if (hooks.getCacheSelectMode()) {
       return;
     }
@@ -125,6 +137,14 @@ export function bindMapEvents(app, hooks) {
       }
       markTouchHandled(app);
       hooks.setPendingManualAirport(event.lngLat.lng, event.lngLat.lat);
+      return;
+    }
+
+    if (hooks.isAirportPickMode?.()) {
+      const picked = hooks.pickAirportAtMapPoint?.(event.point);
+      if (picked && hooks.togglePendingSeedAt?.(picked)) {
+        markTouchHandled(app);
+      }
     }
   });
 
@@ -146,7 +166,6 @@ export function bindMapEvents(app, hooks) {
     }
 
     if (
-      hooks.isComputing() ||
       app.touchHandledRecently ||
       hooks.getAirportAreaSelectMode() ||
       hooks.hasAirportRectInteraction()
@@ -155,7 +174,21 @@ export function bindMapEvents(app, hooks) {
     }
 
     if (hooks.getManualAirportSelectMode()) {
+      if (hooks.isComputing()) {
+        return;
+      }
       hooks.setPendingManualAirport(event.lngLat.lng, event.lngLat.lat);
+      return;
+    }
+
+    if (hooks.isAirportPickMode?.()) {
+      const picked = hooks.pickAirportAtMapPoint?.(event.point);
+      if (picked && hooks.togglePendingSeedAt?.(picked)) {
+        return;
+      }
+    }
+
+    if (hooks.isComputing()) {
       return;
     }
 
