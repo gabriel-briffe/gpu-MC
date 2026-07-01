@@ -35,22 +35,28 @@
       }
 
       #params-panel {
-        flex: 1 1 auto;
-        min-height: 0;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
+        flex: 0 0 auto;
       }
 
       #params-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
         overflow-y: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
         max-height: min(62dvh, calc(100dvh - 11rem));
       }
 
-      #params-panel:not([open]) #params-scroll {
+      #params-panel:not([open]) ~ #params-scroll {
         display: none;
+      }
+
+      #params-panel:not([open]) ~ .params-mode-bar #params-mode-manual {
+        display: none;
+      }
+
+      #params-panel:not([open]) ~ .params-mode-bar {
+        justify-content: center;
       }
 
       .params-overlay-panel {

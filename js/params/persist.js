@@ -78,7 +78,6 @@ export function loadParamsState() {
       mode,
       form: data.form ?? null,
       pendingSeeds: Array.isArray(data.pendingSeeds) ? data.pendingSeeds : [],
-      singleLastPick: data.singleLastPick ?? null,
     };
   } catch (error) {
     console.warn("Failed to load saved parameters", error);
@@ -99,7 +98,6 @@ export function saveParamsState(dom, mode, app) {
         mode: resolvedMode,
         form: collectFormState(dom),
         pendingSeeds: app.pendingSeeds ?? [],
-        singleLastPick: app.singleLastPick ?? null,
       })
     );
   } catch (error) {
@@ -133,8 +131,5 @@ export function restoreParamsState(dom, app, saved) {
   }
   if (saved.pendingSeeds?.length) {
     app.pendingSeeds = saved.pendingSeeds.map((seed) => ({ ...seed }));
-  }
-  if (saved.singleLastPick?.id) {
-    app.singleLastPick = { ...saved.singleLastPick };
   }
 }

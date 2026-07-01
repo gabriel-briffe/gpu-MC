@@ -155,7 +155,11 @@ export function setParamsMode(mode, { initial = false } = {}) {
       app.hooks.clearPendingSeedsSelection?.();
       app.hooks.clearComputeResults();
       app.hooks.syncComputeContextBar?.();
-      app.hooks.setStatus("");
+      if (app.singleLastPick?.id) {
+        app.hooks.scheduleSingleAirportCompute?.(undefined, { debounce: false });
+      } else {
+        app.hooks.setStatus("");
+      }
     } else if (mode === "auto") {
       app.hooks.scheduleAutoCompute({ refreshAirports: true });
     }
