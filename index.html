@@ -64,17 +64,27 @@
         display: none;
       }
 
-      #airport-area-select-panel,
-      #manual-airport-select-panel,
-      #cache-data-panel {
-        padding: 0.55rem 0.85rem;
+      .params-overlay-panel {
+        padding: 1rem 0.85rem 0.85rem;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
       }
 
-      #airport-area-select-panel[hidden],
-      #manual-airport-select-panel[hidden],
-      #cache-data-panel[hidden] {
+      .params-overlay-panel[hidden] {
         display: none;
+      }
+
+      .params-overlay-panel .param-section-desc {
+        margin: 0;
+        text-align: center;
+        align-self: center;
+        max-width: 22rem;
+      }
+
+      .params-overlay-panel .params-section-title {
+        text-align: center;
       }
 
       #params-shell.cache-select-mode #params-mode-bar,
@@ -85,10 +95,6 @@
       #params-shell.cache-select-mode #params-panel > summary {
         pointer-events: none;
         opacity: 0.55;
-      }
-
-      #cache-data-panel .param-section-desc {
-        margin: 0 0 0.55rem;
       }
 
       #params-panel > summary {
@@ -173,17 +179,23 @@
         border-top: 1px solid rgba(255, 255, 255, 0.08);
       }
 
+      .params-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+
       .params-section-title {
         font-size: 0.68rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
         color: #7a8494;
-        margin-bottom: 0.45rem;
+        margin: 0;
       }
 
       .params-fields {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
         gap: 0.55rem 0.85rem;
         align-items: start;
       }
@@ -198,6 +210,17 @@
         display: flex;
         align-items: center;
         gap: 0.2rem;
+      }
+
+      .param-label-row:has(.param-check) {
+        justify-content: space-between;
+        align-items: flex-start;
+        width: 100%;
+      }
+
+      .param-label-row:has(.param-check) .param-check {
+        flex: 1;
+        min-width: 0;
       }
 
       .param-label {
@@ -232,12 +255,11 @@
         text-transform: none;
         letter-spacing: normal;
         line-height: 1.3;
-        max-width: 14rem;
+        width: 100%;
       }
 
       .param-field-full {
-        flex: 1 1 100%;
-        max-width: 100%;
+        grid-column: 1 / -1;
       }
 
       .param-zoom-row {
@@ -282,15 +304,17 @@
         font-size: 0.72rem;
       }
 
-      .params-actions {
+      .params-section-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.45rem;
+        justify-content: center;
         align-items: center;
+        gap: 0.45rem;
+        padding-top: 0.75rem;
       }
 
-      .params-actions-secondary {
-        padding-top: 0.15rem;
+      .params-section-actions-secondary {
+        padding-top: 0.55rem;
         border-top: 1px solid rgba(255, 255, 255, 0.06);
       }
 
@@ -530,8 +554,12 @@
         display: none;
       }
 
-      #params input {
-        width: 5.5rem;
+      #params input[type="number"],
+      #params input[type="text"],
+      .params-overlay-panel input[type="text"],
+      .params-overlay-panel input[type="number"] {
+        width: 100%;
+        max-width: 8rem;
         padding: 0.35rem 0.5rem;
         border: 1px solid rgba(255, 255, 255, 0.15);
         border-radius: 0.4rem;
@@ -541,14 +569,21 @@
         font-variant-numeric: tabular-nums;
       }
 
-      #params input:focus {
+      .params-overlay-panel .param-field-full input[type="text"] {
+        max-width: none;
+      }
+
+      #params input[type="number"]:focus,
+      #params input[type="text"]:focus,
+      .params-overlay-panel input:focus {
         outline: 2px solid rgba(100, 160, 255, 0.55);
         border-color: transparent;
       }
 
       #params select,
       #viz-mode {
-        min-width: 10.5rem;
+        width: 100%;
+        max-width: 14rem;
         padding: 0.35rem 0.5rem;
         border: 1px solid rgba(255, 255, 255, 0.15);
         border-radius: 0.4rem;
@@ -806,6 +841,28 @@
           max-height: min(55dvh, calc(100dvh - 9.5rem));
         }
 
+        .params-fields {
+          grid-template-columns: 1fr;
+        }
+
+        #params input[type="number"],
+        #params input[type="text"],
+        #params select,
+        #viz-mode,
+        .params-overlay-panel input[type="text"],
+        .params-overlay-panel input[type="number"] {
+          max-width: none;
+        }
+
+        .params-section-actions {
+          flex-direction: column;
+          width: 100%;
+        }
+
+        .params-section-actions .action-btn {
+          width: 100%;
+        }
+
         #info {
           width: calc(100vw - 1rem);
           max-width: calc(100vw - 1rem);
@@ -977,7 +1034,7 @@
               </div>
             </div>
             <p class="param-section-desc" id="path-input-hint"></p>
-            <div class="params-actions">
+            <div class="params-section-actions">
               <button type="button" class="action-btn btn-red" id="clear-overlay">Clear overlay</button>
             </div>
           </div>
@@ -987,7 +1044,7 @@
             <p class="param-section-desc">
               Add airports with Manual selection or Draw airport areas.
             </p>
-            <div class="params-actions">
+            <div class="params-section-actions">
               <button type="button" class="action-btn btn-blue" id="toggle-manual-airport-select">
                 Manual selection
               </button>
@@ -997,10 +1054,10 @@
               <button type="button" class="action-btn btn-red" id="clear-all-seeds">Clear all airports</button>
             </div>
             <div id="seed-list" class="seed-list" aria-label="Selected airports"></div>
-            <div class="params-actions">
+            <div class="params-section-actions">
               <button type="button" class="action-btn btn-green" id="run-compute" disabled>Run</button>
             </div>
-            <div class="params-actions params-actions-secondary">
+            <div class="params-section-actions params-section-actions-secondary">
               <button type="button" class="action-btn btn-green" id="download-contours" hidden disabled>
                 Download contours
               </button>
@@ -1012,6 +1069,7 @@
           </div>
 
           <div class="params-section">
+            <div class="params-section-title">Options</div>
             <div class="params-fields">
               <div class="param-field param-field-full">
                 <label class="param-check" for="highlight-downhill-ground-path">
@@ -1026,7 +1084,14 @@
                 </label>
               </div>
             </div>
-            <div class="params-actions">
+          </div>
+
+          <div class="params-section">
+            <div class="params-section-title">Offline data</div>
+            <p class="param-section-desc">
+              Pre-download terrain and airspace for offline use.
+            </p>
+            <div class="params-section-actions">
               <button type="button" class="action-btn btn-blue" id="open-cache-data">
                 Cache data
               </button>
@@ -1035,11 +1100,14 @@
         </form>
         </div>
       </details>
-      <div id="manual-airport-select-panel" hidden>
+      <div id="manual-airport-select-panel" class="params-overlay-panel" hidden>
+        <div class="params-section-title">Manual selection</div>
         <p class="param-section-desc">Click the map to place an airport.</p>
         <div class="params-fields">
           <div class="param-field param-field-full">
-            <label for="manual-airport-name">Name</label>
+            <div class="param-label-row">
+              <label class="param-label" for="manual-airport-name">Name</label>
+            </div>
             <input
               type="text"
               id="manual-airport-name"
@@ -1049,12 +1117,12 @@
           </div>
         </div>
         <div id="manual-airport-list" class="seed-list" hidden aria-label="Picked airports"></div>
-        <div class="params-actions">
+        <div class="params-section-actions">
           <button type="button" class="action-btn btn-blue" id="add-manual-airport" disabled>
             Add airport
           </button>
         </div>
-        <div class="params-actions">
+        <div class="params-section-actions">
           <button type="button" class="action-btn btn-red" id="clear-manual-airport" disabled>
             Clear
           </button>
@@ -1063,11 +1131,12 @@
           </button>
         </div>
       </div>
-      <div id="airport-area-select-panel" hidden>
+      <div id="airport-area-select-panel" class="params-overlay-panel" hidden>
+        <div class="params-section-title">Draw airport areas</div>
         <p class="param-section-desc">
           Drag to draw the first area, then pan/zoom freely. Use Add new area to draw more, or drag corner handles to resize.
         </p>
-        <div class="params-actions">
+        <div class="params-section-actions">
           <button type="button" class="action-btn btn-blue" id="add-airport-area" disabled>
             Add new area
           </button>
@@ -1079,9 +1148,10 @@
           </button>
         </div>
       </div>
-      <div id="cache-data-panel" hidden>
-        <p class="param-section-desc">Select areas to cache</p>
-        <div class="params-actions">
+      <div id="cache-data-panel" class="params-overlay-panel" hidden>
+        <div class="params-section-title">Cache mode</div>
+        <p class="param-section-desc">Select 1° cells on the map, then cache.</p>
+        <div class="params-section-actions">
           <button type="button" class="action-btn btn-green" id="run-cache-download" disabled>
             Cache
           </button>
