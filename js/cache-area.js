@@ -1,18 +1,16 @@
 import { TILE_SIZE, lngLatToGlobalPixel } from "./geo.js";
 import { fetchTerrainTileBlob } from "./terrain-tiles.js";
-import { fetchOpenAipTileBlob } from "./openaip-vector-tiles-cache.js";
+import { airspacesToGeoJsonFeatures, dedupeAirspaces, fetchOverlayAirspaces } from "./airspace.js";
 import { dedupeAirports, fetchAirportsInBbox } from "./openaip-airports.js";
 import { openAipConfigured } from "./openaip-client.js";
 
 export const CACHE_TERRAIN_Z_MIN = 3;
 export const CACHE_TERRAIN_Z_MAX = 7;
-export const CACHE_OPENAIP_Z_MIN = 3;
-export const CACHE_OPENAIP_Z_MAX = 7;
 export const CACHE_CELL_TTL_MS = 24 * 60 * 60 * 1000;
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
 const CELL_CACHE_STORAGE_KEY = "gpu-mc-cell-cache-v1";
 
-/** @type {Map<string, { cellKey: string, bounds: object, airports: object[], fetchedAt: number, airportFetches: number }>} */
+/** @type {Map<string, { cellKey: string, bounds: object, airports: object[], airspaces: object[], fetchedAt: number, airportFetches: number, airspaceFetches: number }>} */
 const cellCache = new Map();
 /** @type {string[]} Last cell keys passed to Cache (for re-select on reopen). */
 let lastCachedCellKeys = [];
@@ -164,27 +162,6 @@ export function terrariumTileIndicesForBounds(west, south, east, north, z) {
   return tiles;
 }
 
-function openAipVectorTileJobsForCellKeys(cellKeys) {
-  const seen = new Set();
-  const jobs = [];
-
-  for (const cellKey of cellKeys) {
-    const { west, south, east, north } = cacheCellBounds(cellKey);
-    for (let z = CACHE_OPENAIP_Z_MIN; z <= CACHE_OPENAIP_Z_MAX; z += 1) {
-      for (const tile of terrariumTileIndicesForBounds(west, south, east, north, z)) {
-        const key = `${tile.z}/${tile.x}/${tile.y}`;
-        if (seen.has(key)) {
-          continue;
-        }
-        seen.add(key);
-        jobs.push(tile);
-      }
-    }
-  }
-
-  return jobs;
-}
-
 async function prefetchTerrariumTiles(bounds, onStatus) {
   const jobs = [];
   for (let z = CACHE_TERRAIN_Z_MIN; z <= CACHE_TERRAIN_Z_MAX; z += 1) {
@@ -216,46 +193,6 @@ async function prefetchTerrariumTiles(bounds, onStatus) {
   return { tileCount: jobs.length, tileFetches };
 }
 
-async function prefetchOpenAipVectorTiles(jobs, config, onStatus) {
-  if (!openAipConfigured(config) || jobs.length === 0) {
-    return { tileCount: jobs.length, tileFetches: 0 };
-  }
-
-  let loaded = 0;
-  let tileFetches = 0;
-  onStatus?.(
-    `Caching OpenAIP airspace tiles 0/${jobs.length} (z${CACHE_OPENAIP_Z_MIN}–${CACHE_OPENAIP_Z_MAX})…`
-  );
-
-  for (let index = 0; index < jobs.length; index += TERRAIN_PREFETCH_CONCURRENCY) {
-    const batch = jobs.slice(index, index + TERRAIN_PREFETCH_CONCURRENCY);
-    await Promise.all(
-      batch.map(async ({ z, x, y }) => {
-        const { fromNetwork } = await fetchOpenAipTileBlob(z, x, y, config);
-        if (fromNetwork) {
-          tileFetches += 1;
-        }
-        loaded += 1;
-        onStatus?.(
-          `Caching OpenAIP airspace tiles ${loaded}/${jobs.length} (z${CACHE_OPENAIP_Z_MIN}–${CACHE_OPENAIP_Z_MAX})…`
-        );
-      })
-    );
-  }
-
-  return { tileCount: jobs.length, tileFetches };
-}
-
-async function prefetchOpenAipVectorTilesForCellKeys(cellKeys, config, onStatus) {
-  const staleCellKeys = cellKeys.filter((cellKey) => !isCellCacheFresh(cellCache.get(cellKey)));
-  if (staleCellKeys.length === 0) {
-    return { tileCount: 0, tileFetches: 0, cellsSkipped: cellKeys.length };
-  }
-  const jobs = openAipVectorTileJobsForCellKeys(staleCellKeys);
-  const stats = await prefetchOpenAipVectorTiles(jobs, config, onStatus);
-  return { ...stats, cellsSkipped: cellKeys.length - staleCellKeys.length };
-}
-
 async function cacheAirportsForCells(cellKeys, config, onStatus) {
   let airportFetches = 0;
   let cellsFetched = 0;
@@ -272,17 +209,31 @@ async function cacheAirportsForCells(cellKeys, config, onStatus) {
       continue;
     }
 
-    onStatus?.(`Fetching airports — cell ${index + 1}/${cellKeys.length} (${cellKey})…`);
-    const { airports, fetchCount } = await fetchAirportsInBbox(cacheCellBounds(cellKey), config);
+    onStatus?.(`Fetching airports & airspace — cell ${index + 1}/${cellKeys.length} (${cellKey})…`);
+    const bounds = cacheCellBounds(cellKey);
+    const [{ airports, fetchCount }, airspaces] = await Promise.all([
+      fetchAirportsInBbox(bounds, config),
+      fetchOverlayAirspaces(
+        {
+          minLng: bounds.west,
+          minLat: bounds.south,
+          maxLng: bounds.east,
+          maxLat: bounds.north,
+        },
+        config
+      ),
+    ]);
     airportFetches += fetchCount;
     cellsFetched += 1;
 
     cellCache.set(cellKey, {
       cellKey,
-      bounds: cacheCellBounds(cellKey),
+      bounds,
       airports,
+      airspaces,
       fetchedAt: Date.now(),
       airportFetches: fetchCount,
+      airspaceFetches: 1,
     });
   }
 
@@ -317,6 +268,25 @@ export function mergeCachedAirports(cellKeys = null) {
   }
 
   return dedupeAirports(all);
+}
+
+/** Merge cached per-cell REST airspace lists for display (deduped at read time). */
+export function mergeCachedAirspaces(cellKeys = null) {
+  const keys = cellKeys ?? getCachedCellKeys();
+  const all = [];
+
+  for (const cellKey of keys) {
+    const entry = cellCache.get(cellKey);
+    if (entry?.airspaces?.length) {
+      all.push(...entry.airspaces);
+    }
+  }
+
+  return dedupeAirspaces(all);
+}
+
+export function mergedCachedAirspacesToGeoJsonFeatures(cellKeys = null) {
+  return airspacesToGeoJsonFeatures(mergeCachedAirspaces(cellKeys));
 }
 
 export function getCachedAirportsInBounds(west, south, east, north) {
@@ -359,32 +329,24 @@ export async function buildCacheBundle(cellKeys, config, onStatus) {
 
   const bounds = unionCellBounds(cellKeys);
   const { tileCount, tileFetches } = await prefetchTerrariumTiles(bounds, onStatus);
-  const {
-    tileCount: airspaceTileCount,
-    tileFetches: airspaceTileFetches,
-    cellsSkipped: airspaceCellsSkipped = 0,
-  } = await prefetchOpenAipVectorTilesForCellKeys(cellKeys, config, onStatus);
-  onStatus?.(`Fetching airports for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`);
+  onStatus?.(`Fetching airports & airspace for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`);
   const { airportFetches, cellsFetched, cellsSkipped } = await cacheAirportsForCells(
     cellKeys,
     config,
     onStatus
   );
-  const networkFetches = tileFetches + airspaceTileFetches + airportFetches;
+  const networkFetches = tileFetches + airportFetches;
   const airportCount = mergeCachedAirports(cellKeys).length;
+  const airspaceCount = mergeCachedAirspaces(cellKeys).length;
   setLastCachedCellKeys(cellKeys);
 
-  const keptParts = [];
-  if (cellsSkipped > 0) {
-    keptParts.push(`${cellsSkipped} airport cell${cellsSkipped === 1 ? "" : "s"}`);
-  }
-  if (airspaceCellsSkipped > 0) {
-    keptParts.push(`${airspaceCellsSkipped} airspace cell${airspaceCellsSkipped === 1 ? "" : "s"}`);
-  }
-  const keptSuffix = keptParts.length ? `, ${keptParts.join(", ")} kept` : "";
+  const keptSuffix =
+    cellsSkipped > 0
+      ? `, ${cellsSkipped} cell${cellsSkipped === 1 ? "" : "s"} kept`
+      : "";
 
   onStatus?.(
-    `Cache done — ${tileCount} terrarium + ${airspaceTileCount} airspace tiles, ${airportCount} airports in ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${networkFetches} fetched${keptSuffix})`
+    `Cache done — ${tileCount} terrarium tiles, ${airportCount} airports, ${airspaceCount} airspace volumes in ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${networkFetches} fetched${keptSuffix})`
   );
 
   return {
@@ -392,13 +354,11 @@ export async function buildCacheBundle(cellKeys, config, onStatus) {
     bounds,
     tileCount,
     tileFetches,
-    airspaceTileCount,
-    airspaceTileFetches,
-    airspaceCellsSkipped,
     airportFetches,
     cellsFetched,
     cellsSkipped,
     airportCount,
+    airspaceCount,
   };
 }
 

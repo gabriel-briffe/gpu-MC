@@ -15,9 +15,6 @@ import { GlideConeEngine } from "./glidecone.js";
 import {
   initOpenAipAirspaceTiles,
   removeOpenAipVectorTiles,
-  initCachedOpenAipAirspaceLayers,
-  removeCachedOpenAipAirspaceLayers,
-  setCachedOpenAipAirspaceVisible,
   queryOpenAipAirspacesAt,
   airspaceFeatureKey,
   setOpenAipAirspaceVisible,
@@ -32,10 +29,6 @@ import {
   TERRAIN_TILE_URL_TEMPLATE,
 } from "./terrain-tiles.js";
 import {
-  registerOpenAipTileProtocol,
-  setOpenAipTileCacheConfig,
-} from "./openaip-vector-tiles-cache.js";
-import {
   buildCacheBundle,
   cacheCellKey,
   cachedAirportsToGeoJsonFeatures,
@@ -43,7 +36,12 @@ import {
   getCachedAirportsInBounds,
   getLastCachedCellKeysForSelection,
   mergedCachedAirportsToGeoJsonFeatures,
+  mergedCachedAirspacesToGeoJsonFeatures,
 } from "./cache-area.js";
+import {
+  AIRSPACE_TYPE_ADVISORY,
+  AIRSPACE_TYPE_PROHIBITED,
+} from "./airspace.js";
 
 const DEFAULT_MAX_ALTITUDE = 3050;
 const MIN_SEEDS = 1;
@@ -187,7 +185,7 @@ let manualTouchStart = null;
 let cacheSelectMode = false;
 let cacheGridReady = false;
 let cacheAirportsReady = false;
-let cacheAirspaceReady = false;
+let cacheRestAirspaceReady = false;
 let cachedAirportMapReady = false;
 let cacheDownloadInProgress = false;
 let overlayVisibilityBeforeCache = null;
@@ -1003,7 +1001,6 @@ function getGlideParams() {
 }
 
 registerTerrainTileProtocol();
-registerOpenAipTileProtocol();
 
 map = new maplibregl.Map({
   container: "map",
@@ -2786,29 +2783,79 @@ function clearCacheAirportLayers() {
   cacheAirportsReady = false;
 }
 
-function ensureCacheAirspaceLayers() {
-  if (!map || cacheAirspaceReady || !openAipConfigured(openAipConfig)) {
+function ensureCacheRestAirspaceLayers() {
+  if (!map || cacheRestAirspaceReady) {
     return;
   }
-  initCachedOpenAipAirspaceLayers(map, { minZoom: 3, maxZoom: 7 });
-  setCachedOpenAipAirspaceVisible(map, true);
-  cacheAirspaceReady = true;
+
+  map.addSource("cache-rest-airspaces", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: "cache-rest-airspaces-fill",
+    type: "fill",
+    source: "cache-rest-airspaces",
+    paint: {
+      "fill-color": [
+        "match",
+        ["get", "type"],
+        AIRSPACE_TYPE_PROHIBITED,
+        "#c62828",
+        AIRSPACE_TYPE_ADVISORY,
+        "#e65100",
+        "#c62828",
+      ],
+      "fill-opacity": 0.28,
+    },
+  });
+
+  map.addLayer({
+    id: "cache-rest-airspaces-line",
+    type: "line",
+    source: "cache-rest-airspaces",
+    paint: {
+      "line-color": [
+        "match",
+        ["get", "type"],
+        AIRSPACE_TYPE_PROHIBITED,
+        "#9a0e0e",
+        AIRSPACE_TYPE_ADVISORY,
+        "#bf360c",
+        "#9a0e0e",
+      ],
+      "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 12, 2],
+      "line-opacity": 0.85,
+    },
+  });
+
+  cacheRestAirspaceReady = true;
 }
 
-function clearCacheAirspaceLayers() {
-  if (!map || !cacheAirspaceReady) {
+function updateCacheRestAirspaceData() {
+  if (!cacheRestAirspaceReady || !map.getSource("cache-rest-airspaces")) {
     return;
   }
-  removeCachedOpenAipAirspaceLayers(map);
-  cacheAirspaceReady = false;
+  map.getSource("cache-rest-airspaces").setData({
+    type: "FeatureCollection",
+    features: mergedCachedAirspacesToGeoJsonFeatures(),
+  });
 }
 
-function refreshCacheAirspaceLayers() {
-  if (!map || !cacheSelectMode) {
+function clearCacheRestAirspaceLayers() {
+  if (!map || !cacheRestAirspaceReady) {
     return;
   }
-  clearCacheAirspaceLayers();
-  ensureCacheAirspaceLayers();
+  for (const layerId of ["cache-rest-airspaces-line", "cache-rest-airspaces-fill"]) {
+    if (map.getLayer(layerId)) {
+      map.removeLayer(layerId);
+    }
+  }
+  if (map.getSource("cache-rest-airspaces")) {
+    map.removeSource("cache-rest-airspaces");
+  }
+  cacheRestAirspaceReady = false;
 }
 
 function refreshCacheSelectOverlays() {
@@ -2817,9 +2864,10 @@ function refreshCacheSelectOverlays() {
   }
   ensureCacheGridLayers();
   updateCacheGridData();
-  ensureCacheAirspaceLayers();
+  ensureCacheRestAirspaceLayers();
   ensureCacheAirportLayers();
   updateCacheAirportData();
+  updateCacheRestAirspaceData();
 }
 
 function updateCacheGridData() {
@@ -2939,7 +2987,7 @@ function exitCacheSelectMode() {
 
   clearCacheGridLayers();
   clearCacheAirportLayers();
-  clearCacheAirspaceLayers();
+  clearCacheRestAirspaceLayers();
   setOverlaysHiddenForCacheSelect(false);
   syncCacheDownloadButton();
   setStatus("Cache selection closed");
@@ -2971,7 +3019,6 @@ async function runCacheDownload() {
   try {
     await buildCacheBundle([...selectedCacheCells], openAipConfig, setStatus);
     refreshCacheSelectOverlays();
-    refreshCacheAirspaceLayers();
     refreshCachedAirportMapLayer();
   } catch (error) {
     setStatus(`Cache error: ${error.message}`);
@@ -3274,7 +3321,6 @@ map.on("load", async () => {
   try {
     openAipConfig = await loadOpenAipConfig();
     if (openAipConfigured(openAipConfig)) {
-      setOpenAipTileCacheConfig(openAipConfig);
       console.info("OpenAIP REST caching enabled");
       ensureCachedAirportMapLayers();
       refreshCachedAirportMapLayer();

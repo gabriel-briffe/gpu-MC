@@ -217,7 +217,7 @@ export function formatAirspaceLimit(limit) {
   return `${parsed.value} ${ref}`;
 }
 
-function normalizeAirspace(item) {
+export function normalizeAirspace(item) {
   const rings = ringsFromGeometry(item.geometry);
   if (!rings.length) {
     return null;
@@ -231,6 +231,43 @@ function normalizeAirspace(item) {
     rings,
     bbox: ringBBox(rings[0]),
   };
+}
+
+export function airspaceKey(airspace) {
+  return airspace.id ?? `${airspace.name}@${airspace.type}`;
+}
+
+export function dedupeAirspaces(airspaces) {
+  const seen = new Set();
+  const merged = [];
+  for (const airspace of airspaces) {
+    const key = airspaceKey(airspace);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(airspace);
+  }
+  return merged;
+}
+
+export function airspaceToGeoJsonFeature(airspace) {
+  return {
+    type: "Feature",
+    properties: {
+      id: airspace.id,
+      name: airspace.name,
+      type: airspace.type,
+    },
+    geometry: {
+      type: "Polygon",
+      coordinates: airspace.rings,
+    },
+  };
+}
+
+export function airspacesToGeoJsonFeatures(airspaces) {
+  return airspaces.map(airspaceToGeoJsonFeature);
 }
 
 export function airspaceContainsPoint(airspace, lng, lat) {

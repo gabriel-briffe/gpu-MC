@@ -41,14 +41,6 @@ export const OPENAIP_AIRSPACE_FILL_LAYER = "openaip-airspaces-fill";
 export const OPENAIP_AIRSPACE_LAYER = "openaip-airspaces-line";
 export const OPENAIP_AIRSPACE_LAYERS = [OPENAIP_AIRSPACE_FILL_LAYER, OPENAIP_AIRSPACE_LAYER];
 
-export const CACHE_OPENAIP_SOURCE = "openaip-cached";
-export const CACHE_OPENAIP_AIRSPACE_FILL_LAYER = "cache-openaip-airspaces-fill";
-export const CACHE_OPENAIP_AIRSPACE_LAYER = "cache-openaip-airspaces-line";
-export const CACHE_OPENAIP_AIRSPACE_LAYERS = [
-  CACHE_OPENAIP_AIRSPACE_FILL_LAYER,
-  CACHE_OPENAIP_AIRSPACE_LAYER,
-];
-
 export function isIncludedAirportType(type) {
   return isIncludedOpenAipAirportType(type);
 }
@@ -179,47 +171,4 @@ function addOpenAipAirspaceLayers(map, sourceId, fillLayerId, lineLayerId, { min
       "line-opacity": 0.85,
     },
   });
-}
-
-export function initCachedOpenAipAirspaceLayers(map, { minZoom = 3, maxZoom = 7 } = {}) {
-  if (!map || map.getSource(CACHE_OPENAIP_SOURCE)) {
-    return false;
-  }
-
-  map.addSource(CACHE_OPENAIP_SOURCE, {
-    type: "vector",
-    tiles: ["openaip-cache://{z}/{x}/{y}.pbf"],
-    minzoom: minZoom,
-    maxzoom: maxZoom,
-    attribution:
-      '<a href="https://www.openaip.net" target="_blank" rel="noopener">OpenAIP</a>',
-  });
-
-  addOpenAipAirspaceLayers(map, CACHE_OPENAIP_SOURCE, CACHE_OPENAIP_AIRSPACE_FILL_LAYER, CACHE_OPENAIP_AIRSPACE_LAYER, {
-    minzoom: minZoom,
-    visible: true,
-  });
-
-  return true;
-}
-
-export function removeCachedOpenAipAirspaceLayers(map) {
-  if (!map?.getSource(CACHE_OPENAIP_SOURCE)) {
-    return;
-  }
-  for (const layerId of CACHE_OPENAIP_AIRSPACE_LAYERS) {
-    if (map.getLayer(layerId)) {
-      map.removeLayer(layerId);
-    }
-  }
-  map.removeSource(CACHE_OPENAIP_SOURCE);
-}
-
-export function setCachedOpenAipAirspaceVisible(map, visible) {
-  const visibility = visible ? "visible" : "none";
-  for (const layerId of CACHE_OPENAIP_AIRSPACE_LAYERS) {
-    if (map.getLayer(layerId)) {
-      map.setLayoutProperty(layerId, "visibility", visibility);
-    }
-  }
 }
