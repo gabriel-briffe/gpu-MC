@@ -107,7 +107,7 @@ import {
 import { initAutoCompute, scheduleAutoCompute, clearAutoComputeScheduling, onAutoModeMapMoveEnd, syncAutoWindowSizeUi } from "./auto/auto-compute.js";
 import { initSingleCompute, clearSingleComputeScheduling, flushSingleAirportCompute, getSingleComputePending, scheduleSingleAirportCompute } from "./single/single-compute.js";
 import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
-import { hasCachedAreas } from "./cache-area.js";
+import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 
 const app = createApp();
@@ -884,7 +884,7 @@ app.map.on("load", async () => {
     );
   }
 
-  if (!hasCachedAreas()) {
+  if (needsStartupCacheMode()) {
     setParamsMode("single", { initial: true });
     sharedHooks.enterCacheSelectMode?.();
   } else if (openAipConfigured(app.openAipConfig) && isAutoParamsMode()) {

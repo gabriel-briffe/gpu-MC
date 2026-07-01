@@ -68,12 +68,16 @@ export function initCellCacheFromStorage() {
     console.warn("Failed to load airport cell cache", error);
   }
   purgeExpiredCellCache();
-  lastCachedCellKeys = lastCachedCellKeys.filter((cellKey) => isCellCached(cellKey));
 }
 
-/** Cell keys from the last Cache action, still fresh — pre-select in cache mode. */
+/** Cell keys from the last Cache action (declared coverage). */
+export function getDeclaredCachedCellKeys() {
+  return [...lastCachedCellKeys];
+}
+
+/** Cell keys from the last Cache action — pre-select when opening cache mode. */
 export function getLastCachedCellKeysForSelection() {
-  return lastCachedCellKeys.filter((cellKey) => isCellCached(cellKey));
+  return getDeclaredCachedCellKeys();
 }
 
 export function setLastCachedCellKeys(cellKeys) {
@@ -85,8 +89,22 @@ export function isCellCached(cellKey) {
   return isCellCacheFresh(cellCache.get(cellKey));
 }
 
-export function hasCachedAreas() {
-  return cellCache.size > 0;
+/** Fresh cell with both REST airports and airspace from a full cache fetch. */
+export function isCellFullyCached(cellKey) {
+  const entry = cellCache.get(cellKey);
+  if (!isCellCacheFresh(entry)) {
+    return false;
+  }
+  return Array.isArray(entry.airports) && Array.isArray(entry.airspaces);
+}
+
+/** Open cache mode on startup unless every declared cell has fresh airports and airspace. */
+export function needsStartupCacheMode() {
+  const declared = getDeclaredCachedCellKeys();
+  if (declared.length === 0) {
+    return true;
+  }
+  return declared.some((cellKey) => !isCellFullyCached(cellKey));
 }
 
 export function getCachedCellKeys() {
