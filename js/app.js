@@ -3498,15 +3498,6 @@ map.on("touchmove", (event) => {
 });
 
 map.on("touchend", (event) => {
-  if (cacheSelectMode) {
-    const features = map.queryRenderedFeatures(event.point, { layers: ["cache-grid-fill"] });
-    if (features.length > 0) {
-      toggleCacheCellSelection(event.lngLat.lng, event.lngLat.lat);
-      markTouchHandled();
-    }
-    return;
-  }
-
   updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
 
   if (airportAreaSelectMode && airportRectInteraction) {
