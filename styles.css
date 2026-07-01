@@ -443,6 +443,10 @@
         font-variant-numeric: tabular-nums;
       }
 
+      #params-panel:not([open]) ~ #params-footer #params-footer-info {
+        cursor: pointer;
+      }
+
       #params-footer #status {
         color: #b8c5d6;
       }

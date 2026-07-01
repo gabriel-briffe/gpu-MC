@@ -3,6 +3,10 @@ import {
   REST_AIRSPACE_FILL_LAYER,
   REST_AIRSPACE_LINE_LAYER,
   GLIDE_PATH_PAINT,
+  GLIDE_PATH_GROUND_PAINT,
+  GLIDE_PATH_GROUND_LAYOUT,
+  GLIDE_PATH_DEFAULT_FILTER,
+  GLIDE_PATH_GROUND_FILTER,
   CACHE_HIDDEN_LAYER_IDS,
   AIRPORT_PICK_HIT_PX,
 } from "../constants.js";
@@ -83,8 +87,14 @@ export function raisePathLayer() {
   if (app.pathLayerReady && map.getLayer("glide-path-geo")) {
     map.moveLayer("glide-path-geo");
   }
+  if (app.pathLayerReady && map.getLayer("glide-path-geo-ground")) {
+    map.moveLayer("glide-path-geo-ground");
+  }
   if (app.pathLayerReady && map.getLayer("glide-path")) {
     map.moveLayer("glide-path");
+  }
+  if (app.pathLayerReady && map.getLayer("glide-path-ground")) {
+    map.moveLayer("glide-path-ground");
   }
 }
 
@@ -103,7 +113,16 @@ export function ensurePathLayer() {
       id: sourceId,
       type: "line",
       source: sourceId,
+      filter: GLIDE_PATH_DEFAULT_FILTER,
       paint: GLIDE_PATH_PAINT,
+    });
+    map.addLayer({
+      id: `${sourceId}-ground`,
+      type: "line",
+      source: sourceId,
+      filter: GLIDE_PATH_GROUND_FILTER,
+      layout: GLIDE_PATH_GROUND_LAYOUT,
+      paint: GLIDE_PATH_GROUND_PAINT,
     });
   }
 

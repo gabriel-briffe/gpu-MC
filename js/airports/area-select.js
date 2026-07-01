@@ -4,7 +4,6 @@ import {
   AIRPORT_HANDLE_CURSORS,
 } from "../constants.js";
 import {
-  ensureAirportCellsCachedForBbox,
   getCachedAirportsInBounds,
 } from "../cache-area.js";
 import { formatAirportLabel } from "../airport-label.js";
@@ -429,7 +428,6 @@ async function addAirportsFromSelectAreas() {
   const existing = new Set(pendingSeeds.map((seed) => hooks.airportIdFromSeed(seed)));
   let added = 0;
   for (const rect of app.airportSelectRects) {
-    await ensureAirportCellsCachedForBbox(rect, hooks.getOpenAipConfig(), hooks.setStatus);
     const airports = getCachedAirportsInBounds(
       rect.west,
       rect.south,

@@ -23,6 +23,7 @@ import {
   MAP_CENTER,
   INITIAL_TERRAIN_Z,
   MAP_MAX_ZOOM,
+  CACHE_SELECT_FOOTER_HINT,
 } from "./constants.js";
 import { createApp } from "./app-state.js";
 import {
@@ -85,6 +86,7 @@ import {
   isManualParamsMode,
   isSingleParamsMode,
   getParamsMode,
+  setParamsMode,
 } from "./params/panel.js";
 import {
   initSeeds,
@@ -105,6 +107,7 @@ import {
 import { initAutoCompute, scheduleAutoCompute, clearAutoComputeScheduling, onAutoModeMapMoveEnd, syncAutoWindowSizeUi } from "./auto/auto-compute.js";
 import { initSingleCompute, clearSingleComputeScheduling, flushSingleAirportCompute, getSingleComputePending, scheduleSingleAirportCompute } from "./single/single-compute.js";
 import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
+import { hasCachedAreas } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 
 const app = createApp();
@@ -147,7 +150,6 @@ const {
   manualAirportNameInput,
   manualAirportListEl,
   debugModeInput,
-  highlightDownhillGroundPathInput,
   losRunInput,
   computeContextBarEl,
   computeContextMinAltEl,
@@ -155,6 +157,8 @@ const {
   computeContextParamsEl,
   seedListEl,
   paramsPanel,
+  paramsFooterEl,
+  paramsFooterInfoEl,
   paramsShell,
   paramsModeSingleBtn,
   paramsModeAutoBtn,
@@ -201,10 +205,21 @@ function updateInteractionHints() {
   }
 }
 
-function paramsFooterFallbackText() {
+function getParamsFooterHint() {
+  if (getCacheSelectMode()) {
+    const selected = app.selectedCacheCells.size;
+    if (selected === 0) {
+      return CACHE_SELECT_FOOTER_HINT;
+    }
+    return `${selected} cell${selected === 1 ? "" : "s"} selected`;
+  }
+
   switch (getParamsMode()) {
     case "single":
-      return "click airport to compute";
+      if (app.singleLastPick?.id) {
+        return "click an airport or change params to recompute";
+      }
+      return "click an airport to compute";
     case "auto":
     case "manual":
     default:
@@ -217,7 +232,7 @@ function updateParamsFooter() {
     return;
   }
   statusEl.hidden = false;
-  statusEl.textContent = app.footerStatusText || paramsFooterFallbackText();
+  statusEl.textContent = app.footerStatusText || getParamsFooterHint();
 }
 
 function isGeoTrackingOn() {
@@ -226,10 +241,6 @@ function isGeoTrackingOn() {
   }
   const state = app.geolocateControl._watchState;
   return state === "ACTIVE_LOCK" || state === "BACKGROUND" || state === "WAITING_ACTIVE";
-}
-
-function isHighlightDownhillGroundPathEnabled() {
-  return highlightDownhillGroundPathInput?.checked ?? false;
 }
 
 function areOpenAipAirportsAvailable() {
@@ -355,7 +366,6 @@ const sharedHooks = {
   isManualParamsMode,
   isSingleParamsMode,
   isGeoTrackingOn,
-  isHighlightDownhillGroundPathEnabled,
   areOpenAipAirportsAvailable,
   setStatus,
   stopComputeBtn,
@@ -866,9 +876,6 @@ app.map.on("load", async () => {
       syncAirspaceUi();
       raisePathLayer();
       updateSeedMarkers();
-      if (isAutoParamsMode()) {
-        scheduleAutoCompute({ refreshAirports: true });
-      }
     }
   } catch (error) {
     console.warn(
@@ -877,11 +884,20 @@ app.map.on("load", async () => {
     );
   }
 
+  if (!hasCachedAreas()) {
+    setParamsMode("single", { initial: true });
+    sharedHooks.enterCacheSelectMode?.();
+  } else if (openAipConfigured(app.openAipConfig) && isAutoParamsMode()) {
+    scheduleAutoCompute({ refreshAirports: true });
+  }
+
   ensureSeedLayers();
   updateSeedMarkers();
   try {
     await ensureEngine();
-    setStatus("");
+    if (!getCacheSelectMode()) {
+      setStatus("");
+    }
   } catch (error) {
     setStatus(error.message);
     console.error(error);

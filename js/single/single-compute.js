@@ -1,5 +1,8 @@
 import { kmBoxAroundLngLat } from "../geo.js";
-import { ensureAirportCellsCachedForBbox } from "../cache-area.js";
+import {
+  MISSING_CACHED_AIRSPACE_MSG,
+  resolveComputeGridBounds,
+} from "../cache-area.js";
 import { AUTO_COMPUTE_DEBOUNCE_MS } from "../constants.js";
 import { isSingleParamsMode } from "../params/panel.js";
 import { getAutoWindowSizeKm } from "../auto/auto-compute.js";
@@ -23,6 +26,7 @@ export function clearSingleComputeScheduling() {
   app.singleComputePending = null;
   app.singleLastPick = null;
   hooks.schedulePersistParamsState?.();
+  hooks.updateParamsFooter?.();
 }
 
 export function getSingleComputePending() {
@@ -35,6 +39,7 @@ export function scheduleSingleAirportCompute(pick, { debounce = false } = {}) {
   }
   if (pick?.id) {
     app.singleLastPick = pick;
+    hooks.updateParamsFooter?.();
   }
   const target = pick?.id ? pick : app.singleLastPick;
   if (!target?.id) {
@@ -75,11 +80,18 @@ async function runSingleAirportCompute({ id, lng, lat, label }) {
   }
 
   const windowSizeKm = getAutoWindowSizeKm();
-  const bounds = kmBoxAroundLngLat(lng, lat, windowSizeKm);
+  const requestedBounds = kmBoxAroundLngLat(lng, lat, windowSizeKm);
+  const requireCachedAirspace = hooks.isIncludeAirspaceEnabled?.() ?? false;
+  const gridBounds = resolveComputeGridBounds(requestedBounds, { requireCachedAirspace });
+  if (!gridBounds) {
+    hooks.setStatus(MISSING_CACHED_AIRSPACE_MSG);
+    return false;
+  }
 
-  await ensureAirportCellsCachedForBbox(bounds, hooks.getOpenAipConfig(), hooks.setStatus);
   hooks.refreshCachedAirportMapLayer?.();
-  hooks.refreshRestAirspaceLayerData?.();
+  if (requireCachedAirspace) {
+    hooks.refreshRestAirspaceLayerData?.();
+  }
 
   hooks.setPendingSeedsFromAirports([
     {
@@ -93,6 +105,6 @@ async function runSingleAirportCompute({ id, lng, lat, label }) {
 
   const name = label ?? "airport";
   hooks.setStatus(`Computing ${name}…`);
-  await hooks.runComputation([{ lng, lat }], { gridBounds: bounds });
+  await hooks.runComputation([{ lng, lat }], { gridBounds });
   return true;
 }

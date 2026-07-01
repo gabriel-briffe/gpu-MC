@@ -94,6 +94,34 @@ async function decodeTerrainTileBlob(blob, z, x, y) {
   return { elevation, z, x, y };
 }
 
+/** Persistent (Cache API) only; throws if the tile was not prefetched via Cache. */
+export async function fetchTerrainTileBlobCachedOnly(z, x, y) {
+  const url = terrainTileUrl(z, x, y);
+  const cache = await openTerrainCache();
+  if (cache) {
+    const cached = await cache.match(url);
+    if (cached) {
+      return { blob: await cached.blob(), fromNetwork: false };
+    }
+  }
+  throw new Error(
+    `Terrain tile z${z}/${x}/${y} not cached — select this area in Cache data first`
+  );
+}
+
+/** Session memory + Cache API only (no network). */
+export async function fetchTerrainTileDecodedCachedOnly(z, x, y) {
+  const key = terrainTileKey(z, x, y);
+  if (decodedMemory.has(key)) {
+    return decodedMemory.get(key);
+  }
+
+  const { blob } = await fetchTerrainTileBlobCachedOnly(z, x, y);
+  const payload = await decodeTerrainTileBlob(blob, z, x, y);
+  decodedMemory.set(key, payload);
+  return payload;
+}
+
 /** Session memory + persistent blob cache; returns decoded elevation tile. */
 export async function fetchTerrainTileDecoded(z, x, y) {
   const key = terrainTileKey(z, x, y);

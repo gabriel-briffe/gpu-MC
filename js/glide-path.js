@@ -29,8 +29,7 @@ function terrainMslAtCell(x, y, dem) {
 
 function isDownhillGroundSegment(from, to, ground, dem) {
   const fromIdx = cellIndex(from.x, from.y, dem);
-  const toIdx = cellIndex(to.x, to.y, dem);
-  if (ground[fromIdx] !== 1 || ground[toIdx] !== 1) {
+  if (ground[fromIdx] !== 1) {
     return false;
   }
   return terrainMslAtCell(to.x, to.y, dem) < terrainMslAtCell(from.x, from.y, dem);
@@ -49,7 +48,7 @@ function isSeedCell(x, y, dem) {
 }
 
 function buildPathGeoJson(cells, dem, ground, coordinates) {
-  if (!hooks.isHighlightDownhillGroundPathEnabled() || cells.length < 2) {
+  if (cells.length < 2) {
     return {
       type: "FeatureCollection",
       features:

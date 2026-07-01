@@ -3,6 +3,7 @@ import {
   cacheCellKey,
   getLastCachedCellKeysForSelection,
 } from "../cache-area.js";
+import { CACHE_SELECT_FOOTER_HINT } from "../constants.js";
 
 let hooks;
 let app;
@@ -79,7 +80,7 @@ export function enterCacheSelectMode() {
   const count = hooks.getSelectedCacheCells().size;
   hooks.setStatus(
     count === 0
-      ? "Click 1° cells to select areas to cache"
+      ? CACHE_SELECT_FOOTER_HINT
       : `${count} cell${count === 1 ? "" : "s"} selected — click Cache to verify or add cells`
   );
 }
@@ -102,9 +103,11 @@ export function exitCacheSelectMode() {
   hooks.clearCacheGridLayers();
   hooks.clearCacheAirportLayers();
   hooks.setOverlaysHiddenForCacheSelect(false);
+  hooks.refreshCachedAirportMapLayer?.();
+  hooks.updateSeedMarkers?.();
+  hooks.setStatus("");
   hooks.syncComputeContextBar?.();
   syncCacheDownloadButton();
-  hooks.setStatus("Cache selection closed");
 }
 
 export function toggleCacheCellSelection(lng, lat) {
@@ -119,7 +122,7 @@ export function toggleCacheCellSelection(lng, lat) {
   syncCacheDownloadButton();
   hooks.setStatus(
     selected.size === 0
-      ? "Click 1° cells to select areas to cache"
+      ? CACHE_SELECT_FOOTER_HINT
       : `${selected.size} cell${selected.size === 1 ? "" : "s"} selected`
   );
 }

@@ -312,16 +312,6 @@ export function initParamsPanel(appState, domRefs) {
     applySectorsOverlayOpacity();
   });
 
-  dom.highlightDownhillGroundPathInput?.addEventListener("change", () => {
-    const lastInspectCell = app.hooks.getLastInspectCell();
-    if (lastInspectCell) {
-      app.hooks.refreshInspectPath(lastInspectCell);
-    }
-    if (app.hooks.isGeoTrackingOn()) {
-      app.hooks.updateGeoLocationPath();
-    }
-  });
-
   document.getElementById("los-run")?.addEventListener("input", app.hooks.syncCompareLosButton);
   app.hooks.detectInteractionMode();
   for (const query of ["(pointer: coarse)", "(pointer: fine)", "(hover: hover)"]) {
@@ -333,6 +323,15 @@ export function initParamsPanel(appState, domRefs) {
 
   dom.paramsShell?.addEventListener("pointerenter", app.hooks.clearCellInspect);
   dom.paramsShell?.addEventListener("touchstart", app.hooks.clearCellInspect, { passive: true });
+
+  dom.paramsFooterEl?.addEventListener("click", (event) => {
+    if (event.target.closest("#stop-compute")) {
+      return;
+    }
+    if (!dom.paramsPanel?.open) {
+      dom.paramsPanel.open = true;
+    }
+  });
 }
 
 export { isDebugMode, isAutoParamsMode, isManualParamsMode, isSingleParamsMode };

@@ -47,13 +47,17 @@ export const CACHE_HIDDEN_LAYER_IDS = [
   "seeds-hit",
   "pending-manual-airport-circle",
   "glide-path",
+  "glide-path-ground",
   "glide-path-geo",
+  "glide-path-geo-ground",
   "airport-select-areas-fill",
   "airport-select-areas-line",
   "airport-select-handles",
 ];
 
 export const COMPUTE_DONE_STATUS_CLEAR_MS = 2000;
+
+export const CACHE_SELECT_FOOTER_HINT = 'Select areas of interest, then hit "cache"';
 
 export const PARAM_HELP = {
   ld: "Glide ratio (distance : altitude loss). Horizontal reach from an airport is roughly (altitude − terrain) × L/D. Together with max altitude, this also sets the grid extent (radius ≈ max altitude × L/D).",
@@ -89,14 +93,26 @@ export const VIZ_HINTS = {
   contours: "100 m isolines with labels; GeoJSON export after run.",
 };
 
+export const GLIDE_PATH_GROUND_FILTER = ["==", ["get", "segment"], "downhill-ground"];
+export const GLIDE_PATH_DEFAULT_FILTER = [
+  "any",
+  ["!", ["has", "segment"]],
+  ["!=", ["get", "segment"], "downhill-ground"],
+];
+
 export const GLIDE_PATH_PAINT = {
-  "line-color": [
-    "match",
-    ["get", "segment"],
-    "downhill-ground",
-    "#111111",
-    "#8b1515",
-  ],
+  "line-color": "#8b1515",
   "line-width": 3,
   "line-opacity": 0.95,
+};
+
+export const GLIDE_PATH_GROUND_PAINT = {
+  "line-color": "#111111",
+  "line-width": 3,
+  "line-opacity": 0.95,
+  "line-dasharray": [0, 2.5],
+};
+
+export const GLIDE_PATH_GROUND_LAYOUT = {
+  "line-cap": "round",
 };

@@ -6,7 +6,7 @@ import { openAipConfigured } from "./openaip-client.js";
 import { airportPropertiesWithId } from "./airports/airport-id.js";
 
 export const CACHE_TERRAIN_Z_MIN = 3;
-export const CACHE_TERRAIN_Z_MAX = 8;
+export const CACHE_TERRAIN_Z_MAX = 9;
 export const CACHE_CELL_TTL_MS = 24 * 60 * 60 * 1000;
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
 const CELL_CACHE_STORAGE_KEY = "gpu-mc-cell-cache-v1";
@@ -85,6 +85,10 @@ export function isCellCached(cellKey) {
   return isCellCacheFresh(cellCache.get(cellKey));
 }
 
+export function hasCachedAreas() {
+  return cellCache.size > 0;
+}
+
 export function getCachedCellKeys() {
   return [...cellCache.keys()];
 }
@@ -126,6 +130,63 @@ export function cellKeysInBbox(west, south, east, north) {
   }
 
   return cellKeys;
+}
+
+export function getFreshCachedCellKeysInBbox(west, south, east, north) {
+  return cellKeysInBbox(west, south, east, north).filter((cellKey) => isCellCached(cellKey));
+}
+
+export function isLngLatInCachedCell(lng, lat) {
+  return isCellCached(cacheCellKey(lng, lat));
+}
+
+/** Intersect a bbox with the union of fresh cached 1° cells overlapping it. */
+export function clipBoundsToCachedCells(bounds) {
+  const cellKeys = getFreshCachedCellKeysInBbox(
+    bounds.west,
+    bounds.south,
+    bounds.east,
+    bounds.north
+  );
+  if (cellKeys.length === 0) {
+    return null;
+  }
+
+  const cachedUnion = unionCellBounds(cellKeys);
+  const clipped = {
+    west: Math.max(bounds.west, cachedUnion.west),
+    south: Math.max(bounds.south, cachedUnion.south),
+    east: Math.min(bounds.east, cachedUnion.east),
+    north: Math.min(bounds.north, cachedUnion.north),
+  };
+
+  if (clipped.west >= clipped.east || clipped.south >= clipped.north) {
+    return null;
+  }
+
+  return clipped;
+}
+
+export const MISSING_CACHED_AIRSPACE_MSG =
+  "No cached airspace for this area — use Cache data or disable include prohibited airspace";
+
+/** Grid bounds for compute: clip to cached cells only when airspace capping needs cached OpenAIP. */
+export function resolveComputeGridBounds(bounds, { requireCachedAirspace = false } = {}) {
+  if (!requireCachedAirspace) {
+    return bounds;
+  }
+  return clipBoundsToCachedCells(bounds);
+}
+
+export function getCachedOverlayAirspaces(west, south, east, north) {
+  const cellKeys = getFreshCachedCellKeysInBbox(west, south, east, north);
+  return mergeCachedAirspaces(cellKeys).filter(
+    (airspace) =>
+      airspace.bbox.maxLng >= west &&
+      airspace.bbox.minLng <= east &&
+      airspace.bbox.maxLat >= south &&
+      airspace.bbox.minLat <= north
+  );
 }
 
 export function unionCellBounds(cellKeys) {
@@ -243,8 +304,7 @@ async function cacheAirportsForCells(cellKeys, config, onStatus) {
 }
 
 /**
- * For a bbox query: enumerate overlapping 1° cells, fetch REST airports only for
- * cells not yet cached (<24h). Does not return airport data — storage only.
+ * @deprecated OpenAIP REST data is only fetched via Cache mode ({@link buildCacheBundle}).
  */
 export async function ensureAirportCellsCachedForBbox(bbox, config, onStatus) {
   const cellKeys = cellKeysInBbox(bbox.west, bbox.south, bbox.east, bbox.north);

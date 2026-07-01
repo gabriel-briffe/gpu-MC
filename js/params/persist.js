@@ -37,7 +37,6 @@ function collectFormState(dom) {
     updateMap: readInput(document.getElementById("update-map")),
     vizMode: readInput(dom.vizModeSelect),
     sectorsOpacity: readInput(dom.sectorsOpacityInput),
-    highlightDownhillGroundPath: readCheckbox(dom.highlightDownhillGroundPathInput),
     debugMode: readCheckbox(dom.debugModeInput),
   };
 }
@@ -58,7 +57,6 @@ function applyFormState(dom, form) {
   writeInput(document.getElementById("update-map"), form.updateMap);
   writeInput(dom.vizModeSelect, form.vizMode);
   writeInput(dom.sectorsOpacityInput, form.sectorsOpacity);
-  writeCheckbox(dom.highlightDownhillGroundPathInput, form.highlightDownhillGroundPath);
   writeCheckbox(dom.debugModeInput, form.debugMode);
 }
 

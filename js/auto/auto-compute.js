@@ -7,8 +7,9 @@ import {
   AUTO_COMPUTE_DEBOUNCE_MS,
 } from "../constants.js";
 import {
-  ensureAirportCellsCachedForBbox,
   getCachedAirportsInBounds,
+  MISSING_CACHED_AIRSPACE_MSG,
+  resolveComputeGridBounds,
 } from "../cache-area.js";
 import { formatAirportLabel } from "../airport-label.js";
 import { isAutoParamsMode } from "../params/panel.js";
@@ -98,21 +99,30 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
 
   const windowSizeKm = getAutoWindowSizeKm();
   const center = map.getCenter();
-  const bounds = kmBoxAroundLngLat(center.lng, center.lat, windowSizeKm);
-  app.autoComputeRegion = { ...bounds, windowSizeKm };
+  const requestedBounds = kmBoxAroundLngLat(center.lng, center.lat, windowSizeKm);
+  app.autoComputeRegion = { ...requestedBounds, windowSizeKm };
+
+  const requireCachedAirspace = hooks.isIncludeAirspaceEnabled?.() ?? false;
+  const gridBounds = resolveComputeGridBounds(requestedBounds, { requireCachedAirspace });
+  if (!gridBounds) {
+    hooks.clearComputeResults?.();
+    hooks.setStatus(MISSING_CACHED_AIRSPACE_MSG);
+    return;
+  }
 
   if (refreshAirports) {
-    await ensureAirportCellsCachedForBbox(bounds, hooks.getOpenAipConfig(), hooks.setStatus);
     hooks.refreshCachedAirportMapLayer?.();
-    hooks.refreshRestAirspaceLayerData?.();
+    if (requireCachedAirspace) {
+      hooks.refreshRestAirspaceLayerData?.();
+    }
   }
 
   hooks.setStatus(`Finding airports in ${windowSizeKm * 2} km window…`);
   const airportsInWindow = getCachedAirportsInBounds(
-    bounds.west,
-    bounds.south,
-    bounds.east,
-    bounds.north
+    gridBounds.west,
+    gridBounds.south,
+    gridBounds.east,
+    gridBounds.north
   );
   const enabledAirports = hooks.filterDisabledAirports(airportsInWindow);
 
@@ -159,7 +169,7 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
     lng: airport.lng,
     lat: airport.lat,
   }));
-  await hooks.runComputation(seedsForCompute, { gridBounds: bounds });
+  await hooks.runComputation(seedsForCompute, { gridBounds });
 }
 
 export function cancelPendingAutoCompute() {

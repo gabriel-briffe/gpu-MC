@@ -4,10 +4,12 @@ import {
   metersPerPixel,
   clampTerrainZoom,
   pickTerrainZoom,
+  globalPixelToLngLat,
 } from "./geo.js";
-import { applyAirspaceToDem, demBbox, fetchOverlayAirspaces } from "./airspace.js";
+import { applyAirspaceToDem, demBbox } from "./airspace.js";
 import { openAipConfigured } from "./openaip-client.js";
-import { fetchTerrainTileDecoded } from "./terrain-tiles.js";
+import { clipBoundsToCachedCells, getCachedOverlayAirspaces, MISSING_CACHED_AIRSPACE_MSG, resolveComputeGridBounds } from "./cache-area.js";
+import { fetchTerrainTileDecoded, fetchTerrainTileDecodedCachedOnly } from "./terrain-tiles.js";
 
 function sampleGlobalPixel(tiles, gx, gy, z) {
   const tileX = Math.floor(gx / TILE_SIZE);
@@ -64,6 +66,31 @@ function computeGridExtentsFromLngLatBounds(bounds, z) {
   };
 }
 
+function gridLngLatBounds(gx0, gy0, width, height, z) {
+  const nw = globalPixelToLngLat(gx0, gy0, z);
+  const se = globalPixelToLngLat(gx0 + width, gy0 + height, z);
+  return {
+    west: nw.lng,
+    north: nw.lat,
+    east: se.lng,
+    south: se.lat,
+  };
+}
+
+function clipGridToCachedCells(gx0, gy0, width, height, z) {
+  const clippedBounds = clipBoundsToCachedCells(gridLngLatBounds(gx0, gy0, width, height, z));
+  if (!clippedBounds) {
+    throw new Error(MISSING_CACHED_AIRSPACE_MSG);
+  }
+  return computeGridExtentsFromLngLatBounds(clippedBounds, z);
+}
+
+function requiresCachedAirspace(params) {
+  return Boolean(
+    params.includeAirspace && params.openAipConfig && openAipConfigured(params.openAipConfig)
+  );
+}
+
 /**
  * Build a DEM grid large enough for every seed, with glide radius on each side.
  */
@@ -94,9 +121,14 @@ export async function buildDemGrid(seeds, params) {
   let width;
   let height;
   let gridRadiusPx;
+  const requireCachedAirspace = requiresCachedAirspace(params);
 
   if (params.gridBounds) {
-    ({ gx0, gy0, width, height } = computeGridExtentsFromLngLatBounds(params.gridBounds, z));
+    const bounds = resolveComputeGridBounds(params.gridBounds, { requireCachedAirspace });
+    if (!bounds) {
+      throw new Error(MISSING_CACHED_AIRSPACE_MSG);
+    }
+    ({ gx0, gy0, width, height } = computeGridExtentsFromLngLatBounds(bounds, z));
     gridRadiusPx = radiusPx;
   } else {
     const extents = computeGridExtents(seedPixels, radiusPx);
@@ -105,6 +137,9 @@ export async function buildDemGrid(seeds, params) {
     gy0 = extents.minGy - gridRadiusPx;
     width = extents.width;
     height = extents.height;
+    if (requireCachedAirspace) {
+      ({ gx0, gy0, width, height } = clipGridToCachedCells(gx0, gy0, width, height, z));
+    }
   }
 
   const minTileX = Math.floor(gx0 / TILE_SIZE);
@@ -115,8 +150,13 @@ export async function buildDemGrid(seeds, params) {
   const tiles = new Map();
   const tileCount = (maxTileX - minTileX + 1) * (maxTileY - minTileY + 1);
   const onStatus = params.onStatus;
+  const fetchTerrainTile = requireCachedAirspace
+    ? fetchTerrainTileDecodedCachedOnly
+    : fetchTerrainTileDecoded;
   onStatus?.(
-    `Fetching DEM z${z} (~${Math.round(cellSizeM)} m) — ${seeds.length} airports, ${tileCount} terrain tiles…`
+    requireCachedAirspace
+      ? `Loading cached DEM z${z} (~${Math.round(cellSizeM)} m) — ${seeds.length} airports, ${tileCount} terrain tiles…`
+      : `Fetching DEM z${z} (~${Math.round(cellSizeM)} m) — ${seeds.length} airports, ${tileCount} terrain tiles…`
   );
 
   let tilesLoaded = 0;
@@ -124,11 +164,13 @@ export async function buildDemGrid(seeds, params) {
   for (let ty = minTileY; ty <= maxTileY; ty += 1) {
     for (let tx = minTileX; tx <= maxTileX; tx += 1) {
       fetches.push(
-        fetchTerrainTileDecoded(z, tx, ty).then((tile) => {
+        fetchTerrainTile(z, tx, ty).then((tile) => {
           tiles.set(`${z}/${tx}/${ty}`, tile);
           tilesLoaded += 1;
           onStatus?.(
-            `Fetching DEM z${z} — terrain tiles ${tilesLoaded}/${tileCount}…`
+            requireCachedAirspace
+              ? `Loading cached DEM z${z} — terrain tiles ${tilesLoaded}/${tileCount}…`
+              : `Fetching DEM z${z} — terrain tiles ${tilesLoaded}/${tileCount}…`
           );
         })
       );
@@ -158,15 +200,12 @@ export async function buildDemGrid(seeds, params) {
     params.openAipConfig &&
     openAipConfigured(params.openAipConfig)
   ) {
-    onStatus?.("Fetching airspace volumes…");
-    airspaces = await fetchOverlayAirspaces(
-      demBbox({ gx0, gy0, width, height, zoom: z }),
-      params.openAipConfig
-    );
+    const bbox = demBbox({ gx0, gy0, width, height, zoom: z });
+    airspaces = getCachedOverlayAirspaces(bbox.minLng, bbox.minLat, bbox.maxLng, bbox.maxLat);
     onStatus?.(
       airspaces.length > 0
-        ? `Fetched ${airspaces.length} airspace volumes — applying to grid…`
-        : "No airspace volumes in grid area"
+        ? `Applying ${airspaces.length} cached airspace volumes to grid…`
+        : "No cached airspace volumes in grid area"
     );
   }
 
