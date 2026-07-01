@@ -21,7 +21,6 @@ import {
   setOpenAipAirspaceVisible,
   OPENAIP_AIRPORT_MIN_ZOOM,
   OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-  OPENAIP_AIRSPACE_LAYER,
 } from "./openaip-tiles.js";
 import { loadOpenAipConfig, openAipConfigured } from "./openaip-client.js";
 import {
@@ -44,116 +43,95 @@ import {
   AIRSPACE_TYPE_ADVISORY,
   AIRSPACE_TYPE_PROHIBITED,
 } from "./airspace.js";
+import { dom } from "./dom.js";
+import {
+  DEFAULT_MAX_ALTITUDE,
+  MIN_SEEDS,
+  AUTO_WINDOW_SIZE_DEFAULT_KM,
+  AUTO_WINDOW_GLIDE_FACTOR,
+  AUTO_MAX_OFFSET_FROM_CENTER,
+  AUTO_COMPUTE_DEBOUNCE_MS,
+  AIRPORT_RECT_MIN_DEG,
+  AIRPORT_HANDLE_HIT_PX,
+  AIRPORT_HANDLE_CURSORS,
+  MAP_CENTER,
+  INITIAL_TERRAIN_Z,
+  MAP_MAX_ZOOM,
+  MANUAL_INSPECT_MS,
+  REST_AIRSPACE_SOURCE,
+  REST_AIRSPACE_FILL_LAYER,
+  REST_AIRSPACE_LINE_LAYER,
+  EMPTY_PATH,
+  CACHE_HIDDEN_LAYER_IDS,
+  COMPUTE_DONE_STATUS_CLEAR_MS,
+  PARAM_HELP,
+  VIZ_HINTS,
+  GLIDE_PATH_PAINT,
+} from "./constants.js";
 
-const DEFAULT_MAX_ALTITUDE = 4050;
-const MIN_SEEDS = 1;
-const AUTO_WINDOW_SIZE_DEFAULT_KM = 100;
-const AUTO_WINDOW_GLIDE_FACTOR = 1.25;
-const AUTO_MAX_OFFSET_FROM_CENTER = 0.25;
-const AUTO_COMPUTE_DEBOUNCE_MS = 400;
-const AIRPORT_RECT_MIN_DEG = 1e-5;
-const AIRPORT_HANDLE_HIT_PX = 12;
-const AIRPORT_HANDLE_CURSORS = {
-  nw: "nwse-resize",
-  se: "nwse-resize",
-  ne: "nesw-resize",
-  sw: "nesw-resize",
-};
-const MAP_CENTER = { lng: 9.0788, lat: 47.1194 };
-const INITIAL_TERRAIN_Z = pickTerrainZoom(MAP_CENTER.lat);
-const MAP_MAX_ZOOM = 22;
 let map;
 
-const MANUAL_INSPECT_MS = 5000;
-
-const REST_AIRSPACE_SOURCE = "rest-airspaces";
-const REST_AIRSPACE_FILL_LAYER = "rest-airspaces-fill";
-const REST_AIRSPACE_LINE_LAYER = "rest-airspaces-line";
-
-const EMPTY_PATH = {
-  type: "Feature",
-  geometry: { type: "LineString", coordinates: [] },
-  properties: {},
-};
-
-const info = document.getElementById("info");
-const airspaceInfoEl = document.getElementById("airspace-info");
-const statusEl = document.getElementById("status");
-const cellInfoEl = document.getElementById("cell-info");
-const cellTooltipEl = document.getElementById("cell-tooltip");
-const paramsForm = document.getElementById("params");
-const vizModeSelect = document.getElementById("viz-mode");
-const sectorsOpacityFieldEl = document.getElementById("sectors-opacity-field");
-const sectorsOpacityInput = document.getElementById("sectors-opacity");
-const sectorsOpacityHintEl = document.getElementById("sectors-opacity-hint");
-const previewFieldEl = document.getElementById("preview-field");
-const vizHintEl = document.getElementById("viz-hint");
-const gridRadiusHintEl = document.getElementById("grid-radius-hint");
-const terrainZoomInput = document.getElementById("terrain-zoom");
-const terrainResolutionHintEl = document.getElementById("terrain-resolution-hint");
-const autoWindowSizeInput = document.getElementById("auto-window-size");
-const autoWindowFromGlideInput = document.getElementById("auto-window-from-glide");
-const autoWindowSizeFieldEl = document.getElementById("auto-window-size-field");
-const autoWindowGlideHintEl = document.getElementById("auto-window-glide-hint");
-const includeAirspaceInput = document.getElementById("include-airspace");
-const paramHelpPopover = document.getElementById("param-help-popover");
-const compareLosBtn = document.getElementById("compare-los");
-const compareLosRow = document.getElementById("compare-los-row");
-const downloadContoursBtn = document.getElementById("download-contours");
-const stopComputeBtn = document.getElementById("stop-compute");
-const runComputeBtn = document.getElementById("run-compute");
-const toggleAirportAreaSelectBtn = document.getElementById("toggle-airport-area-select");
-const toggleManualAirportSelectBtn = document.getElementById("toggle-manual-airport-select");
-const addAirportAreaBtn = document.getElementById("add-airport-area");
-const addAirportsFromAreasBtn = document.getElementById("add-airports-from-areas");
-const clearAirportAreasBtn = document.getElementById("clear-airport-areas");
-const addManualAirportBtn = document.getElementById("add-manual-airport");
-const clearManualAirportBtn = document.getElementById("clear-manual-airport");
-const finishManualAirportBtn = document.getElementById("finish-manual-airport");
-const manualAirportNameInput = document.getElementById("manual-airport-name");
-const manualAirportListEl = document.getElementById("manual-airport-list");
-const debugModeInput = document.getElementById("debug-mode");
-const highlightDownhillGroundPathInput = document.getElementById("highlight-downhill-ground-path");
-const losRunInput = document.getElementById("los-run");
-const computeContextBarEl = document.getElementById("compute-context-bar");
-const computeContextMinAltEl = document.getElementById("compute-context-min-alt");
-const computeContextMinAltValueEl = document.getElementById("compute-context-min-alt-value");
-const computeContextParamsEl = document.getElementById("compute-context-params");
-const seedListEl = document.getElementById("seed-list");
-const paramsPanel = document.getElementById("params-panel");
-const paramsShell = document.getElementById("params-shell");
-const paramsModeAutoBtn = document.getElementById("params-mode-auto");
-const paramsModeManualBtn = document.getElementById("params-mode-manual");
-const paramsScrollEl = document.getElementById("params-scroll");
-const seedsSectionEl = document.getElementById("seeds-section");
-const airportAreaSelectPanel = document.getElementById("airport-area-select-panel");
-const manualAirportSelectPanel = document.getElementById("manual-airport-select-panel");
-const clearOverlayBtn = document.getElementById("clear-overlay");
-const clearAllSeedsBtn = document.getElementById("clear-all-seeds");
-const pathInputHintEl = document.getElementById("path-input-hint");
-const openCacheDataBtn = document.getElementById("open-cache-data");
-const cacheDataPanel = document.getElementById("cache-data-panel");
-const runCacheDownloadBtn = document.getElementById("run-cache-download");
-const finishCacheSelectBtn = document.getElementById("finish-cache-select");
-
-const CACHE_HIDDEN_LAYER_IDS = [
-  "glide-cone",
-  "glide-cone-full",
-  "glide-contours-line",
-  "glide-contours-label",
-  "glide-sectors-line",
-  "airports-cached",
-  "airports-cached-labels",
-  OPENAIP_AIRSPACE_LAYER,
-  "seeds-circle",
-  "seeds-label",
-  "pending-manual-airport-circle",
-  "glide-path",
-  "glide-path-geo",
-  "airport-select-areas-fill",
-  "airport-select-areas-line",
-  "airport-select-handles",
-];
+const {
+  info,
+  airspaceInfoEl,
+  statusEl,
+  cellInfoEl,
+  cellTooltipEl,
+  paramsForm,
+  vizModeSelect,
+  sectorsOpacityFieldEl,
+  sectorsOpacityInput,
+  sectorsOpacityHintEl,
+  previewFieldEl,
+  vizHintEl,
+  gridRadiusHintEl,
+  terrainZoomInput,
+  terrainResolutionHintEl,
+  autoWindowSizeInput,
+  autoWindowFromGlideInput,
+  autoWindowSizeFieldEl,
+  autoWindowGlideHintEl,
+  includeAirspaceInput,
+  paramHelpPopover,
+  compareLosBtn,
+  compareLosRow,
+  downloadContoursBtn,
+  stopComputeBtn,
+  runComputeBtn,
+  toggleAirportAreaSelectBtn,
+  toggleManualAirportSelectBtn,
+  addAirportAreaBtn,
+  addAirportsFromAreasBtn,
+  clearAirportAreasBtn,
+  addManualAirportBtn,
+  clearManualAirportBtn,
+  finishManualAirportBtn,
+  manualAirportNameInput,
+  manualAirportListEl,
+  debugModeInput,
+  highlightDownhillGroundPathInput,
+  losRunInput,
+  computeContextBarEl,
+  computeContextMinAltEl,
+  computeContextMinAltValueEl,
+  computeContextParamsEl,
+  seedListEl,
+  paramsPanel,
+  paramsShell,
+  paramsModeAutoBtn,
+  paramsModeManualBtn,
+  paramsScrollEl,
+  seedsSectionEl,
+  airportAreaSelectPanel,
+  manualAirportSelectPanel,
+  clearOverlayBtn,
+  clearAllSeedsBtn,
+  pathInputHintEl,
+  openCacheDataBtn,
+  cacheDataPanel,
+  runCacheDownloadBtn,
+  finishCacheSelectBtn,
+} = dom;
 
 let engine = null;
 let computing = false;
@@ -176,7 +154,6 @@ let autoComputeNeedsAirportRefresh = false;
 let autoComputeRegion = null;
 let statusClearTimer = null;
 
-const COMPUTE_DONE_STATUS_CLEAR_MS = 10000;
 let footerCellHtml = null;
 let lastInspectAnchor = null;
 let lastInspectLngLat = null;
@@ -539,40 +516,6 @@ function makeComputeOptions(dem, glideParams) {
 }
 
 let openParamHelpButton = null;
-
-const PARAM_HELP = {
-  ld: "Glide ratio (distance : altitude loss). Horizontal reach from an airport is roughly (altitude − terrain) × L/D. Together with max altitude, this also sets the grid extent (radius ≈ max altitude × L/D).",
-  circuit:
-    "Height above terrain at each airport before glide-down. Airport altitude = terrain MSL + circuit height.",
-  clearance:
-    "Minimum height above terrain for reachable cells. The flyable surface in the DEM is terrain + this clearance.",
-  "max-alt":
-    "Ceiling for the simulation. Unreachable cells stay at this value. With L/D, it caps how large the computed grid can be.",
-  "terrain-zoom":
-    "Mapterhorn DEM tile zoom (7–10). Higher zoom = finer cell resolution and larger grids. Resolution shown is the ground distance per DEM cell at the map centre.",
-  "auto-window-size":
-    "Half-width of the auto search box in km (± from map centre, total span ×2). Ignored when “Window from glide range” is on.",
-  "auto-window-from-glide":
-    "Set window half-width to 1.25 × max altitude (m) × L/D, converted to km. Updates when max altitude or L/D changes.",
-  "include-airspace":
-    "Show prohibited/overflight-restriction fills from cached REST data and airspace outlines from OpenAIP vector tiles. DEM capping uses the same REST volumes.",
-  "los-run":
-    "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate, but slower.\n\nANYTHING ELSE THAN N=0 IS EXPERIMENTAL, MIGHT INTRODUCE MISTAKES, BUGS, PATH ENDING TOO EARLY.. DON'T USE IF YOU DON'T UNDERSTAND THE CODE BEHIND\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source. Faster, and often accurate enough.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule). Fast, but usually not accurate enough.",
-  "viz-mode":
-    "Path only — glide paths on hover/tap, no overlay. Sectors — per-airport colors from lat/lon hash; ground transparent. Contours — 100 m isolines with labels; exportable as GeoJSON. Stripes and raw raster (debug) — alternating 100 m bands or per-cell colors.",
-  preview:
-    "How often the map refreshes during GPU compute (sectors, stripes, and raw raster). 0 = update once at the end.",
-  "compare-los":
-    "Runs a full Bresenham line-of-sight overlay in red on the current grid, without the LOS run N shortcut. Use this to check how accurate your shortcut is compared to the exact raytrace.",
-};
-
-const VIZ_HINTS = {
-  "path-only": "No overlay — hover or tap the map to inspect glide paths.",
-  sectors: "Per-airport fill colors (lat/lon hash); grey borders as map lines between sectors.",
-  stripes: "100 m bands relative to airport altitude.",
-  raw: "Per-cell altitude colors.",
-  contours: "100 m isolines with labels; GeoJSON export after run.",
-};
 
 function parseVizMode() {
   let mode = vizModeSelect?.value ?? "contours";
@@ -2223,18 +2166,6 @@ function raisePathLayer() {
     map.moveLayer("glide-path");
   }
 }
-
-const GLIDE_PATH_PAINT = {
-  "line-color": [
-    "match",
-    ["get", "segment"],
-    "downhill-ground",
-    "#111111",
-    "#8b1515",
-  ],
-  "line-width": 3,
-  "line-opacity": 0.95,
-};
 
 function ensurePathLayer() {
   if (pathLayerReady) {

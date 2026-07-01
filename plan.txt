@@ -1,0 +1,238 @@
+## Stepped refactor plan (verify after each step)
+
+Goal: every step is a **small, shippable change** with a **short manual smoke test** before the next step. Prefer **move code, don’t rewrite** until the monolith is split.
+
+---
+
+### Step 0 — Baseline (no code change)
+
+**Do:** Note current behavior once (screenshots or a checklist).
+
+**Smoke test checklist** (reuse after every step):
+1. Map loads, hillshade visible  
+2. **Auto mode:** pan → compute runs, sectors/contours/path-only each work  
+3. **Manual mode:** add airport → **Run** → overlay + hover path  
+4. **Sectors:** fill + grey borders + opacity slider  
+5. **Cache mode:** select cell → Cache → Done  
+6. Airspace toggle (if configured)  
+7. No errors in browser console  
+
+---
+
+### Step 1 — Extract CSS (`index.html` → `styles.css`)
+
+**Scope:** Move `<style>` block only; link `styles.css` in HTML.
+
+**Risk:** Very low.
+
+**Verify:** Page looks identical; params panel, tooltips, mobile layout unchanged.
+
+---
+
+### Step 2 — `js/dom.js` (DOM refs only)
+
+**Scope:** Move all `document.getElementById(...)` (and similar) into `dom.js`; export one object e.g. `export const dom = { ... }`. `app.js` imports it.
+
+**Risk:** Low — no logic move.
+
+**Verify:** Same smoke test; especially buttons, sliders, mode toggle, help popover.
+
+---
+
+### Step 3 — `js/constants.js`
+
+**Scope:** Move pure constants (`DEFAULT_MAX_ALTITUDE`, `MAP_CENTER`, layer IDs, `PARAM_HELP`, `VIZ_HINTS`, debounce ms, etc.).
+
+**Risk:** Low.
+
+**Verify:** Smoke test + confirm help text and viz hints still show.
+
+---
+
+### Step 4 — `js/app-state.js` (skeleton only)
+
+**Scope:** Create `createApp()` returning an object with **all** current top-level `let` fields (initial values copied). `app.js` does `const app = createApp()` but **still uses local variables** OR aliases `let map = app.map` at top — minimal churn.
+
+**Risk:** Low if you only introduce the object without rewiring every function yet.
+
+**Verify:** Smoke test unchanged.
+
+---
+
+### Step 5 — Pure helpers (no `map` / DOM)
+
+**Scope:** Move to dedicated files, **import back into `app.js`**:
+
+| New file | Examples |
+|----------|----------|
+| `js/airport-label.js` | `formatAirportLabel`, `seedDisplayLabel` |
+| `js/params/viz-mode.js` | `parseVizMode`, `VIZ_HINTS` (if not in constants) |
+| `js/compute/format.js` | `formatComputeDone`, `formatHoverTip`, tooltip HTML helpers |
+
+Functions stay pure; signatures unchanged.
+
+**Risk:** Low.
+
+**Verify:** Labels, tooltips, viz mode switching, debug-only options.
+
+---
+
+### Step 6 — `js/params/panel.js` (UI wiring)
+
+**Scope:** Move `initParamPanel`, `syncParamVisibility`, `syncSectorsOpacityUi`, `applySectorsOverlayOpacity`, `syncDebugUi`, `setParamsMode`, help open/close, opacity slider listeners. Export `initParamsPanel(app, dom)`.
+
+**Risk:** Medium — many listeners.
+
+**Verify:** Auto/manual toggle, all param inputs, sectors opacity live update, debug stripes/raw, auto recompute on viz change.
+
+---
+
+### Step 7 — `js/compute/session.js` (orchestration only)
+
+**Scope:** Move `startComputeSession`, `endComputeSession`, `requestStopCompute`, `makeComputeOptions`, `makeComputeProgressHandler`, `getGlideParams`, `runComputation`, `runFullBresenhamCompare`. Still call visualization functions in `app.js` for now.
+
+**Risk:** Medium — core path.
+
+**Verify:** Manual Run, Stop, auto compute, compare Bresenham (debug), status messages.
+
+---
+
+### Step 8 — `js/compute/visualization.js`
+
+**Scope:** Move overlay stack:
+
+- `updateConeVisualization`, `updateOverlay`, `clearRasterOverlay`  
+- Contour layers + `buildAltitudeContours` usage  
+- Sector borders + opacity on layers  
+- `clearComputeResults` / `clearAllOverlays` (or split clear helpers here)
+
+Pass `app.map`, `app.coneState`, `dom` as needed.
+
+**Risk:** Medium-high — most visible output.
+
+**Verify:** All four overlay modes; clear overlay; download contours; sectors borders + slider.
+
+---
+
+### Step 9 — `js/map/layers.js`
+
+**Scope:** Centralize `ensurePathLayer`, `ensureSeedLayers`, `ensureContourLayers`, `ensureSectorBorderLayers`, cached/cache airport layers, airspace REST layers, `raisePathLayer`, `CACHE_HIDDEN_LAYER_IDS`.
+
+**Risk:** Medium — layer order bugs.
+
+**Verify:** Paths on top; cache mode hides right layers; airport dots/labels; airspace fill.
+
+---
+
+### Step 10 — `js/glide-path.js` + `js/inspect/cell.js`
+
+**Scope:** Move path tracing, `sampleDemCell`, `showCellInspect`, tooltip positioning, geo path, `seedPathMetrics`. Map events still in `app.js` but call `inspect.onMouseMove(app, e)`.
+
+**Risk:** Medium.
+
+**Verify:** Hover path (desktop), tap path (mobile), debug tooltip lines, geolocate path if used.
+
+---
+
+### Step 11 — `js/airports/seeds.js` (replace duplicate)
+
+**Scope:** Move `pendingSeeds`, seed list UI, yellow markers, `updateSeedMarkers`, `syncSeedLayerVisibility`. **Delete or gut** unused `js/seeds.js` if nothing imports it.
+
+**Risk:** Medium.
+
+**Verify:** Manual seeds, auto airport discovery, seed list, remove seed, markers hidden in auto mode.
+
+---
+
+### Step 12 — `js/airports/manual-select.js`
+
+**Scope:** Manual airport pick mode + staging list + pending marker layer.
+
+**Verify:** Manual selection flow end-to-end.
+
+---
+
+### Step 13 — `js/airports/area-select.js`
+
+**Scope:** Draw areas, handles, add airports from areas.
+
+**Verify:** Draw, resize, add from areas, clear.
+
+---
+
+### Step 14 — `js/auto/auto-compute.js`
+
+**Scope:** `scheduleAutoCompute`, `flushAutoCompute`, `runAutoComputation`, `onAutoModeMapMoveEnd`, window size from glide.
+
+**Verify:** Auto pan/zoom, param changes trigger recompute, viz change recompute.
+
+---
+
+### Step 15 — `js/cache/cache-ui.js`
+
+**Scope:** Cache-select mode UI, grid layers, download, panel buttons. Keeps using `cache-area.js` for data.
+
+**Verify:** Full cache workflow; auto compute paused in cache mode.
+
+---
+
+### Step 16 — `js/map/events.js`
+
+**Scope:** Move all `map.on(...)` and form/button listeners not yet moved. `main.js` calls `bindMapEvents(app)` and `bindUiEvents(app)`.
+
+**Verify:** Full smoke test once — this is the integration step for interaction.
+
+---
+
+### Step 17 — `js/main.js` + retire `app.js`
+
+**Scope:** Map init, `map.on('load')`, wire modules. `index.html` script → `js/main.js`. Delete or thin `app.js` to re-exports only.
+
+**Verify:** Fresh load from cold cache; full smoke test.
+
+---
+
+### Step 18 — Rewire `app` state (optional cleanup)
+
+**Scope:** Replace remaining module-level `let` with `app.*` inside each module (no second global `map`).
+
+**Verify:** Smoke test again.
+
+---
+
+### Step 19 — Split `glidecone.js` (independent track)
+
+Can run **after Step 7** or at the end:
+
+1. `glidecone/shaders.js` — all WGSL strings  
+2. `glidecone/render.js` — `renderColorFrame`, `resolveDeepOriginsGpu`  
+3. `glidecone/engine.js` — `GlideConeEngine`  
+4. Move `buildSeedPaletteGrid` / hash next to `sectors.js` or `glidecone/sectors-color.js`
+
+**Verify:** One full compute per viz mode (stripes/raw/sectors/contours); WebGPU still initializes.
+
+---
+
+## Rules between steps
+
+1. **One step = one PR/commit** (or one session).  
+2. **No behavior change** in extract steps — copy-paste, export, import.  
+3. **Don’t** split `app` state and extract modules in the same step until Step 4 exists.  
+4. If something breaks, **revert that step only** — steps are ordered to keep diffs small.  
+5. Optional later: add **one** Playwright smoke script after Step 7 (map load + mode select) — not required for manual checks.
+
+---
+
+## Suggested order for you
+
+| Week / session | Steps |
+|----------------|--------|
+| 1 | 0 → 1 → 2 → 3 |
+| 2 | 4 → 5 → 6 |
+| 3 | 7 → 8 (heaviest — allow time) |
+| 4 | 9 → 10 |
+| 5 | 11 → 12 → 13 |
+| 6 | 14 → 15 → 16 → 17 |
+| 7 | 18 → 19 |
+
+Start with **Steps 1–3** when you want to proceed — biggest readability win, almost zero logic risk. Say which step to implement first and we can do it in the repo.
