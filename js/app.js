@@ -618,6 +618,7 @@ function setParamsMode(mode) {
     autoComputeNeedsAirportRefresh = false;
     autoComputeRegion = null;
   }
+  syncSeedLayerVisibility();
 }
 
 function computeAutoWindowSizeFromGlideKm() {
@@ -1313,7 +1314,20 @@ function ensureSeedLayers() {
   }
 
   seedLayersReady = true;
+  syncSeedLayerVisibility();
   raisePathLayer();
+}
+
+function syncSeedLayerVisibility() {
+  if (!seedLayersReady || !map) {
+    return;
+  }
+  const visibility = isAutoParamsMode() ? "none" : "visible";
+  for (const layerId of ["seeds-circle", "seeds-label"]) {
+    if (map.getLayer(layerId)) {
+      map.setLayoutProperty(layerId, "visibility", visibility);
+    }
+  }
 }
 
 function seedKey(seed) {
@@ -2073,6 +2087,7 @@ function updateSeedMarkers() {
     features,
   });
 
+  syncSeedLayerVisibility();
   if (runComputeBtn) {
     runComputeBtn.disabled = pendingSeeds.length < MIN_SEEDS || computing;
   }
