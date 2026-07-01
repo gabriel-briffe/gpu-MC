@@ -13,7 +13,7 @@
   <body>
     <div id="params-shell" class="params-mode-auto">
       <details id="params-panel">
-        <summary>Parameters</summary>
+        <summary id="params-panel-summary">Open settings</summary>
         <div class="params-mode-bar" role="group" aria-label="Parameter mode">
           <button type="button" class="params-mode-btn" id="params-mode-single" aria-pressed="false">
             Single
@@ -28,7 +28,6 @@
         <div id="params-scroll">
         <form id="params" aria-label="Glide parameters">
           <div class="params-section">
-            <div class="params-section-title">Flight</div>
             <div class="params-fields">
               <div class="param-field">
                 <div class="param-label-row">
@@ -263,7 +262,6 @@
           </div>
 
           <div class="params-section">
-            <div class="params-section-title">Options</div>
             <div class="params-fields">
               <div class="param-field param-field-full">
                 <div class="param-label-row">
@@ -314,7 +312,7 @@
 
           <div class="params-section params-manual-only">
             <div class="params-fields">
-              <div class="param-field param-field-full">
+              <div class="param-field param-field-full" id="debug-mode-field">
                 <label class="param-check" for="debug-mode">
                   <input id="debug-mode" type="checkbox" />
                   <span>Debug mode</span>
@@ -324,10 +322,6 @@
           </div>
 
           <div class="params-section">
-            <div class="params-section-title">Offline data</div>
-            <p class="param-section-desc">
-              Pre-download terrain and airspace for offline use.
-            </p>
             <div class="params-section-actions">
               <button type="button" class="action-btn btn-blue" id="open-cache-data">
                 Add data

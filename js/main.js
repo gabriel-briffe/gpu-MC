@@ -768,8 +768,9 @@ function syncDownloadContoursButton() {
     return;
   }
   const hasContours = Boolean(app.coneState?.contourGeojson);
-  downloadContoursBtn.hidden = !hasContours;
-  downloadContoursBtn.disabled = !hasContours;
+  const visible = isDebugMode() && hasContours;
+  downloadContoursBtn.hidden = !visible;
+  downloadContoursBtn.disabled = !visible;
 }
 
 function setDownloadContoursVisible(_visible) {
@@ -777,7 +778,7 @@ function setDownloadContoursVisible(_visible) {
 }
 
 function downloadContourGeojson() {
-  if (!app.coneState?.contourGeojson) {
+  if (!isDebugMode() || !app.coneState?.contourGeojson) {
     return;
   }
   const dem = app.coneState.dem;

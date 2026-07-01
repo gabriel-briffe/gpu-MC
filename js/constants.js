@@ -60,25 +60,25 @@ export const COMPUTE_DONE_STATUS_CLEAR_MS = 2000;
 export const CACHE_SELECT_FOOTER_HINT = 'Select areas of interest, then hit "cache"';
 
 export const PARAM_HELP = {
-  ld: "Glide ratio (distance : altitude loss). Horizontal reach from an airport is roughly (altitude − terrain) × L/D. Together with max altitude, this also sets the grid extent (radius ≈ max altitude × L/D).",
+  ld: "Glide ratio",
   circuit:
-    "Height above terrain at each airport before glide-down. Airport altitude = terrain MSL + circuit height.",
+    "Height AGL for beginning of downwind leg",
   clearance:
-    "Minimum height above terrain for reachable cells. The flyable surface in the DEM is terrain + this clearance.",
+    "Minimum height AGL. Don't set too low, it is the margin above mountain passes, and above slowly descending ground.",
   "max-alt":
-    "Ceiling for the simulation. Unreachable cells stay at this value. With L/D, it caps how large the computed grid can be.",
+    "Max altitude that you are interested in.",
   "terrain-zoom":
-    "Mapterhorn DEM tile zoom (7–10). Higher zoom = finer cell resolution and larger grids. Resolution shown is the ground distance per DEM cell at the map centre.",
+    "Mapterhorn DEM tile zoom (7–10). Leave at 7. zoom 8 has about 2X better resolution but takes 4X more time, zoom 9: 16x and so on.",
   "auto-window-size":
-    "Half-width of the auto search box in km (± from map centre, total span ×2). Ignored when “Window from glide range” is on.",
+    "In auto mode, the computed window is following the position of the center of the screen. Bigger window, longer wait during updates..",
   "auto-window-from-glide":
-    "Set window half-width to 1.25 × max altitude (m) × L/D, converted to km. Updates when max altitude or L/D changes.",
+    "In auto mode, the computed window is following the position of the center of the screen. Bigger window, longer wait during updates. \n\nSets window half-width to 1.25 × max altitude (m) × L/D",
   "include-airspace":
-    "Apply prohibited/overflight-restriction volumes from cached REST data to the DEM grid and show fills on the map. OpenAIP vector tile outlines and the airspace inspector appear only in debug mode.",
+    "Include prohibited/overflight-restriction airspace types from OpenAIP so that trajectories go above or around.",
   "los-run":
-    "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate, but slower.\n\nANYTHING ELSE THAN N=0 IS EXPERIMENTAL, MIGHT INTRODUCE MISTAKES, BUGS, PATH ENDING TOO EARLY.. DON'T USE IF YOU DON'T UNDERSTAND THE CODE BEHIND\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source. Faster, and often accurate enough.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule). Fast, but usually not accurate enough.",
+    "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate.\n\nANYTHING ELSE THAN N=0 IS EXPERIMENTAL, MIGHT INTRODUCE MISTAKES, BUGS, PATH ENDING TOO EARLY.. DON'T USE IF YOU DON'T UNDERSTAND THE CODE BEHIND\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule).",
   "viz-mode":
-    "Path only — glide paths on hover/tap, no overlay. Sectors — per-airport colors from lat/lon hash; ground transparent. Contours — 100 m isolines with labels; exportable as GeoJSON. Stripes and raw raster (debug) — alternating 100 m bands or per-cell colors.",
+    "Path only — glide paths on hover/tap, no overlay. \n\nSectors — per-airport colors with grey borders. \n\nContours — 100 m isolines with labels. \n\nStripes and raw raster (debug) — alternating 100 m bands or per-cell colors.",
   preview:
     "How often the map refreshes during GPU compute (sectors, stripes, and raw raster). 0 = update once at the end.",
   "compare-los":

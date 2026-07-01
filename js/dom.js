@@ -43,6 +43,7 @@ export const dom = {
   computeContextParamsEl: document.getElementById("compute-context-params"),
   seedListEl: document.getElementById("seed-list"),
   paramsPanel: document.getElementById("params-panel"),
+  paramsPanelSummaryEl: document.getElementById("params-panel-summary"),
   paramsFooterEl: document.getElementById("params-footer"),
   paramsFooterInfoEl: document.getElementById("params-footer-info"),
   paramsShell: document.getElementById("params-shell"),

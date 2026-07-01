@@ -334,6 +334,14 @@
         font-size: 0.72rem;
       }
 
+      #debug-mode-field {
+        align-items: center;
+      }
+
+      #debug-mode-field .param-check {
+        justify-content: center;
+      }
+
       .params-section-actions {
         display: flex;
         flex-wrap: wrap;

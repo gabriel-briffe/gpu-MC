@@ -217,6 +217,13 @@ export function openParamHelp(button) {
   app.openParamHelpButton = button;
 }
 
+function syncParamsPanelSummary() {
+  if (!dom.paramsPanelSummaryEl) {
+    return;
+  }
+  dom.paramsPanelSummaryEl.textContent = dom.paramsPanel?.open ? "Close settings" : "Open settings";
+}
+
 export function initParamsPanel(appState, domRefs) {
   app = appState;
   dom = domRefs;
@@ -332,6 +339,9 @@ export function initParamsPanel(appState, domRefs) {
       dom.paramsPanel.open = true;
     }
   });
+
+  dom.paramsPanel?.addEventListener("toggle", syncParamsPanelSummary);
+  syncParamsPanelSummary();
 }
 
 export { isDebugMode, isAutoParamsMode, isManualParamsMode, isSingleParamsMode };
