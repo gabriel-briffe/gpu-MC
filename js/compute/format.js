@@ -44,8 +44,16 @@ export function formatHoverTip(cell, { groundClearance, debugMode, metrics }) {
     `above ground: ${aboveGroundLine}`;
 
   if (debugMode) {
+    const cellIj =
+      cell.gi != null && cell.gj != null ? `${cell.gi}, ${cell.gj}` : "—";
+    const originIj =
+      cell.originGi != null && cell.originGj != null
+        ? `${cell.originGi}, ${cell.originGj}`
+        : "—";
     text +=
-      `\n\n<span class="path-info-heading">comparison with measured path length (haversine):</span>\n` +
+      `\n\ncell i, j: ${cellIj}\n` +
+      `origin i, j: ${originIj}\n` +
+      `\n<span class="path-info-heading">comparison with measured path length (haversine):</span>\n` +
       `path length: ${pathLengthLine}\n` +
       `required alt: ${requiredLine}\n` +
       `delta: ${deltaLine}\n` +

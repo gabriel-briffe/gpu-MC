@@ -198,6 +198,8 @@ export function sampleDemCell(lng, lat) {
     gi,
     gj,
     idx,
+    originGi: hasOrigin ? originX[idx] : null,
+    originGj: hasOrigin ? originY[idx] : null,
     groundElev,
     alt: isReachable ? alt : null,
     isReachable,
