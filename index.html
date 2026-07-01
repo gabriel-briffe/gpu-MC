@@ -35,28 +35,100 @@
                   <span class="param-label">L/D</span>
                   <button type="button" class="param-help" data-help="ld" aria-label="Help: L/D">ⓘ</button>
                 </div>
-                <input id="ld" type="number" min="1" step="1" value="20" />
+                <div class="param-stepper">
+                  <button
+                    type="button"
+                    class="param-step-btn"
+                    data-step="-1"
+                    aria-label="Decrease L/D"
+                  >
+                    −
+                  </button>
+                  <input id="ld" type="number" min="1" max="90" step="1" value="20" />
+                  <button
+                    type="button"
+                    class="param-step-btn"
+                    data-step="1"
+                    aria-label="Increase L/D"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
               <div class="param-field">
                 <div class="param-label-row">
                   <span class="param-label">Circuit height (m)</span>
                   <button type="button" class="param-help" data-help="circuit" aria-label="Help: circuit height">ⓘ</button>
                 </div>
-                <input id="circuit" type="number" min="0" step="10" value="250" />
+                <div class="param-stepper">
+                  <button
+                    type="button"
+                    class="param-step-btn"
+                    data-step="-1"
+                    aria-label="Decrease circuit height"
+                  >
+                    −
+                  </button>
+                  <input id="circuit" type="number" min="0" max="600" step="50" value="250" />
+                  <button
+                    type="button"
+                    class="param-step-btn"
+                    data-step="1"
+                    aria-label="Increase circuit height"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
               <div class="param-field">
                 <div class="param-label-row">
                   <span class="param-label">Ground clearance (m)</span>
                   <button type="button" class="param-help" data-help="clearance" aria-label="Help: ground clearance">ⓘ</button>
                 </div>
-                <input id="clearance" type="number" min="0" step="10" value="100" />
+                <div class="param-stepper">
+                  <button
+                    type="button"
+                    class="param-step-btn"
+                    data-step="-1"
+                    aria-label="Decrease ground clearance"
+                  >
+                    −
+                  </button>
+                  <input id="clearance" type="number" min="0" max="1000" step="50" value="100" />
+                  <button
+                    type="button"
+                    class="param-step-btn"
+                    data-step="1"
+                    aria-label="Increase ground clearance"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
               <div class="param-field">
                 <div class="param-label-row">
                   <span class="param-label">Max altitude (m)</span>
                   <button type="button" class="param-help" data-help="max-alt" aria-label="Help: max altitude">ⓘ</button>
                 </div>
-                <input id="max-alt" type="number" min="1" step="50" value="4050" />
+                <div class="param-stepper">
+                  <button
+                    type="button"
+                    class="param-step-btn"
+                    data-step="-1"
+                    aria-label="Decrease max altitude"
+                  >
+                    −
+                  </button>
+                  <input id="max-alt" type="number" min="0" max="10000" step="100" value="4050" />
+                  <button
+                    type="button"
+                    class="param-step-btn"
+                    data-step="1"
+                    aria-label="Increase max altitude"
+                  >
+                    +
+                  </button>
+                </div>
                 <span class="param-hint" id="grid-radius-hint"></span>
               </div>
               <div class="param-field param-field-full">
@@ -66,7 +138,25 @@
                       <span class="param-label">Terrain zoom</span>
                       <button type="button" class="param-help" data-help="terrain-zoom" aria-label="Help: terrain zoom">ⓘ</button>
                     </div>
-                    <input id="terrain-zoom" type="number" min="7" max="10" step="1" value="7" />
+                    <div class="param-stepper">
+                      <button
+                        type="button"
+                        class="param-step-btn"
+                        data-step="-1"
+                        aria-label="Decrease terrain zoom"
+                      >
+                        −
+                      </button>
+                      <input id="terrain-zoom" type="number" min="7" max="9" step="1" value="7" />
+                      <button
+                        type="button"
+                        class="param-step-btn"
+                        data-step="1"
+                        aria-label="Increase terrain zoom"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                   <span id="terrain-resolution-hint" class="param-resolution-hint">Resolution: —</span>
                 </div>

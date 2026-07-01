@@ -5,6 +5,7 @@ import {
   loadParamsState,
   restoreParamsState,
 } from "./persist.js";
+import { initParamSteppers } from "./steppers.js";
 
 let app;
 let dom;
@@ -221,6 +222,7 @@ export function initParamsPanel(appState, domRefs) {
   dom = domRefs;
 
   initParamsPersistence(app.hooks, dom, app, getParamsMode);
+  initParamSteppers(dom.paramsForm);
   const saved = loadParamsState();
   restoreParamsState(dom, app, saved);
 
