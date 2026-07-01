@@ -637,7 +637,7 @@ function syncOpenAipVectorTiles() {
 }
 
 async function runAutoComputation({ refreshAirports = false } = {}) {
-  if (!isAutoParamsMode() || !areOpenAipAirportsAvailable()) {
+  if (!isAutoParamsMode() || cacheSelectMode || !areOpenAipAirportsAvailable()) {
     if (isAutoParamsMode()) {
       setStatus("Auto mode needs OpenAIP — check configuration");
     }
@@ -690,8 +690,15 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
   await runComputation(seedsForCompute, { gridBounds: bounds });
 }
 
+function cancelPendingAutoCompute() {
+  clearTimeout(autoComputeDebounceTimer);
+  autoComputeDebounceTimer = null;
+  autoComputePending = false;
+  autoComputeNeedsAirportRefresh = false;
+}
+
 function scheduleAutoCompute({ debounce = false, refreshAirports = false } = {}) {
-  if (!isAutoParamsMode()) {
+  if (!isAutoParamsMode() || cacheSelectMode) {
     return;
   }
   autoComputePending = true;
@@ -714,7 +721,7 @@ function scheduleAutoCompute({ debounce = false, refreshAirports = false } = {})
 }
 
 async function flushAutoCompute() {
-  if (!autoComputePending || !isAutoParamsMode() || computing) {
+  if (!autoComputePending || !isAutoParamsMode() || cacheSelectMode || computing) {
     return;
   }
   autoComputePending = false;
@@ -724,7 +731,7 @@ async function flushAutoCompute() {
 }
 
 function onAutoModeMapMoveEnd() {
-  if (!isAutoParamsMode() || !autoComputeRegion || computing) {
+  if (!isAutoParamsMode() || cacheSelectMode || !autoComputeRegion || computing) {
     return;
   }
   const center = map.getCenter();
@@ -2984,6 +2991,7 @@ function enterCacheSelectMode() {
     exitAirportAreaSelectMode(false);
   }
 
+  cancelPendingAutoCompute();
   cacheSelectMode = true;
   selectedCacheCells.clear();
   for (const cellKey of getLastCachedCellKeysForSelection()) {
