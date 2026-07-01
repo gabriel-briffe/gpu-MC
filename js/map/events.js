@@ -37,11 +37,23 @@ export function bindMapEvents(app, hooks) {
       return;
     }
 
+    if (hooks.getCacheSelectMode()) {
+      return;
+    }
+
     hooks.onMapMouseMove(event);
   });
 
-  map.on("move", hooks.syncPathsOnMapMove);
-  map.on("zoom", hooks.syncPathsOnMapMove);
+  map.on("move", () => {
+    if (!hooks.getCacheSelectMode()) {
+      hooks.syncPathsOnMapMove();
+    }
+  });
+  map.on("zoom", () => {
+    if (!hooks.getCacheSelectMode()) {
+      hooks.syncPathsOnMapMove();
+    }
+  });
 
   map.on("mousedown", (event) => {
     if (event.originalEvent.button !== 0 || !hooks.getAirportAreaSelectMode()) {

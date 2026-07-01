@@ -102,6 +102,7 @@ export function exitCacheSelectMode() {
   hooks.clearCacheGridLayers();
   hooks.clearCacheAirportLayers();
   hooks.setOverlaysHiddenForCacheSelect(false);
+  hooks.syncComputeContextBar?.();
   syncCacheDownloadButton();
   hooks.setStatus("Cache selection closed");
 }

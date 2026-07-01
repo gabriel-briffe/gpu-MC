@@ -227,7 +227,15 @@ function isPointerOverParams(clientX, clientY) {
   return Boolean(target && paramsShell.contains(target));
 }
 
+function isCacheSelectMode() {
+  return hooks.getCacheSelectMode?.() ?? false;
+}
+
 export function showCellInspect(cell, anchorPoint = null, { temporary = false } = {}) {
+  if (isCacheSelectMode()) {
+    clearCellInspect();
+    return;
+  }
   if (!cell) {
     clearCellInspect();
     return;
@@ -285,6 +293,10 @@ export function getGeoSampleCell() {
 }
 
 export function updateGeoLocationPath() {
+  if (isCacheSelectMode()) {
+    clearGeoPath();
+    return;
+  }
   if (!hooks.isGeoTrackingOn() || !hooks.getConeState() || !hooks.getLastGeoLngLat()) {
     clearGeoPath();
     return;
@@ -300,6 +312,9 @@ export function updateGeoLocationPath() {
 }
 
 export function onMapMouseMove(event) {
+  if (isCacheSelectMode()) {
+    return;
+  }
   if (!hooks.getInteraction().hoverPath) {
     return;
   }
@@ -321,6 +336,9 @@ export function onMapMouseMove(event) {
 }
 
 export function onMapMouseLeave() {
+  if (isCacheSelectMode()) {
+    return;
+  }
   if (!hooks.getInteraction().hoverPath) {
     return;
   }
@@ -330,6 +348,9 @@ export function onMapMouseLeave() {
 }
 
 export function onMapClickInspect(event) {
+  if (isCacheSelectMode()) {
+    return;
+  }
   if (!hooks.getInteraction().tapPath || !hooks.getConeState()) {
     return;
   }
@@ -350,6 +371,9 @@ export function hasActiveInspectTooltip() {
 }
 
 export function syncPathsOnMapMove() {
+  if (isCacheSelectMode()) {
+    return;
+  }
   if (hooks.isGeoTrackingOn()) {
     updateGeoLocationPath();
   }

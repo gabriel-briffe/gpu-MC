@@ -665,7 +665,12 @@ export function setOverlaysHiddenForCacheSelect(hidden) {
       map.setLayoutProperty(layerId, "visibility", "none");
     }
     hooks.clearCellInspect();
+    hooks.clearAllGlidePaths?.();
     hooks.infoEl?.classList.remove("visible");
+    if (hooks.computeContextBarEl) {
+      hooks.computeContextBarEl.hidden = true;
+    }
+    document.body.classList.remove("has-compute-context");
     return;
   }
 

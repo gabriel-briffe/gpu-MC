@@ -396,6 +396,7 @@ const sharedHooks = {
   clearCacheGridLayers,
   clearCacheAirportLayers,
   updateCacheGridData,
+  syncComputeContextBar,
 };
 
 initSeeds(sharedHooks);
@@ -649,6 +650,11 @@ function clearConeState() {
 
 function syncComputeContextBar() {
   if (!computeContextBarEl) {
+    return;
+  }
+  if (getCacheSelectMode()) {
+    computeContextBarEl.hidden = true;
+    document.body.classList.remove("has-compute-context");
     return;
   }
   if (!app.coneState) {
