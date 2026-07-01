@@ -82,6 +82,8 @@ import {
   syncDebugUi,
   isDebugMode,
   isAutoParamsMode,
+  isManualParamsMode,
+  isSingleParamsMode,
 } from "./params/panel.js";
 import {
   initSeeds,
@@ -100,6 +102,7 @@ import {
   getAirportAreaSelectMode,
 } from "./airports/area-select.js";
 import { initAutoCompute, scheduleAutoCompute, clearAutoComputeScheduling, onAutoModeMapMoveEnd, syncAutoWindowSizeUi } from "./auto/auto-compute.js";
+import { initSingleCompute, clearSingleComputeScheduling, flushSingleAirportCompute, getSingleComputePending } from "./single/single-compute.js";
 import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 
@@ -152,6 +155,7 @@ const {
   seedListEl,
   paramsPanel,
   paramsShell,
+  paramsModeSingleBtn,
   paramsModeAutoBtn,
   paramsModeManualBtn,
   paramsScrollEl,
@@ -329,6 +333,8 @@ const sharedHooks = {
   runComputation,
   ensureEngine,
   isAutoParamsMode,
+  isManualParamsMode,
+  isSingleParamsMode,
   isGeoTrackingOn,
   isHighlightDownhillGroundPathEnabled,
   areOpenAipAirportsAvailable,
@@ -406,6 +412,7 @@ initManualSelect(sharedHooks);
 initAreaSelect(sharedHooks);
 initCacheUi(sharedHooks);
 initAutoCompute(sharedHooks);
+initSingleCompute(sharedHooks);
 initMapLayers(sharedHooks);
 initGlidePath(sharedHooks);
 initCellInspect(sharedHooks);
@@ -420,6 +427,9 @@ app.hooks = {
   getManualAirportSelectMode,
   getAirportAreaSelectMode,
   clearAutoComputeScheduling,
+  clearSingleComputeScheduling,
+  flushSingleAirportCompute,
+  getSingleComputePending,
   exitManualAirportSelectMode,
   exitAirportAreaSelectMode,
   scheduleAutoCompute,
@@ -442,6 +452,12 @@ app.hooks = {
   syncAutoWindowSizeUi,
   updateInteractionHints,
   isIncludeAirspaceEnabled,
+  clearComputeResults,
+  setComputeShouldStop: (value) => {
+    app.computeShouldStop = value;
+  },
+  syncComputeContextBar,
+  clearPendingSeedsSelection: () => sharedHooks.clearPendingSeedsSelection?.(),
 };
 initParamsPanel(app, dom);
 

@@ -18,6 +18,7 @@ export function createApp() {
     autoComputeDebounceTimer: null,
     autoComputeNeedsAirportRefresh: false,
     autoComputeRegion: null,
+    singleComputePending: null,
     pendingSeeds: [],
     manualAirportSelectMode: false,
     manualStagingAirports: [],

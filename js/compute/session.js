@@ -36,6 +36,8 @@ export function endComputeSession() {
   hooks.syncCompareLosButton();
   if (hooks.isAutoParamsMode() && hooks.getAutoComputePending()) {
     void hooks.flushAutoCompute();
+  } else if (hooks.isSingleParamsMode?.() && hooks.getSingleComputePending?.()) {
+    void hooks.flushSingleAirportCompute();
   }
 }
 

@@ -45,6 +45,7 @@ export const dom = {
   seedListEl: document.getElementById("seed-list"),
   paramsPanel: document.getElementById("params-panel"),
   paramsShell: document.getElementById("params-shell"),
+  paramsModeSingleBtn: document.getElementById("params-mode-single"),
   paramsModeAutoBtn: document.getElementById("params-mode-auto"),
   paramsModeManualBtn: document.getElementById("params-mode-manual"),
   paramsScrollEl: document.getElementById("params-scroll"),

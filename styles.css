@@ -143,7 +143,7 @@
         color: #f0f6ff;
       }
 
-      #params-shell.auto-mode .params-manual-only {
+      #params-shell:not(.params-mode-manual) .params-manual-only {
         display: none !important;
       }
 
@@ -151,12 +151,12 @@
         display: none !important;
       }
 
-      #params-shell.auto-mode .params-auto-only {
+      #params-shell.params-mode-auto .params-auto-only {
         display: flex !important;
       }
 
-      #params-shell.auto-mode #auto-window-size-field[hidden],
-      #params-shell.auto-mode #auto-window-size-field.auto-window-size-hidden {
+      #params-shell.params-mode-auto #auto-window-size-field[hidden],
+      #params-shell.params-mode-auto #auto-window-size-field.auto-window-size-hidden {
         display: none !important;
       }
 

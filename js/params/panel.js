@@ -3,6 +3,23 @@ import { parseVizMode as parseVizModeCore } from "./viz-mode.js";
 
 let app;
 let dom;
+let paramsMode = "auto";
+
+export function getParamsMode() {
+  return paramsMode;
+}
+
+function isAutoParamsMode() {
+  return paramsMode === "auto";
+}
+
+function isManualParamsMode() {
+  return paramsMode === "manual";
+}
+
+function isSingleParamsMode() {
+  return paramsMode === "single";
+}
 
 function isDebugMode() {
   return dom.debugModeInput?.checked ?? false;
@@ -10,10 +27,6 @@ function isDebugMode() {
 
 export function parseVizMode() {
   return parseVizModeCore(dom.vizModeSelect?.value ?? "contours", isDebugMode());
-}
-
-function isAutoParamsMode() {
-  return dom.paramsShell?.classList.contains("auto-mode") ?? false;
 }
 
 function getParamHelpText(key) {
@@ -94,11 +107,15 @@ export function syncVizModeDebugOptions() {
 }
 
 export function setParamsMode(mode) {
-  const auto = mode === "auto";
-  dom.paramsShell?.classList.toggle("auto-mode", auto);
-  dom.paramsModeAutoBtn?.setAttribute("aria-pressed", String(auto));
-  dom.paramsModeManualBtn?.setAttribute("aria-pressed", String(!auto));
-  if (auto) {
+  paramsMode = mode;
+  for (const name of ["single", "auto", "manual"]) {
+    dom.paramsShell?.classList.toggle(`params-mode-${name}`, mode === name);
+  }
+  dom.paramsModeSingleBtn?.setAttribute("aria-pressed", String(mode === "single"));
+  dom.paramsModeAutoBtn?.setAttribute("aria-pressed", String(mode === "auto"));
+  dom.paramsModeManualBtn?.setAttribute("aria-pressed", String(mode === "manual"));
+
+  if (mode !== "manual") {
     if (app.hooks.getManualAirportSelectMode()) {
       app.hooks.exitManualAirportSelectMode(true);
     }
@@ -106,19 +123,28 @@ export function setParamsMode(mode) {
       app.hooks.exitAirportAreaSelectMode(true);
     }
     if (app.openParamHelpButton?.dataset.help) {
-      const manualOnlyHelp = new Set([
-        "preview",
-        "compare-los",
-        "los-run",
-      ]);
+      const manualOnlyHelp = new Set(["preview", "compare-los", "los-run"]);
       if (manualOnlyHelp.has(app.openParamHelpButton.dataset.help)) {
         closeParamHelp();
       }
     }
-    app.hooks.scheduleAutoCompute({ refreshAirports: true });
-  } else {
-    app.hooks.clearAutoComputeScheduling();
   }
+
+  app.hooks.clearAutoComputeScheduling();
+  app.hooks.clearSingleComputeScheduling?.();
+
+  if (mode === "single") {
+    if (app.hooks.isComputing()) {
+      app.hooks.setComputeShouldStop(true);
+    }
+    app.hooks.clearPendingSeedsSelection?.();
+    app.hooks.clearComputeResults();
+    app.hooks.syncComputeContextBar?.();
+    app.hooks.setStatus("Click an airport on the map");
+  } else if (mode === "auto") {
+    app.hooks.scheduleAutoCompute({ refreshAirports: true });
+  }
+
   app.hooks.syncSeedLayerVisibility();
 }
 
@@ -182,6 +208,7 @@ export function initParamsPanel(appState, domRefs) {
   app.hooks.updateTerrainResolutionHint();
   app.hooks.syncAutoWindowSizeUi();
 
+  dom.paramsModeSingleBtn?.addEventListener("click", () => setParamsMode("single"));
   dom.paramsModeAutoBtn?.addEventListener("click", () => setParamsMode("auto"));
   dom.paramsModeManualBtn?.addEventListener("click", () => setParamsMode("manual"));
 
@@ -283,4 +310,4 @@ export function initParamsPanel(appState, domRefs) {
   dom.paramsShell?.addEventListener("touchstart", app.hooks.clearCellInspect, { passive: true });
 }
 
-export { isDebugMode, isAutoParamsMode };
+export { isDebugMode, isAutoParamsMode, isManualParamsMode, isSingleParamsMode };

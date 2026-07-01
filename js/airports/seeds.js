@@ -1,7 +1,7 @@
 import { MIN_SEEDS } from "../constants.js";
 import { seedDisplayLabel, formatAirportLabel } from "../airport-label.js";
 import { ensureSeedLayers, getSeedLayersReady } from "../map/layers.js";
-import { isAutoParamsMode } from "../params/panel.js";
+import { isAutoParamsMode, isManualParamsMode, isSingleParamsMode } from "../params/panel.js";
 import {
   airportIdFromFeature,
   airportIdFromManualPlacement,
@@ -22,6 +22,7 @@ export function initSeeds(h) {
   hooks.syncSeedLayerVisibility = syncSeedLayerVisibility;
   hooks.setPendingSeedsFromAirports = setPendingSeedsFromAirports;
   hooks.clearPendingSeeds = clearPendingSeeds;
+  hooks.clearPendingSeedsSelection = clearPendingSeedsSelection;
   hooks.seedKey = airportIdFromSeed;
   hooks.airportIdFromSeed = airportIdFromSeed;
   hooks.scrollToSeedsSection = scrollToSeedsSection;
@@ -56,7 +57,7 @@ export function isAirportPickMode() {
   ) {
     return false;
   }
-  if (isAutoParamsMode()) {
+  if (isAutoParamsMode() || isSingleParamsMode()) {
     return hooks.areOpenAipAirportsAvailable?.() ?? false;
   }
   return !hooks.isComputing();
@@ -137,6 +138,11 @@ export function togglePendingSeedAt(pick) {
 
   if (isAutoParamsMode()) {
     return hooks.toggleDisabledAirportAt?.(pick) ?? false;
+  }
+
+  if (isSingleParamsMode()) {
+    hooks.scheduleSingleAirportCompute?.(pick);
+    return true;
   }
 
   const index = findPendingSeedIndexById(pick.id);
@@ -264,7 +270,7 @@ export function syncSeedLayerVisibility() {
   if (!getSeedLayersReady() || !map) {
     return;
   }
-  const visibility = isAutoParamsMode() ? "none" : "visible";
+  const visibility = isManualParamsMode() ? "visible" : "none";
   for (const layerId of ["seeds-circle", "seeds-label", "seeds-hit"]) {
     if (map.getLayer(layerId)) {
       map.setLayoutProperty(layerId, "visibility", visibility);
@@ -324,6 +330,12 @@ export function addPendingSeed({ id, lng, lat, label, source = "map", quiet = fa
     hooks.setStatus(airportCountStatus(app.pendingSeeds.length));
   }
   return true;
+}
+
+export function clearPendingSeedsSelection() {
+  app.pendingSeeds = [];
+  updateSeedMarkers();
+  updateSeedList();
 }
 
 export function clearPendingSeeds() {
