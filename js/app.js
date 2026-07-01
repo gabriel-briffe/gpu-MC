@@ -11,6 +11,7 @@ import {
 } from "./geo.js";
 import { buildDemGrid } from "./dem.js";
 import { buildAltitudeContours } from "./contours.js";
+import { buildSectorBorderGeojson } from "./sectors.js";
 import { GlideConeEngine } from "./glidecone.js";
 import {
   initOpenAipAirspaceTiles,
@@ -82,6 +83,9 @@ const cellInfoEl = document.getElementById("cell-info");
 const cellTooltipEl = document.getElementById("cell-tooltip");
 const paramsForm = document.getElementById("params");
 const vizModeSelect = document.getElementById("viz-mode");
+const sectorsOpacityFieldEl = document.getElementById("sectors-opacity-field");
+const sectorsOpacityInput = document.getElementById("sectors-opacity");
+const sectorsOpacityHintEl = document.getElementById("sectors-opacity-hint");
 const previewFieldEl = document.getElementById("preview-field");
 const vizHintEl = document.getElementById("viz-hint");
 const gridRadiusHintEl = document.getElementById("grid-radius-hint");
@@ -137,6 +141,7 @@ const CACHE_HIDDEN_LAYER_IDS = [
   "glide-cone-full",
   "glide-contours-line",
   "glide-contours-label",
+  "glide-sectors-line",
   "airports-cached",
   "airports-cached-labels",
   OPENAIP_AIRSPACE_LAYER,
@@ -158,6 +163,7 @@ let compareOverlayCanvas = null;
 let coneState = null;
 let pathLayerReady = false;
 let contourLayersReady = false;
+let sectorBorderLayersReady = false;
 let lastInspectCell = null;
 let pendingSeeds = [];
 let seedLayersReady = false;
@@ -562,7 +568,7 @@ const PARAM_HELP = {
 
 const VIZ_HINTS = {
   "path-only": "No overlay — hover or tap the map to inspect glide paths.",
-  sectors: "Per-airport colors (lat/lon hash); ground transparent.",
+  sectors: "Per-airport fill colors (lat/lon hash); grey borders as map lines between sectors.",
   stripes: "100 m bands relative to airport altitude.",
   raw: "Per-cell altitude colors.",
   contours: "100 m isolines with labels; GeoJSON export after run.",
@@ -609,7 +615,39 @@ function syncParamVisibility() {
   if (vizHintEl) {
     vizHintEl.textContent = VIZ_HINTS[mode] ?? "";
   }
+  syncSectorsOpacityUi();
   updateInteractionHints();
+}
+
+function getSectorsOverlayOpacity() {
+  const value = Number.parseInt(sectorsOpacityInput?.value ?? "50", 10);
+  if (!Number.isFinite(value)) {
+    return 0.5;
+  }
+  return Math.max(0, Math.min(100, value)) / 100;
+}
+
+function syncSectorsOpacityUi() {
+  const show = parseVizMode().sectors;
+  if (sectorsOpacityFieldEl) {
+    sectorsOpacityFieldEl.hidden = !show;
+  }
+  if (sectorsOpacityHintEl && sectorsOpacityInput) {
+    sectorsOpacityHintEl.textContent = `${sectorsOpacityInput.value}%`;
+  }
+}
+
+function applySectorsOverlayOpacity() {
+  if (!parseVizMode().sectors || !map) {
+    return;
+  }
+  const opacity = getSectorsOverlayOpacity();
+  if (map.getLayer("glide-cone")) {
+    map.setPaintProperty("glide-cone", "raster-opacity", opacity);
+  }
+  if (map.getLayer("glide-sectors-line")) {
+    map.setPaintProperty("glide-sectors-line", "line-opacity", opacity);
+  }
 }
 
 function isAutoParamsMode() {
@@ -1045,6 +1083,11 @@ function initParamPanel() {
 
   debugModeInput?.addEventListener("change", syncDebugUi);
 
+  sectorsOpacityInput?.addEventListener("input", () => {
+    syncSectorsOpacityUi();
+    applySectorsOverlayOpacity();
+  });
+
   highlightDownhillGroundPathInput?.addEventListener("change", () => {
     if (lastInspectCell) {
       refreshInspectPath(lastInspectCell);
@@ -1367,11 +1410,8 @@ function seedKey(seed) {
 
 function formatAirportLabel(airport) {
   const props = airport.properties ?? {};
-  const icao = props.icao_code ?? props.icaoCode;
   const name = props.name;
-  if (icao && name) {
-    return `${icao} — ${name}`;
-  }
+  const icao = props.icao_code ?? props.icaoCode;
   return name ?? icao ?? `${airport.lat.toFixed(4)}°, ${airport.lng.toFixed(4)}°`;
 }
 
@@ -2159,6 +2199,9 @@ function raisePathLayer() {
     map.moveLayer("glide-contours-line");
     map.moveLayer("glide-contours-label");
   }
+  if (sectorBorderLayersReady && map.getLayer("glide-sectors-line")) {
+    map.moveLayer("glide-sectors-line");
+  }
   for (const layerId of ["airports-cached", "airports-cached-labels"]) {
     if (map.getLayer(layerId)) {
       map.moveLayer(layerId);
@@ -2232,6 +2275,7 @@ function setConeState(dem, result, glideParams) {
     circuitHeight: glideParams?.circuitHeight ?? 250,
     groundClearance: glideParams?.groundClearance ?? 100,
     contourGeojson: null,
+    sectorBorderGeojson: null,
   };
   syncComputeContextBar();
   updateGeoLocationPath();
@@ -2651,6 +2695,7 @@ function clearComputeResults() {
   syncComputeContextBar();
   clearRasterOverlay();
   clearContourOverlay();
+  clearSectorBorderOverlay();
   clearCompareOverlay();
   clearCellInspect();
   clearAllGlidePaths();
@@ -2789,12 +2834,12 @@ function ensureCachedAirportMapLayers() {
     source: "airports-cached",
     minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
     layout: {
-      "text-field": ["coalesce", ["get", "icao_code"], ["get", "icaoCode"], ["get", "name"]],
+      "text-field": ["coalesce", ["get", "name"], ["get", "icao_code"], ["get", "icaoCode"]],
       "text-font": ["Noto Sans Regular"],
       "text-size": 10,
       "text-offset": [0, -1.2],
       "text-anchor": "bottom",
-      "text-max-width": 10,
+      "text-max-width": 14,
       "symbol-sort-key": 0,
       "text-optional": false,
     },
@@ -2959,12 +3004,12 @@ function ensureCacheAirportLayers() {
     source: "cache-airports",
     minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
     layout: {
-      "text-field": ["coalesce", ["get", "icao_code"], ["get", "icaoCode"], ["get", "name"]],
+      "text-field": ["coalesce", ["get", "name"], ["get", "icao_code"], ["get", "icaoCode"]],
       "text-font": ["Noto Sans Regular"],
       "text-size": 10,
       "text-offset": [0, -1.2],
       "text-anchor": "bottom",
-      "text-max-width": 10,
+      "text-max-width": 14,
       "symbol-sort-key": 0,
       "text-optional": false,
     },
@@ -3197,6 +3242,16 @@ function clearContourOverlay() {
   });
 }
 
+function clearSectorBorderOverlay() {
+  if (!sectorBorderLayersReady) {
+    return;
+  }
+  map.getSource("glide-sectors").setData({
+    type: "FeatureCollection",
+    features: [],
+  });
+}
+
 function contourLabelSymbolSpacing() {
   return Math.min(window.innerWidth, window.innerHeight) / 3;
 }
@@ -3259,6 +3314,38 @@ function ensureContourLayers() {
   syncContourLabelSpacing();
 }
 
+function ensureSectorBorderLayers() {
+  if (sectorBorderLayersReady) {
+    return;
+  }
+
+  map.addSource("glide-sectors", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: "glide-sectors-line",
+    type: "line",
+    source: "glide-sectors",
+    paint: {
+      "line-color": "#5c6573",
+      "line-width": 1.5,
+      "line-opacity": 0.9,
+    },
+  });
+
+  sectorBorderLayersReady = true;
+  raisePathLayer();
+}
+
+function updateSectorBorderOverlay(geojson) {
+  ensureSectorBorderLayers();
+  map.getSource("glide-sectors").setData(geojson);
+  applySectorsOverlayOpacity();
+  raisePathLayer();
+}
+
 function updateContourOverlay(geojson) {
   ensureContourLayers();
   syncContourLabelSpacing();
@@ -3269,16 +3356,20 @@ function updateContourOverlay(geojson) {
 function updateConeVisualization(result, dem, glideParams) {
   if (glideParams.pathOnly) {
     coneState.contourGeojson = null;
+    coneState.sectorBorderGeojson = null;
     setDownloadContoursVisible(false);
     clearRasterOverlay();
     clearContourOverlay();
+    clearSectorBorderOverlay();
     return;
   }
 
   if (glideParams.raw) {
     coneState.contourGeojson = null;
+    coneState.sectorBorderGeojson = null;
     setDownloadContoursVisible(false);
     clearContourOverlay();
+    clearSectorBorderOverlay();
     if (result.imageData) {
       updateOverlay(result.imageData, dem);
     }
@@ -3286,6 +3377,8 @@ function updateConeVisualization(result, dem, glideParams) {
   }
 
   if (glideParams.contours) {
+    coneState.sectorBorderGeojson = null;
+    clearSectorBorderOverlay();
     clearRasterOverlay();
     const geojson = buildAltitudeContours(
       dem,
@@ -3300,9 +3393,31 @@ function updateConeVisualization(result, dem, glideParams) {
     return;
   }
 
+  if (glideParams.sectors) {
+    coneState.contourGeojson = null;
+    setDownloadContoursVisible(false);
+    clearContourOverlay();
+    if (result.imageData) {
+      updateOverlay(result.imageData, dem);
+    }
+    const borderGeojson = buildSectorBorderGeojson(
+      dem,
+      result.altitudes,
+      result.ground,
+      result.originX,
+      result.originY,
+      glideParams.maxAltitude
+    );
+    coneState.sectorBorderGeojson = borderGeojson;
+    updateSectorBorderOverlay(borderGeojson);
+    return;
+  }
+
   coneState.contourGeojson = null;
+  coneState.sectorBorderGeojson = null;
   setDownloadContoursVisible(false);
   clearContourOverlay();
+  clearSectorBorderOverlay();
   if (result.imageData) {
     updateOverlay(result.imageData, dem);
   }
@@ -3330,6 +3445,9 @@ function updateOverlay(imageData, dem) {
       coordinates,
     });
     raisePathLayer();
+    if (parseVizMode().sectors) {
+      applySectorsOverlayOpacity();
+    }
     return;
   }
 
@@ -3344,10 +3462,13 @@ function updateOverlay(imageData, dem) {
     type: "raster",
     source: "glide-cone",
     paint: {
-      "raster-opacity": 1,
+      "raster-opacity": parseVizMode().sectors ? getSectorsOverlayOpacity() : 1,
     },
   });
   raisePathLayer();
+  if (parseVizMode().sectors) {
+    applySectorsOverlayOpacity();
+  }
 }
 
 function sampleDemCell(lng, lat) {
@@ -3686,11 +3807,19 @@ paramsForm.addEventListener("submit", (event) => {
 
 vizModeSelect?.addEventListener("change", () => {
   syncParamVisibility();
-  if (parseVizMode().pathOnly && coneState && !computing) {
+  const mode = parseVizMode();
+  if (mode.pathOnly && coneState && !computing) {
     clearRasterOverlay();
     clearContourOverlay();
+    clearSectorBorderOverlay();
     coneState.contourGeojson = null;
+    coneState.sectorBorderGeojson = null;
     setDownloadContoursVisible(false);
+  } else if (!mode.sectors && coneState && !computing) {
+    clearSectorBorderOverlay();
+    coneState.sectorBorderGeojson = null;
+  } else if (mode.sectors) {
+    applySectorsOverlayOpacity();
   }
   if (isAutoParamsMode()) {
     scheduleAutoCompute({ debounce: false });

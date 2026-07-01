@@ -592,6 +592,17 @@
         font-size: 0.82rem;
       }
 
+      #params input[type="range"] {
+        width: 100%;
+        max-width: 14rem;
+        margin: 0.15rem 0 0;
+        accent-color: #5a9fd4;
+      }
+
+      #sectors-opacity-field[hidden] {
+        display: none;
+      }
+
       #viz-mode:focus,
       #params select:focus {
         outline: 2px solid rgba(100, 160, 255, 0.55);
@@ -847,6 +858,7 @@
 
         #params input[type="number"],
         #params input[type="text"],
+        #params input[type="range"],
         #params select,
         #viz-mode,
         .params-overlay-panel input[type="text"],
@@ -1071,6 +1083,20 @@
                   <option value="raw" class="viz-mode-debug-only" hidden disabled>Raw raster</option>
                 </select>
                 <span class="param-hint" id="viz-hint"></span>
+              </div>
+              <div class="param-field param-field-full" id="sectors-opacity-field" hidden>
+                <div class="param-label-row">
+                  <label class="param-label" for="sectors-opacity">Sectors opacity</label>
+                </div>
+                <input
+                  type="range"
+                  id="sectors-opacity"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value="50"
+                />
+                <span class="param-hint" id="sectors-opacity-hint">50%</span>
               </div>
               <p class="param-section-desc param-field-full" id="path-input-hint"></p>
               <div class="param-field param-field-full">
