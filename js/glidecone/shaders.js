@@ -78,7 +78,7 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
   }
   let adx = abs(targetOx - x0);
   let ady = abs(targetOy - y0);
-  if (adx <= 1 && ady <= 1) {
+  if ((adx == 1 && ady == 0) || (adx == 0 && ady == 1)) {
     return true;
   }
 
@@ -111,7 +111,7 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
           }
         }
       }
-      if (isGround(x1, y1)) {
+      if (!(x1 == targetOx && y1 == targetOy) && isGround(x1, y1)) {
         return false;
       }
       sameOriginRun = bumpSameOriginRun(x1, y1, targetOx, targetOy, sameOriginRun);
@@ -137,7 +137,7 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
           }
         }
       }
-      if (isGround(x1, y1)) {
+      if (!(x1 == targetOx && y1 == targetOy) && isGround(x1, y1)) {
         return false;
       }
       sameOriginRun = bumpSameOriginRun(x1, y1, targetOx, targetOy, sameOriginRun);
