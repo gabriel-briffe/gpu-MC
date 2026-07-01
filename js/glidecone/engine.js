@@ -132,12 +132,14 @@ export class GlideConeEngine {
       contours: contoursParam = false,
       pathOnly: pathOnlyParam = false,
       sectors: sectorsParam = false,
+      disableGroundOrigin: disableGroundOriginParam = false,
       updateMapMs = 100,
     } = params;
     const raw = rawOverride !== undefined ? rawOverride : rawParam;
     const contours = contoursParam;
     const pathOnly = pathOnlyParam;
     const sectors = sectorsParam;
+    const disableGroundOrigin = disableGroundOriginParam;
     const needsRaster = imageOnly || raw || sectors || (!contours && !pathOnly);
     const useFullBresenham = fullBresenham || originRunN === 0;
     const losShortcut = useFullBresenham ? 0 : 1;
@@ -394,7 +396,7 @@ export class GlideConeEngine {
       await maybeEmitProgress();
     }
 
-    if (!raw) {
+    if (!raw && !disableGroundOrigin) {
       const groundOriginBind = device.createBindGroup({
         layout: pipelines.groundOrigin.layout,
         entries: [

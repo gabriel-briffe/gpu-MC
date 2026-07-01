@@ -348,6 +348,30 @@
         justify-content: center;
       }
 
+      #debug-tools-field {
+        display: none;
+        align-items: center;
+        gap: 0.55rem;
+      }
+
+      #params-shell.debug-mode #debug-tools-field {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .debug-tools-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.45rem;
+        width: 100%;
+      }
+
+      #disable-ground-origin-field .param-check,
+      #debug-tools-field > .param-check {
+        justify-content: center;
+      }
+
       .params-section-actions {
         display: flex;
         flex-wrap: wrap;
@@ -370,6 +394,11 @@
 
       .compare-los-row[hidden] {
         display: none;
+      }
+
+      #extract-matrix[aria-pressed="true"] {
+        background: rgba(230, 168, 23, 0.22);
+        border-color: rgba(230, 168, 23, 0.55);
       }
 
       #seed-list,

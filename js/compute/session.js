@@ -24,7 +24,9 @@ export function startComputeSession() {
   if (hooks.getManualAirportSelectMode()) {
     hooks.exitManualAirportSelectMode(false);
   }
+  hooks.exitMatrixExtractMode?.();
   hooks.syncCompareLosButton();
+  hooks.syncExtractMatrixButton?.();
 }
 
 export function endComputeSession() {
@@ -34,6 +36,7 @@ export function endComputeSession() {
   hooks.stopComputeBtn.disabled = false;
   hooks.updateSeedMarkers();
   hooks.syncCompareLosButton();
+  hooks.syncExtractMatrixButton?.();
   if (hooks.isAutoParamsMode() && hooks.getAutoComputePending()) {
     void hooks.flushAutoCompute();
   } else if (hooks.isSingleParamsMode?.() && hooks.getSingleComputePending?.()) {

@@ -16,6 +16,8 @@ export function getGlideParams() {
   );
   const includeAirspace = dom.includeAirspaceInput?.checked ?? false;
   const updateMapMs = Number.parseInt(document.getElementById("update-map").value, 10);
+  const disableGroundOrigin =
+    isDebugMode() && (dom.disableGroundOriginInput?.checked ?? false);
   const { raw, contours, pathOnly, sectors } = parseVizMode();
 
   return {
@@ -37,6 +39,7 @@ export function getGlideParams() {
     contours,
     pathOnly,
     sectors,
+    disableGroundOrigin,
     updateMapMs:
       Number.isFinite(updateMapMs) && updateMapMs >= 0 ? updateMapMs : 100,
   };

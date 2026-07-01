@@ -111,6 +111,7 @@ import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
 import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
+import { initMatrixExtract } from "./debug/matrix-extract.js";
 
 const app = createApp();
 
@@ -138,6 +139,8 @@ const {
   paramHelpPopover,
   compareLosBtn,
   compareLosRow,
+  extractMatrixBtn,
+  extractMatrixRow,
   downloadContoursBtn,
   stopComputeBtn,
   runComputeBtn,
@@ -378,6 +381,7 @@ const sharedHooks = {
   stopComputeBtn,
   runComputeBtn,
   compareLosBtn,
+  extractMatrixBtn,
   downloadContoursBtn,
   clearOverlayBtn,
   vizModeSelect,
@@ -395,6 +399,7 @@ const sharedHooks = {
   setDownloadContoursVisible,
   downloadContourGeojson,
   syncCompareLosButton,
+  syncExtractMatrixButton,
   ensurePathLayer,
   raisePathLayer,
   syncAirspaceUi,
@@ -455,6 +460,7 @@ initGlidePath(sharedHooks);
 initCellInspect(sharedHooks);
 initComputeVisualization(sharedHooks);
 initComputeSession(sharedHooks);
+initMatrixExtract(sharedHooks);
 
 app.hooks = {
   getMap: () => app.map,
@@ -474,6 +480,7 @@ app.hooks = {
   getParamsMode,
   syncSeedLayerVisibility,
   syncCompareLosButton,
+  syncExtractMatrixButton,
   syncDownloadContoursButton,
   showCellInspect,
   setStatus,
@@ -700,12 +707,15 @@ function setConeState(dem, result, glideParams) {
     sectorBorderGeojson: null,
   };
   syncComputeContextBar();
+  syncExtractMatrixButton();
   updateGeoLocationPath();
 }
 
 function clearConeState() {
   app.coneState = null;
+  sharedHooks.exitMatrixExtractMode?.();
   syncComputeContextBar();
+  syncExtractMatrixButton();
   updateGeoLocationPath();
 }
 
@@ -855,6 +865,20 @@ function syncCompareLosButton() {
   }
   if (compareLosBtn) {
     compareLosBtn.disabled = !show;
+  }
+}
+
+function syncExtractMatrixButton() {
+  const show = isDebugMode() && app.coneState && !app.computing;
+  if (extractMatrixRow) {
+    extractMatrixRow.hidden = !show;
+  }
+  if (extractMatrixBtn) {
+    extractMatrixBtn.disabled = !show;
+    extractMatrixBtn.setAttribute("aria-pressed", String(Boolean(app.matrixExtractMode)));
+    extractMatrixBtn.textContent = app.matrixExtractMode
+      ? "Cancel extract"
+      : "Extract matrix";
   }
 }
 

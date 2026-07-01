@@ -304,10 +304,6 @@
               <button type="button" class="action-btn btn-green" id="download-contours" hidden disabled>
                 Download contours
               </button>
-              <div class="compare-los-row" id="compare-los-row" hidden>
-                <button type="button" class="action-btn" id="compare-los">Full Bresenham (red)</button>
-                <button type="button" class="param-help" data-help="compare-los" aria-label="Help: Full Bresenham">ⓘ</button>
-              </div>
             </div>
           </div>
 
@@ -317,6 +313,21 @@
                 <label class="param-check" for="debug-mode">
                   <input id="debug-mode" type="checkbox" />
                   <span>Debug mode</span>
+                </label>
+              </div>
+              <div class="param-field param-field-full" id="debug-tools-field">
+                <div class="debug-tools-actions">
+                  <div class="compare-los-row" id="compare-los-row" hidden>
+                    <button type="button" class="action-btn" id="compare-los">Full Bresenham (red)</button>
+                    <button type="button" class="param-help" data-help="compare-los" aria-label="Help: Full Bresenham">ⓘ</button>
+                  </div>
+                  <div class="compare-los-row" id="extract-matrix-row" hidden>
+                    <button type="button" class="action-btn" id="extract-matrix">Extract matrix</button>
+                  </div>
+                </div>
+                <label class="param-check" for="disable-ground-origin">
+                  <input id="disable-ground-origin" type="checkbox" />
+                  <span>Disable ground_origin shader</span>
                 </label>
               </div>
             </div>

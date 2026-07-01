@@ -186,7 +186,11 @@ export function syncDebugUi() {
     }
   }
   app.hooks.syncCompareLosButton();
+  app.hooks.syncExtractMatrixButton();
   app.hooks.syncDownloadContoursButton();
+  if (!debug) {
+    app.hooks.exitMatrixExtractMode?.();
+  }
   syncVizModeDebugOptions();
   app.hooks.syncAirspaceUi?.();
   const lastInspectCell = app.hooks.getLastInspectCell();

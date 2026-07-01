@@ -66,6 +66,7 @@ export function clearComputeResults() {
   hooks.clearAllGlidePaths();
   hooks.setDownloadContoursVisible(false);
   hooks.syncCompareLosButton();
+  hooks.syncExtractMatrixButton?.();
 }
 
 export function clearAllOverlays() {
