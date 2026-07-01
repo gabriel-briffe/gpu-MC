@@ -29,6 +29,14 @@ export function parseVizMode() {
   return parseVizModeCore(dom.vizModeSelect?.value ?? "contours", isDebugMode());
 }
 
+function scheduleParamsRecompute({ debounce = false, refreshAirports = false } = {}) {
+  if (isAutoParamsMode()) {
+    app.hooks.scheduleAutoCompute({ debounce, refreshAirports });
+  } else if (isSingleParamsMode()) {
+    app.hooks.scheduleSingleAirportCompute?.(undefined, { debounce });
+  }
+}
+
 function getParamHelpText(key) {
   let text = PARAM_HELP[key];
   if (!text) {
@@ -240,31 +248,23 @@ export function initParamsPanel(appState, domRefs) {
     document.getElementById(id)?.addEventListener("input", () => {
       app.hooks.updateGridRadiusHint();
       app.hooks.syncAutoWindowSizeUi();
-      if (isAutoParamsMode()) {
-        app.hooks.scheduleAutoCompute({ debounce: true });
-      }
+      scheduleParamsRecompute({ debounce: true });
     });
   }
 
   for (const id of ["circuit", "clearance"]) {
     document.getElementById(id)?.addEventListener("input", () => {
-      if (isAutoParamsMode()) {
-        app.hooks.scheduleAutoCompute({ debounce: true });
-      }
+      scheduleParamsRecompute({ debounce: true });
     });
   }
 
   dom.autoWindowSizeInput?.addEventListener("input", () => {
-    if (isAutoParamsMode()) {
-      app.hooks.scheduleAutoCompute({ debounce: true, refreshAirports: true });
-    }
+    scheduleParamsRecompute({ debounce: true, refreshAirports: true });
   });
 
   dom.autoWindowFromGlideInput?.addEventListener("change", () => {
     app.hooks.syncAutoWindowSizeUi();
-    if (isAutoParamsMode()) {
-      app.hooks.scheduleAutoCompute({ debounce: true, refreshAirports: true });
-    }
+    scheduleParamsRecompute({ debounce: true, refreshAirports: true });
   });
 
   dom.terrainZoomInput?.addEventListener("input", app.hooks.onTerrainZoomChange);
@@ -275,9 +275,7 @@ export function initParamsPanel(appState, domRefs) {
       const center = app.hooks.getMap().getCenter();
       app.hooks.updateAirspaceInfo(center.lng, center.lat);
     }
-    if (isAutoParamsMode()) {
-      app.hooks.scheduleAutoCompute({ debounce: true });
-    }
+    scheduleParamsRecompute({ debounce: true });
   });
 
   dom.debugModeInput?.addEventListener("change", syncDebugUi);

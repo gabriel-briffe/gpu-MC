@@ -102,7 +102,7 @@ import {
   getAirportAreaSelectMode,
 } from "./airports/area-select.js";
 import { initAutoCompute, scheduleAutoCompute, clearAutoComputeScheduling, onAutoModeMapMoveEnd, syncAutoWindowSizeUi } from "./auto/auto-compute.js";
-import { initSingleCompute, clearSingleComputeScheduling, flushSingleAirportCompute, getSingleComputePending } from "./single/single-compute.js";
+import { initSingleCompute, clearSingleComputeScheduling, flushSingleAirportCompute, getSingleComputePending, scheduleSingleAirportCompute } from "./single/single-compute.js";
 import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 
@@ -308,6 +308,8 @@ function onTerrainZoomChange() {
   updateTerrainResolutionHint();
   if (isAutoParamsMode()) {
     scheduleAutoCompute({ debounce: true });
+  } else if (isSingleParamsMode()) {
+    scheduleSingleAirportCompute(undefined, { debounce: true });
   }
 }
 
@@ -433,6 +435,7 @@ app.hooks = {
   exitManualAirportSelectMode,
   exitAirportAreaSelectMode,
   scheduleAutoCompute,
+  scheduleSingleAirportCompute,
   syncSeedLayerVisibility,
   syncCompareLosButton,
   syncDownloadContoursButton,
@@ -458,6 +461,7 @@ app.hooks = {
   },
   syncComputeContextBar,
   clearPendingSeedsSelection: () => sharedHooks.clearPendingSeedsSelection?.(),
+  scheduleSingleAirportCompute,
 };
 initParamsPanel(app, dom);
 

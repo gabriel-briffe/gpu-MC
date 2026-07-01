@@ -1,5 +1,6 @@
 import { kmBoxAroundLngLat } from "../geo.js";
 import { ensureAirportCellsCachedForBbox } from "../cache-area.js";
+import { AUTO_COMPUTE_DEBOUNCE_MS } from "../constants.js";
 import { isSingleParamsMode } from "../params/panel.js";
 import { getAutoWindowSizeKm } from "../auto/auto-compute.js";
 
@@ -12,24 +13,45 @@ export function initSingleCompute(h) {
   hooks.scheduleSingleAirportCompute = scheduleSingleAirportCompute;
   hooks.flushSingleAirportCompute = flushSingleAirportCompute;
   hooks.clearSingleComputeScheduling = clearSingleComputeScheduling;
-  hooks.getSingleComputePending = () => app.singleComputePending;
+  hooks.getSingleComputePending = getSingleComputePending;
+  hooks.getSingleLastPick = () => app.singleLastPick;
 }
 
 export function clearSingleComputeScheduling() {
+  clearTimeout(app.singleComputeDebounceTimer);
+  app.singleComputeDebounceTimer = null;
   app.singleComputePending = null;
+  app.singleLastPick = null;
 }
 
 export function getSingleComputePending() {
   return app.singleComputePending;
 }
 
-export function scheduleSingleAirportCompute(pick) {
-  if (!isSingleParamsMode() || hooks.getCacheSelectMode?.() || !pick?.id) {
+export function scheduleSingleAirportCompute(pick, { debounce = false } = {}) {
+  if (!isSingleParamsMode() || hooks.getCacheSelectMode?.()) {
     return;
   }
-  app.singleComputePending = pick;
+  if (pick?.id) {
+    app.singleLastPick = pick;
+  }
+  const target = pick?.id ? pick : app.singleLastPick;
+  if (!target?.id) {
+    return;
+  }
+
+  app.singleComputePending = target;
   if (hooks.isComputing()) {
     hooks.setComputeShouldStop(true);
+    return;
+  }
+
+  clearTimeout(app.singleComputeDebounceTimer);
+  if (debounce) {
+    app.singleComputeDebounceTimer = window.setTimeout(() => {
+      app.singleComputeDebounceTimer = null;
+      void flushSingleAirportCompute();
+    }, AUTO_COMPUTE_DEBOUNCE_MS);
     return;
   }
   void flushSingleAirportCompute();

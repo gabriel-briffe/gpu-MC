@@ -1,4 +1,4 @@
-import { parseVizMode, syncParamVisibility, isAutoParamsMode, applySectorsOverlayOpacity } from "../params/panel.js";
+import { parseVizMode, syncParamVisibility, isAutoParamsMode, isSingleParamsMode, applySectorsOverlayOpacity } from "../params/panel.js";
 import {
   clearRasterOverlay,
   clearContourOverlay,
@@ -224,6 +224,10 @@ export function bindUiEvents(app, hooks) {
     }
     if (isAutoParamsMode()) {
       hooks.scheduleAutoCompute({ debounce: false });
+      return;
+    }
+    if (isSingleParamsMode()) {
+      hooks.scheduleSingleAirportCompute?.(undefined, { debounce: false });
       return;
     }
     if (coneState && !hooks.isComputing()) {
