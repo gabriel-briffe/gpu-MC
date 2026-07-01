@@ -183,6 +183,7 @@ export function syncDebugUi() {
   app.hooks.syncCompareLosButton();
   app.hooks.syncDownloadContoursButton();
   syncVizModeDebugOptions();
+  app.hooks.syncAirspaceUi?.();
   const lastInspectCell = app.hooks.getLastInspectCell();
   if (lastInspectCell) {
     app.hooks.showCellInspect(lastInspectCell);
@@ -291,7 +292,11 @@ export function initParamsPanel(appState, domRefs) {
 
   dom.includeAirspaceInput?.addEventListener("change", () => {
     app.hooks.syncAirspaceUi();
-    if (app.hooks.isIncludeAirspaceEnabled() && app.hooks.getMap()?.getSource("openaip")) {
+    if (
+      isDebugMode() &&
+      app.hooks.isIncludeAirspaceEnabled() &&
+      app.hooks.getMap()?.getSource("openaip")
+    ) {
       const center = app.hooks.getMap().getCenter();
       app.hooks.updateAirspaceInfo(center.lng, center.lat);
     }

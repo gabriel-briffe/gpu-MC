@@ -240,7 +240,8 @@ function syncOpenAipVectorTiles() {
   if (!app.map) {
     return;
   }
-  const wantTiles = isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable();
+  const wantTiles =
+    isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable() && isDebugMode();
   if (wantTiles) {
     if (initOpenAipAirspaceTiles(app.map, app.openAipConfig)) {
       setOpenAipAirspaceVisible(app.map, true);
@@ -265,10 +266,19 @@ function syncAirspaceUi() {
     refreshRestAirspaceLayerData();
     setRestAirspaceFillVisible(true);
     setRestAirspaceLineVisible(false);
-    if (app.map?.getSource("openaip")) {
+    if (isDebugMode() && app.map?.getSource("openaip")) {
       setOpenAipAirspaceVisible(app.map, true);
+    } else if (app.map?.getSource("openaip")) {
+      setOpenAipAirspaceVisible(app.map, false);
     }
-    info.classList.add("visible");
+    if (isDebugMode()) {
+      info.classList.add("visible");
+    } else {
+      info.classList.remove("visible");
+      if (airspaceInfoEl) {
+        airspaceInfoEl.textContent = "—";
+      }
+    }
   } else {
     if (app.map?.getSource("openaip")) {
       setOpenAipAirspaceVisible(app.map, false);
@@ -580,7 +590,7 @@ app.geolocateControl.on("trackuserlocationend", () => {
 });
 
 function updateAirspaceInfo(lng, lat) {
-  if (!isIncludeAirspaceEnabled() || !app.map?.getSource("openaip")) {
+  if (!isIncludeAirspaceEnabled() || !isDebugMode() || !app.map?.getSource("openaip")) {
     return;
   }
 
