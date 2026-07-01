@@ -335,15 +335,23 @@ function updateTerrainResolutionHint() {
   terrainResolutionHintEl.textContent = `Resolution: ~${Math.round(cellSizeM)} m`;
 }
 
+function getHillshadeTileMaxZoom() {
+  if (!isDebugMode()) {
+    return BASE_MAP_TERRAIN_MAX_ZOOM;
+  }
+  return clampTerrainZoom(Number.parseInt(terrainZoomInput?.value ?? "", 10));
+}
+
 function syncBaseMapTerrainMaxZoom() {
   if (!app.map?.getStyle?.()?.sources?.hillshadeSource) {
     return;
   }
-  setTerrainTileMaxZoom(BASE_MAP_TERRAIN_MAX_ZOOM);
+  setTerrainTileMaxZoom(getHillshadeTileMaxZoom());
 }
 
 function onTerrainZoomChange() {
   updateTerrainResolutionHint();
+  syncBaseMapTerrainMaxZoom();
   if (isAutoParamsMode()) {
     scheduleAutoCompute({ debounce: true });
   } else if (isSingleParamsMode()) {
@@ -493,6 +501,7 @@ app.hooks = {
   updateParamsFooter,
   detectInteractionMode,
   onTerrainZoomChange,
+  syncBaseMapTerrainMaxZoom,
   updateGridRadiusHint,
   updateTerrainResolutionHint,
   syncAutoWindowSizeUi,

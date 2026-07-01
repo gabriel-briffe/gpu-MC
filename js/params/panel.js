@@ -188,6 +188,7 @@ export function syncDebugUi() {
   app.hooks.syncCompareLosButton();
   app.hooks.syncExtractMatrixButton();
   app.hooks.syncDownloadContoursButton();
+  app.hooks.syncBaseMapTerrainMaxZoom?.();
   if (!debug) {
     app.hooks.exitMatrixExtractMode?.();
   }
