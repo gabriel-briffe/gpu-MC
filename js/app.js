@@ -37,16 +37,13 @@ import {
   AUTO_WINDOW_GLIDE_FACTOR,
   AUTO_MAX_OFFSET_FROM_CENTER,
   AUTO_COMPUTE_DEBOUNCE_MS,
-  AIRPORT_RECT_MIN_DEG,
-  AIRPORT_HANDLE_HIT_PX,
-  AIRPORT_HANDLE_CURSORS,
   MAP_CENTER,
   INITIAL_TERRAIN_Z,
   MAP_MAX_ZOOM,
   COMPUTE_DONE_STATUS_CLEAR_MS,
 } from "./constants.js";
 import { createApp } from "./app-state.js";
-import { formatAirportLabel, seedDisplayLabel } from "./airport-label.js";
+import { formatAirportLabel } from "./airport-label.js";
 import {
   initComputeVisualization,
   clearRasterOverlay,
@@ -66,7 +63,6 @@ import {
   ensurePathLayer,
   ensureSeedLayers,
   raisePathLayer,
-  getSeedLayersReady,
   ensureCachedAirportMapLayers,
   refreshCachedAirportMapLayer,
   ensureRestAirspaceLayers,
@@ -79,6 +75,7 @@ import {
   clearCacheAirportLayers,
   setOverlaysHiddenForCacheSelect,
   syncContourLabelSpacing,
+  updateCacheGridData,
 } from "./map/layers.js";
 import {
   initGlidePath,
@@ -113,6 +110,31 @@ import {
   isDebugMode,
   isAutoParamsMode,
 } from "./params/panel.js";
+import {
+  initSeeds,
+  getPendingSeeds,
+  updateSeedMarkers,
+  syncSeedLayerVisibility,
+  setPendingSeedsFromAirports,
+} from "./airports/seeds.js";
+import {
+  initManualSelect,
+  exitManualAirportSelectMode,
+  getManualAirportSelectMode,
+  setPendingManualAirport,
+} from "./airports/manual-select.js";
+import {
+  initAreaSelect,
+  exitAirportAreaSelectMode,
+  getAirportAreaSelectMode,
+  syncAreaSelectCursor,
+  beginAirportAreaInteraction,
+  updateAirportAreaInteraction,
+  finishAirportAreaInteraction,
+  cancelAirportRectInteraction,
+  syncAirportAreaSelectUi,
+  hasAirportRectInteraction,
+} from "./airports/area-select.js";
 
 const app = createApp();
 
@@ -185,7 +207,6 @@ let computing = false;
 let computeShouldStop = false;
 let compareOverlayCanvas = null;
 let coneState = null;
-let pendingSeeds = [];
 let openAipConfig = null;
 let touchHandledRecently = false;
 let footerStatusText = "Loading WebGPU…";
@@ -199,15 +220,6 @@ let lastGeoLngLat = null;
 let geolocateControl = null;
 let geoTrackPanZoom = null;
 let geoTrackInitialPanPending = false;
-let airportAreaSelectMode = false;
-let airportAreaDrawMode = false;
-let airportSelectRects = [];
-let airportSelectLayersReady = false;
-let airportRectInteraction = null;
-let manualAirportSelectMode = false;
-let manualStagingAirports = [];
-let pendingManualAirport = null;
-let pendingManualAirportLayerReady = false;
 let manualTouchStart = null;
 let cacheSelectMode = false;
 let cacheDownloadInProgress = false;
@@ -221,14 +233,6 @@ function detectInteractionMode() {
   app.interaction.tapPath = coarse;
 
   updateInteractionHints();
-}
-
-function airportCountStatus(count) {
-  return `${count} airport${count === 1 ? "" : "s"} selected`;
-}
-
-function airportCountTotal(count) {
-  return `${count} airport${count === 1 ? "" : "s"} total`;
 }
 
 function updateInteractionHints() {
@@ -371,18 +375,19 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
       return;
     }
 
-    pendingSeeds = airports.map((airport) => ({
-      lng: airport.lng,
-      lat: airport.lat,
-      label: formatAirportLabel(airport),
-      source: "airport",
-    }));
-    updateSeedMarkers();
+    setPendingSeedsFromAirports(
+      airports.map((airport) => ({
+        lng: airport.lng,
+        lat: airport.lat,
+        label: formatAirportLabel(airport),
+        source: "airport",
+      }))
+    );
     setStatus(`Found ${airports.length} airports — fetching terrain…`);
-    seedsForCompute = pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
-  } else if (pendingSeeds.length >= MIN_SEEDS) {
-    setStatus(`Recomputing ${pendingSeeds.length} airports…`);
-    seedsForCompute = pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
+    seedsForCompute = getPendingSeeds().map((seed) => ({ lng: seed.lng, lat: seed.lat }));
+  } else if (getPendingSeeds().length >= MIN_SEEDS) {
+    setStatus(`Recomputing ${getPendingSeeds().length} airports…`);
+    seedsForCompute = getPendingSeeds().map((seed) => ({ lng: seed.lng, lat: seed.lat }));
   } else {
     await runAutoComputation({ refreshAirports: true });
     return;
@@ -534,6 +539,7 @@ const sharedHooks = {
   getConeState: () => coneState,
   setConeState,
   clearConeState,
+  clearComputeResults,
   isComputing: () => computing,
   setComputing: (value) => {
     computing = value;
@@ -542,12 +548,10 @@ const sharedHooks = {
   setComputeShouldStop: (value) => {
     computeShouldStop = value;
   },
-  getPendingSeeds: () => pendingSeeds,
   getOpenAipConfig: () => openAipConfig,
   getAutoComputePending: () => autoComputePending,
   getCacheSelectMode: () => cacheSelectMode,
   getSelectedCacheCells: () => app.selectedCacheCells,
-  getPendingManualAirportLayerReady: () => pendingManualAirportLayerReady,
   getLastGeoLngLat: () => lastGeoLngLat,
   getInteraction: () => app.interaction,
   ensureEngine,
@@ -555,6 +559,7 @@ const sharedHooks = {
   isAutoParamsMode,
   isGeoTrackingOn,
   isHighlightDownhillGroundPathEnabled,
+  areOpenAipAirportsAvailable,
   setStatus,
   stopComputeBtn,
   runComputeBtn,
@@ -562,6 +567,7 @@ const sharedHooks = {
   infoEl: info,
   cellTooltipEl,
   paramsShell,
+  paramsPanel,
   computeContextBarEl,
   clearCellInspect,
   clearGlidePath,
@@ -572,20 +578,35 @@ const sharedHooks = {
   syncCompareLosButton,
   ensurePathLayer,
   raisePathLayer,
-  updateSeedMarkers,
-  syncSeedLayerVisibility,
   syncAirspaceUi,
-  exitManualAirportSelectMode,
-  exitAirportAreaSelectMode,
-  getManualAirportSelectMode: () => manualAirportSelectMode,
-  getAirportAreaSelectMode: () => airportAreaSelectMode,
+  updateAirspaceInfo,
+  refreshCachedAirportMapLayer,
   clearAllGlidePaths,
   pathScreenBounds,
   setLastPathScreenBounds,
   updateCellTooltip,
   updateParamsFooter,
+  seedListEl,
+  paramsScrollEl,
+  seedsSectionEl,
+  clearAllSeedsBtn,
+  manualAirportSelectPanel,
+  manualAirportListEl,
+  manualAirportNameInput,
+  addManualAirportBtn,
+  clearManualAirportBtn,
+  finishManualAirportBtn,
+  toggleManualAirportSelectBtn,
+  airportAreaSelectPanel,
+  toggleAirportAreaSelectBtn,
+  addAirportAreaBtn,
+  addAirportsFromAreasBtn,
+  clearAirportAreasBtn,
 };
 
+initSeeds(sharedHooks);
+initManualSelect(sharedHooks);
+initAreaSelect(sharedHooks);
 initMapLayers(sharedHooks);
 initGlidePath(sharedHooks);
 initCellInspect(sharedHooks);
@@ -597,8 +618,8 @@ app.hooks = {
   getConeState: () => coneState,
   isComputing: () => computing,
   getLastInspectCell,
-  getManualAirportSelectMode: () => manualAirportSelectMode,
-  getAirportAreaSelectMode: () => airportAreaSelectMode,
+  getManualAirportSelectMode,
+  getAirportAreaSelectMode,
   clearAutoComputeScheduling: () => {
     clearTimeout(autoComputeDebounceTimer);
     autoComputeDebounceTimer = null;
@@ -806,793 +827,6 @@ function setTerrainTileMaxZoom(zoom) {
   }
 }
 
-function syncSeedLayerVisibility() {
-  if (!getSeedLayersReady() || !map) {
-    return;
-  }
-  const visibility = isAutoParamsMode() ? "none" : "visible";
-  for (const layerId of ["seeds-circle", "seeds-label"]) {
-    if (map.getLayer(layerId)) {
-      map.setLayoutProperty(layerId, "visibility", visibility);
-    }
-  }
-}
-
-function seedKey(seed) {
-  return `${seed.lng.toFixed(5)},${seed.lat.toFixed(5)}`;
-}
-
-function normalizeAirportSelectRect(a, b) {
-  return {
-    west: Math.min(a.lng, b.lng),
-    east: Math.max(a.lng, b.lng),
-    south: Math.min(a.lat, b.lat),
-    north: Math.max(a.lat, b.lat),
-  };
-}
-
-function airportSelectRectRing(rect) {
-  const { west, south, east, north } = rect;
-  return [
-    [west, south],
-    [east, south],
-    [east, north],
-    [west, north],
-    [west, south],
-  ];
-}
-
-function airportSelectRectCorners(rect) {
-  return [
-    { handle: "nw", lng: rect.west, lat: rect.north },
-    { handle: "ne", lng: rect.east, lat: rect.north },
-    { handle: "se", lng: rect.east, lat: rect.south },
-    { handle: "sw", lng: rect.west, lat: rect.south },
-  ];
-}
-
-function resizeAnchorForHandle(rect, handle) {
-  switch (handle) {
-    case "nw":
-      return { lng: rect.east, lat: rect.south };
-    case "ne":
-      return { lng: rect.west, lat: rect.south };
-    case "se":
-      return { lng: rect.west, lat: rect.north };
-    case "sw":
-      return { lng: rect.east, lat: rect.north };
-    default:
-      return { lng: rect.east, lat: rect.south };
-  }
-}
-
-function hitTestRectHandle(point) {
-  for (let index = airportSelectRects.length - 1; index >= 0; index -= 1) {
-    const rect = airportSelectRects[index];
-    for (const corner of airportSelectRectCorners(rect)) {
-      const projected = map.project([corner.lng, corner.lat]);
-      if (Math.hypot(point.x - projected.x, point.y - projected.y) <= AIRPORT_HANDLE_HIT_PX) {
-        return { rectIndex: index, handle: corner.handle };
-      }
-    }
-  }
-  return null;
-}
-
-function syncAreaSelectCursor(point) {
-  if (!airportAreaSelectMode || !map?.getCanvas() || airportRectInteraction) {
-    return;
-  }
-  const hit = hitTestRectHandle(point);
-  if (hit) {
-    map.getCanvas().style.cursor = AIRPORT_HANDLE_CURSORS[hit.handle];
-    return;
-  }
-  map.getCanvas().style.cursor = airportAreaDrawMode ? "crosshair" : "";
-}
-
-function ensureAirportSelectLayers() {
-  if (airportSelectLayersReady) {
-    return;
-  }
-
-  map.addSource("airport-select-areas", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
-  map.addLayer({
-    id: "airport-select-areas-fill",
-    type: "fill",
-    source: "airport-select-areas",
-    filter: ["!=", ["get", "handle"], true],
-    paint: {
-      "fill-color": "#5a9fd4",
-      "fill-opacity": ["case", ["get", "preview"], 0.12, 0.22],
-    },
-  });
-
-  map.addLayer({
-    id: "airport-select-areas-line",
-    type: "line",
-    source: "airport-select-areas",
-    filter: ["!=", ["get", "handle"], true],
-    paint: {
-      "line-color": "#5a9fd4",
-      "line-width": 2,
-    },
-  });
-
-  map.addLayer({
-    id: "airport-select-handles",
-    type: "circle",
-    source: "airport-select-areas",
-    filter: ["==", ["get", "handle"], true],
-    paint: {
-      "circle-radius": 5,
-      "circle-color": "#ffffff",
-      "circle-stroke-color": "#5a9fd4",
-      "circle-stroke-width": 2,
-    },
-  });
-
-  airportSelectLayersReady = true;
-}
-
-function updateAirportSelectLayer() {
-  if (!airportSelectLayersReady) {
-    return;
-  }
-
-  const features = airportSelectRects.flatMap((rect, index) => {
-    const polygon = {
-      type: "Feature",
-      properties: { index, preview: false, handle: false },
-      geometry: {
-        type: "Polygon",
-        coordinates: [airportSelectRectRing(rect)],
-      },
-    };
-    const handles = airportSelectRectCorners(rect).map((corner) => ({
-      type: "Feature",
-      properties: { index, handle: true, corner: corner.handle },
-      geometry: {
-        type: "Point",
-        coordinates: [corner.lng, corner.lat],
-      },
-    }));
-    return [polygon, ...handles];
-  });
-
-  if (airportRectInteraction?.kind === "draw") {
-    features.push({
-      type: "Feature",
-      properties: { preview: true, handle: false },
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          airportSelectRectRing(
-            normalizeAirportSelectRect(airportRectInteraction.start, airportRectInteraction.current)
-          ),
-        ],
-      },
-    });
-  }
-
-  map.getSource("airport-select-areas").setData({
-    type: "FeatureCollection",
-    features,
-  });
-}
-
-function syncAirportAreaSelectUi() {
-  if (toggleAirportAreaSelectBtn) {
-    toggleAirportAreaSelectBtn.disabled = computing || !areOpenAipAirportsAvailable();
-  }
-  if (toggleManualAirportSelectBtn) {
-    toggleManualAirportSelectBtn.disabled = computing;
-  }
-  if (addAirportsFromAreasBtn) {
-    addAirportsFromAreasBtn.disabled =
-      computing || airportSelectRects.length === 0 || !areOpenAipAirportsAvailable();
-  }
-  if (clearAirportAreasBtn) {
-    clearAirportAreasBtn.disabled = computing || airportSelectRects.length === 0;
-  }
-  if (addAirportAreaBtn) {
-    addAirportAreaBtn.disabled =
-      computing || !airportAreaSelectMode || airportAreaDrawMode || airportRectInteraction;
-  }
-  if (airportAreaSelectPanel) {
-    airportAreaSelectPanel.hidden = !airportAreaSelectMode;
-  }
-  syncManualAirportSelectUi();
-  if (map?.getCanvas() && !airportAreaSelectMode && !manualAirportSelectMode) {
-    map.getCanvas().style.cursor = "";
-  }
-}
-
-function ensurePendingManualAirportLayer() {
-  if (pendingManualAirportLayerReady) {
-    return;
-  }
-
-  map.addSource("pending-manual-airport", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
-  map.addLayer({
-    id: "pending-manual-airport-circle",
-    type: "circle",
-    source: "pending-manual-airport",
-    paint: {
-      "circle-radius": [
-        "interpolate",
-        ["linear"],
-        ["zoom"],
-        OPENAIP_AIRPORT_MIN_ZOOM,
-        4,
-        14,
-        10,
-      ],
-      "circle-color": "#ffcc00",
-      "circle-stroke-width": 3,
-      "circle-stroke-color": "#4da3ff",
-      "circle-opacity": 0.85,
-    },
-  });
-
-  pendingManualAirportLayerReady = true;
-}
-
-function updatePendingManualAirportLayer() {
-  if (!pendingManualAirportLayerReady) {
-    return;
-  }
-
-  const features = pendingManualAirport
-    ? [
-        {
-          type: "Feature",
-          geometry: {
-            type: "Point",
-            coordinates: [pendingManualAirport.lng, pendingManualAirport.lat],
-          },
-          properties: {},
-        },
-      ]
-    : [];
-
-  map.getSource("pending-manual-airport").setData({
-    type: "FeatureCollection",
-    features,
-  });
-}
-
-function syncManualAirportSelectUi() {
-  if (manualAirportSelectPanel) {
-    manualAirportSelectPanel.hidden = !manualAirportSelectMode;
-  }
-  const hasPending = pendingManualAirport !== null;
-  const hasStaging = manualStagingAirports.length > 0;
-  if (addManualAirportBtn) {
-    addManualAirportBtn.disabled = computing || !manualAirportSelectMode || !hasPending;
-  }
-  if (clearManualAirportBtn) {
-    clearManualAirportBtn.disabled = computing || !manualAirportSelectMode || !hasPending;
-  }
-  if (finishManualAirportBtn) {
-    finishManualAirportBtn.hidden = !manualAirportSelectMode || !hasStaging;
-    finishManualAirportBtn.disabled = computing;
-  }
-  if (manualAirportNameInput) {
-    manualAirportNameInput.disabled = computing || !manualAirportSelectMode;
-  }
-}
-
-function clearPendingManualAirport() {
-  pendingManualAirport = null;
-  updatePendingManualAirportLayer();
-  syncManualAirportSelectUi();
-}
-
-function setPendingManualAirport(lng, lat) {
-  pendingManualAirport = { lng, lat };
-  ensurePendingManualAirportLayer();
-  updatePendingManualAirportLayer();
-  updateAirspaceInfo(lng, lat);
-  syncManualAirportSelectUi();
-  setStatus("Enter a name (optional), then Add airport.");
-  if (manualAirportNameInput) {
-    manualAirportNameInput.focus();
-  }
-}
-
-function enterManualAirportSelectMode() {
-  if (computing) {
-    return;
-  }
-  if (airportAreaSelectMode) {
-    exitAirportAreaSelectMode(false);
-  }
-  manualAirportSelectMode = true;
-  manualStagingAirports = [];
-  updateManualStagingList();
-  if (paramsPanel) {
-    paramsPanel.open = false;
-  }
-  ensurePendingManualAirportLayer();
-  updateSeedMarkers();
-  syncManualAirportSelectUi();
-  setStatus("Click the map to place an airport.");
-}
-
-function exitManualAirportSelectMode(reopenParams = false) {
-  manualAirportSelectMode = false;
-  manualStagingAirports = [];
-  clearPendingManualAirport();
-  updateManualStagingList();
-  updateSeedMarkers();
-  syncManualAirportSelectUi();
-  if (reopenParams && paramsPanel) {
-    paramsPanel.open = true;
-    window.requestAnimationFrame(() => scrollToSeedsSection());
-  }
-  if (map?.getCanvas()) {
-    map.getCanvas().style.cursor = "";
-  }
-}
-
-function sortedManualStagingEntries() {
-  return manualStagingAirports
-    .map((seed, index) => ({ seed, index }))
-    .sort((a, b) =>
-      seedDisplayLabel(a.seed).localeCompare(seedDisplayLabel(b.seed), undefined, {
-        sensitivity: "base",
-      })
-    );
-}
-
-function updateManualStagingList() {
-  if (!manualAirportListEl) {
-    return;
-  }
-  manualAirportListEl.replaceChildren();
-
-  if (manualStagingAirports.length === 0) {
-    manualAirportListEl.hidden = true;
-    return;
-  }
-
-  manualAirportListEl.hidden = false;
-  for (const { seed, index } of sortedManualStagingEntries()) {
-    const row = document.createElement("div");
-    row.className = "seed-list-item";
-
-    const label = document.createElement("span");
-    label.className = "seed-list-label";
-    label.textContent = seedDisplayLabel(seed);
-    label.title = seedDisplayLabel(seed);
-
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "seed-list-delete";
-    del.setAttribute("aria-label", `Remove ${seedDisplayLabel(seed)}`);
-    del.textContent = "×";
-    del.addEventListener("click", () => removeManualStagingAirport(index));
-
-    row.append(label, del);
-    manualAirportListEl.append(row);
-  }
-}
-
-function removeManualStagingAirport(index) {
-  if (computing || index < 0 || index >= manualStagingAirports.length) {
-    return;
-  }
-  manualStagingAirports.splice(index, 1);
-  updateManualStagingList();
-  updateSeedMarkers();
-  syncManualAirportSelectUi();
-  if (manualStagingAirports.length === 0) {
-    setStatus("Click the map to place an airport.");
-  } else {
-    setStatus(
-      `${manualStagingAirports.length} airport${manualStagingAirports.length === 1 ? "" : "s"} picked — click Finished when done`
-    );
-  }
-}
-
-function commitPendingManualAirport() {
-  if (!pendingManualAirport) {
-    return;
-  }
-
-  const { lng, lat } = pendingManualAirport;
-  const name = manualAirportNameInput?.value.trim() ?? "";
-  const key = seedKey({ lng, lat });
-  if (
-    pendingSeeds.some((seed) => seedKey(seed) === key) ||
-    manualStagingAirports.some((seed) => seedKey(seed) === key)
-  ) {
-    setStatus("Airport already in list");
-    return;
-  }
-
-  const seed = { lng, lat, source: "map" };
-  if (name) {
-    seed.label = name;
-  }
-  manualStagingAirports.push(seed);
-
-  if (manualAirportNameInput) {
-    manualAirportNameInput.value = "";
-  }
-  clearPendingManualAirport();
-  updateManualStagingList();
-  updateSeedMarkers();
-  syncManualAirportSelectUi();
-  setStatus(
-    `${manualStagingAirports.length} airport${manualStagingAirports.length === 1 ? "" : "s"} picked — click Finished when done`
-  );
-}
-
-function finishManualAirportSelection() {
-  if (manualStagingAirports.length === 0 || computing) {
-    return;
-  }
-
-  const existing = new Set(pendingSeeds.map((seed) => seedKey(seed)));
-  let added = 0;
-  for (const seed of manualStagingAirports) {
-    const key = seedKey(seed);
-    if (existing.has(key)) {
-      continue;
-    }
-    existing.add(key);
-    pendingSeeds.push({ ...seed });
-    added += 1;
-  }
-
-  const pickedCount = manualStagingAirports.length;
-  manualStagingAirports = [];
-  updateManualStagingList();
-  updateSeedMarkers();
-  exitManualAirportSelectMode(true);
-
-  if (added === 0) {
-    setStatus("All picked airports are already in the list");
-  } else if (added < pickedCount) {
-    setStatus(
-      `Added ${added} airport${added === 1 ? "" : "s"} — ${airportCountTotal(pendingSeeds.length)}`
-    );
-  } else {
-    setStatus(
-      `Added ${added} airport${added === 1 ? "" : "s"} — ${airportCountTotal(pendingSeeds.length)}`
-    );
-  }
-}
-
-function cancelAirportRectInteraction() {
-  if (airportRectInteraction) {
-    map.dragPan.enable();
-  }
-  airportRectInteraction = null;
-  updateAirportSelectLayer();
-}
-
-function scrollToSeedsSection() {
-  if (!paramsScrollEl || !seedsSectionEl) {
-    return;
-  }
-  paramsScrollEl.scrollTo({
-    top: Math.max(0, seedsSectionEl.offsetTop - 8),
-    behavior: "smooth",
-  });
-}
-
-function enterAirportAreaSelectMode() {
-  if (computing || !areOpenAipAirportsAvailable()) {
-    return;
-  }
-  if (manualAirportSelectMode) {
-    exitManualAirportSelectMode(false);
-  }
-  airportAreaSelectMode = true;
-  airportAreaDrawMode = airportSelectRects.length === 0;
-  if (paramsPanel) {
-    paramsPanel.open = false;
-  }
-  ensureAirportSelectLayers();
-  syncAirportAreaSelectUi();
-  setStatus(
-    airportAreaDrawMode
-      ? "Drag on the map to draw an area."
-      : "Pan and zoom freely, or use Add new area to draw another."
-  );
-}
-
-function startAddAirportArea() {
-  if (!airportAreaSelectMode || computing) {
-    return;
-  }
-  airportAreaDrawMode = true;
-  syncAirportAreaSelectUi();
-  setStatus("Drag on the map to draw a new area.");
-}
-
-function exitAirportAreaSelectMode(reopenParams = false) {
-  airportAreaSelectMode = false;
-  airportAreaDrawMode = false;
-  cancelAirportRectInteraction();
-  syncAirportAreaSelectUi();
-  if (reopenParams && paramsPanel) {
-    paramsPanel.open = true;
-    window.requestAnimationFrame(() => scrollToSeedsSection());
-  }
-  if (map?.getCanvas()) {
-    map.getCanvas().style.cursor = "";
-  }
-}
-
-function commitAirportSelectRect(endLngLat) {
-  const { start } = airportRectInteraction ?? {};
-  if (!start || !endLngLat) {
-    return false;
-  }
-
-  const rect = normalizeAirportSelectRect(start, endLngLat);
-  if (rect.east - rect.west < AIRPORT_RECT_MIN_DEG || rect.north - rect.south < AIRPORT_RECT_MIN_DEG) {
-    return false;
-  }
-
-  airportSelectRects.push(rect);
-  airportAreaDrawMode = false;
-  syncAirportAreaSelectUi();
-  setStatus(
-    `${airportSelectRects.length} area${airportSelectRects.length === 1 ? "" : "s"} drawn — pan/zoom freely, or Add new area`
-  );
-  return true;
-}
-
-function beginAirportAreaInteraction(lngLat, point) {
-  if (!airportAreaSelectMode || computing) {
-    return false;
-  }
-
-  ensureAirportSelectLayers();
-
-  const hit = hitTestRectHandle(point);
-  if (hit) {
-    const rect = airportSelectRects[hit.rectIndex];
-    airportRectInteraction = {
-      kind: "resize",
-      rectIndex: hit.rectIndex,
-      handle: hit.handle,
-      anchor: resizeAnchorForHandle(rect, hit.handle),
-    };
-    map.dragPan.disable();
-    updateAirportSelectLayer();
-    return true;
-  }
-
-  if (!airportAreaDrawMode) {
-    return false;
-  }
-
-  airportRectInteraction = {
-    kind: "draw",
-    start: lngLat,
-    current: lngLat,
-  };
-  map.dragPan.disable();
-  updateAirportSelectLayer();
-  return true;
-}
-
-function updateAirportAreaInteraction(lngLat) {
-  if (!airportRectInteraction) {
-    return;
-  }
-
-  if (airportRectInteraction.kind === "draw") {
-    airportRectInteraction.current = lngLat;
-  } else if (airportRectInteraction.kind === "resize") {
-    const { rectIndex, anchor } = airportRectInteraction;
-    airportSelectRects[rectIndex] = normalizeAirportSelectRect(anchor, lngLat);
-  }
-
-  updateAirportSelectLayer();
-}
-
-function finishAirportAreaInteraction(lngLat) {
-  if (!airportRectInteraction) {
-    return false;
-  }
-
-  if (airportRectInteraction.kind === "draw") {
-    commitAirportSelectRect(lngLat);
-  }
-
-  cancelAirportRectInteraction();
-  syncAirportAreaSelectUi();
-  return true;
-}
-
-async function addAirportsFromSelectAreas() {
-  if (airportSelectRects.length === 0) {
-    setStatus("Draw one or more areas on the map first");
-    return;
-  }
-
-  const existing = new Set(pendingSeeds.map((seed) => seedKey(seed)));
-  let added = 0;
-  for (const rect of airportSelectRects) {
-    await ensureAirportCellsCachedForBbox(rect, openAipConfig, setStatus);
-    const airports = getCachedAirportsInBounds(
-      rect.west,
-      rect.south,
-      rect.east,
-      rect.north
-    );
-    for (const airport of airports) {
-      const seed = {
-        lng: airport.lng,
-        lat: airport.lat,
-        label: formatAirportLabel(airport),
-        source: "airport",
-      };
-      const key = seedKey(seed);
-      if (existing.has(key)) {
-        continue;
-      }
-      existing.add(key);
-      pendingSeeds.push(seed);
-      added += 1;
-    }
-  }
-
-  updateSeedMarkers();
-  refreshCachedAirportMapLayer();
-  const areaCount = airportSelectRects.length;
-  clearAirportSelectAreas();
-  exitAirportAreaSelectMode(true);
-  if (added === 0) {
-    setStatus(`No new airports in the drawn areas — cache cells or draw a larger area`);
-  } else {
-    setStatus(
-      `Added ${added} airport${added === 1 ? "" : "s"} from ${areaCount} area${areaCount === 1 ? "" : "s"} — ${airportCountTotal(pendingSeeds.length)}`
-    );
-  }
-}
-
-function clearAirportSelectAreas() {
-  airportSelectRects = [];
-  airportAreaDrawMode = airportAreaSelectMode;
-  cancelAirportRectInteraction();
-  if (airportSelectLayersReady && map.getSource("airport-select-areas")) {
-    updateAirportSelectLayer();
-  }
-  syncAirportAreaSelectUi();
-}
-
-function sortedSeedEntries() {
-  return pendingSeeds
-    .map((seed, index) => ({ seed, index }))
-    .sort((a, b) =>
-      seedDisplayLabel(a.seed).localeCompare(seedDisplayLabel(b.seed), undefined, {
-        sensitivity: "base",
-      })
-    );
-}
-
-function updateSeedList() {
-  if (!seedListEl) {
-    return;
-  }
-  seedListEl.replaceChildren();
-
-  if (pendingSeeds.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "seed-list-empty";
-    empty.textContent = "Use Manual selection or Draw airport areas";
-    seedListEl.append(empty);
-    return;
-  }
-
-  for (const { seed, index } of sortedSeedEntries()) {
-    const row = document.createElement("div");
-    row.className = "seed-list-item";
-
-    const label = document.createElement("span");
-    label.className = "seed-list-label";
-    label.textContent = seedDisplayLabel(seed);
-    label.title = seedDisplayLabel(seed);
-
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "seed-list-delete";
-    del.setAttribute("aria-label", `Remove ${seedDisplayLabel(seed)}`);
-    del.textContent = "×";
-    del.addEventListener("click", () => removePendingSeed(index));
-
-    row.append(label, del);
-    seedListEl.append(row);
-  }
-}
-
-function removePendingSeed(index) {
-  if (computing || index < 0 || index >= pendingSeeds.length) {
-    return;
-  }
-  pendingSeeds.splice(index, 1);
-  updateSeedMarkers();
-  updateSeedList();
-  if (pendingSeeds.length === 0) {
-    setStatus("Airports cleared — add airports, then Run");
-  } else {
-    setStatus(airportCountStatus(pendingSeeds.length));
-  }
-}
-
-function updateSeedMarkers() {
-  ensureSeedLayers();
-  const mapAirports = [...pendingSeeds];
-  if (manualAirportSelectMode) {
-    mapAirports.push(...manualStagingAirports);
-  }
-  const features = mapAirports.map((seed) => ({
-    type: "Feature",
-    geometry: {
-      type: "Point",
-      coordinates: [seed.lng, seed.lat],
-    },
-    properties: {
-      label: seedDisplayLabel(seed),
-    },
-  }));
-
-  map.getSource("seeds").setData({
-    type: "FeatureCollection",
-    features,
-  });
-
-  syncSeedLayerVisibility();
-  if (runComputeBtn) {
-    runComputeBtn.disabled = pendingSeeds.length < MIN_SEEDS || computing;
-  }
-  syncAirportAreaSelectUi();
-  updateSeedList();
-}
-
-function addPendingSeed(lng, lat, { label, source = "map" } = {}) {
-  const key = seedKey({ lng, lat });
-  if (pendingSeeds.some((seed) => seedKey(seed) === key)) {
-    setStatus("Airport already in list");
-    return false;
-  }
-  const seed = { lng, lat, source };
-  if (label) {
-    seed.label = label;
-  }
-  pendingSeeds.push(seed);
-  updateSeedMarkers();
-  updateAirspaceInfo(lng, lat);
-  setStatus(airportCountStatus(pendingSeeds.length));
-  return true;
-}
-
-function clearPendingSeeds() {
-  if (manualAirportSelectMode) {
-    exitManualAirportSelectMode(false);
-  }
-  pendingSeeds = [];
-  clearPendingManualAirport();
-  clearComputeResults();
-  updateSeedMarkers();
-  setStatus("Airports cleared — add airports, then Run");
-}
 
 function setConeState(dem, result, glideParams) {
   coneState = {
@@ -1773,10 +1007,10 @@ function enterCacheSelectMode() {
   if (cacheSelectMode || computing) {
     return;
   }
-  if (manualAirportSelectMode) {
+  if (getManualAirportSelectMode()) {
     exitManualAirportSelectMode(false);
   }
-  if (airportAreaSelectMode) {
+  if (getAirportAreaSelectMode()) {
     exitAirportAreaSelectMode(false);
   }
 
@@ -1923,8 +1157,8 @@ map.on("load", async () => {
 map.on("mousemove", (event) => {
   updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
 
-  if (airportAreaSelectMode) {
-    if (airportRectInteraction) {
+  if (getAirportAreaSelectMode()) {
+    if (hasAirportRectInteraction()) {
       updateAirportAreaInteraction(event.lngLat);
     } else {
       syncAreaSelectCursor(event.point);
@@ -1932,7 +1166,7 @@ map.on("mousemove", (event) => {
     return;
   }
 
-  if (manualAirportSelectMode) {
+  if (getManualAirportSelectMode()) {
     return;
   }
 
@@ -1943,7 +1177,7 @@ map.on("move", syncPathsOnMapMove);
 map.on("zoom", syncPathsOnMapMove);
 
 map.on("mousedown", (event) => {
-  if (event.originalEvent.button !== 0 || !airportAreaSelectMode) {
+  if (event.originalEvent.button !== 0 || !getAirportAreaSelectMode()) {
     return;
   }
   beginAirportAreaInteraction(event.lngLat, event.point);
@@ -1954,7 +1188,7 @@ map.on("mouseup", (event) => {
 });
 
 map.on("mouseleave", () => {
-  if (airportRectInteraction) {
+  if (hasAirportRectInteraction()) {
     cancelAirportRectInteraction();
     syncAirportAreaSelectUi();
   }
@@ -1965,11 +1199,11 @@ map.on("mouseleave", () => {
 });
 
 map.on("touchstart", (event) => {
-  if (airportAreaSelectMode && !computing && event.points.length === 1) {
+  if (getAirportAreaSelectMode() && !computing && event.points.length === 1) {
     beginAirportAreaInteraction(event.lngLat, event.point);
     return;
   }
-  if (manualAirportSelectMode && !computing && event.points.length === 1) {
+  if (getManualAirportSelectMode() && !computing && event.points.length === 1) {
     manualTouchStart = event.point;
   }
 });
@@ -1977,7 +1211,7 @@ map.on("touchstart", (event) => {
 map.on("touchmove", (event) => {
   updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
 
-  if (airportAreaSelectMode && airportRectInteraction) {
+  if (getAirportAreaSelectMode() && hasAirportRectInteraction()) {
     updateAirportAreaInteraction(event.lngLat);
     return;
   }
@@ -1994,13 +1228,13 @@ map.on("touchmove", (event) => {
 map.on("touchend", (event) => {
   updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
 
-  if (airportAreaSelectMode && airportRectInteraction) {
+  if (getAirportAreaSelectMode() && hasAirportRectInteraction()) {
     finishAirportAreaInteraction(event.lngLat);
     markTouchHandled();
     return;
   }
 
-  if (manualAirportSelectMode && !computing) {
+  if (getManualAirportSelectMode() && !computing) {
     if (manualTouchStart) {
       const dx = event.point.x - manualTouchStart.x;
       const dy = event.point.y - manualTouchStart.y;
@@ -2018,7 +1252,7 @@ map.on("touchend", (event) => {
 
 map.on("touchcancel", () => {
   manualTouchStart = null;
-  if (airportRectInteraction) {
+  if (hasAirportRectInteraction()) {
     cancelAirportRectInteraction();
     syncAirportAreaSelectUi();
   }
@@ -2036,13 +1270,13 @@ map.on("click", (event) => {
   if (
     computing ||
     touchHandledRecently ||
-    airportAreaSelectMode ||
-    airportRectInteraction
+    getAirportAreaSelectMode() ||
+    hasAirportRectInteraction()
   ) {
     return;
   }
 
-  if (manualAirportSelectMode) {
+  if (getManualAirportSelectMode()) {
     setPendingManualAirport(event.lngLat.lng, event.lngLat.lat);
     return;
   }
@@ -2116,13 +1350,6 @@ finishCacheSelectBtn?.addEventListener("click", () => {
   exitCacheSelectMode();
 });
 
-clearAllSeedsBtn?.addEventListener("click", () => {
-  if (computing) {
-    return;
-  }
-  clearPendingSeeds();
-});
-
 runComputeBtn?.addEventListener("click", () => {
   if (paramsPanel) {
     paramsPanel.open = false;
@@ -2130,75 +1357,11 @@ runComputeBtn?.addEventListener("click", () => {
   runComputation();
 });
 
-toggleManualAirportSelectBtn?.addEventListener("click", () => {
-  if (computing) {
-    return;
-  }
-  enterManualAirportSelectMode();
-});
-
-addManualAirportBtn?.addEventListener("click", () => {
-  if (computing) {
-    return;
-  }
-  commitPendingManualAirport();
-});
-
-clearManualAirportBtn?.addEventListener("click", () => {
-  if (computing) {
-    return;
-  }
-  if (manualAirportNameInput) {
-    manualAirportNameInput.value = "";
-  }
-  clearPendingManualAirport();
-  setStatus("Click the map to place an airport.");
-});
-
-finishManualAirportBtn?.addEventListener("click", () => {
-  if (computing) {
-    return;
-  }
-  finishManualAirportSelection();
-});
-
-toggleAirportAreaSelectBtn?.addEventListener("click", () => {
-  if (computing) {
-    return;
-  }
-  enterAirportAreaSelectMode();
-});
-
-addAirportAreaBtn?.addEventListener("click", () => {
-  if (computing) {
-    return;
-  }
-  startAddAirportArea();
-});
-
-addAirportsFromAreasBtn?.addEventListener("click", () => {
-  if (computing) {
-    return;
-  }
-  addAirportsFromSelectAreas().catch((error) => {
-    setStatus(`Airport error: ${error.message}`);
-    console.error(error);
-  });
-});
-
-clearAirportAreasBtn?.addEventListener("click", () => {
-  if (computing) {
-    return;
-  }
-  clearAirportSelectAreas();
-  setStatus("Airport selection areas cleared");
-});
-
 paramsPanel?.addEventListener("toggle", () => {
-  if (paramsPanel.open && airportAreaSelectMode) {
+  if (paramsPanel.open && getAirportAreaSelectMode()) {
     exitAirportAreaSelectMode(false);
   }
-  if (paramsPanel.open && manualAirportSelectMode) {
+  if (paramsPanel.open && getManualAirportSelectMode()) {
     exitManualAirportSelectMode(false);
   }
 });
