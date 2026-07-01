@@ -59,6 +59,7 @@ import {
   clearGlidePath,
   clearGeoPath,
   refreshInspectPath,
+  seedPathMetrics,
 } from "./glide-path.js";
 import {
   initCellInspect,
@@ -108,7 +109,7 @@ import { initAutoCompute, scheduleAutoCompute, clearAutoComputeScheduling, onAut
 import { initSingleCompute, clearSingleComputeScheduling, flushSingleAirportCompute, getSingleComputePending, scheduleSingleAirportCompute } from "./single/single-compute.js";
 import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
 import { needsStartupCacheMode } from "./cache-area.js";
-import { bindMapEvents, bindUiEvents } from "./map/events.js";
+import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
 
 const app = createApp();
 
@@ -152,8 +153,10 @@ const {
   debugModeInput,
   losRunInput,
   computeContextBarEl,
-  computeContextMinAltEl,
-  computeContextMinAltValueEl,
+  computeContextGeoStatsEl,
+  computeContextMinAltReadingEl,
+  computeContextDeltaReadingEl,
+  computeContextReqLdReadingEl,
   computeContextParamsEl,
   seedListEl,
   paramsPanel,
@@ -236,6 +239,9 @@ function updateParamsFooter() {
 }
 
 function isGeoTrackingOn() {
+  if (isFakeGeoActive(app)) {
+    return true;
+  }
   if (!app.geolocateControl) {
     return false;
   }
@@ -574,6 +580,7 @@ app.geolocateControl.on("geolocate", (event) => {
     lng: event.coords.longitude,
     lat: event.coords.latitude,
   };
+  app.lastGeoAltitude = Number.isFinite(event.coords.altitude) ? event.coords.altitude : null;
   if (app.geoTrackInitialPanPending) {
     panGeolocateToPosition(event.coords);
   }
@@ -591,6 +598,7 @@ app.geolocateControl.on("trackuserlocationend", () => {
   app.geoTrackInitialPanPending = false;
   if (!isGeoTrackingOn()) {
     app.lastGeoLngLat = null;
+    app.lastGeoAltitude = null;
     clearGeoPath();
     syncComputeContextBar();
   }
@@ -700,6 +708,78 @@ function clearConeState() {
   updateGeoLocationPath();
 }
 
+function computeReqGlideRatio(metrics, userAlt) {
+  const heightAboveSeed = userAlt - metrics.seedAlt;
+  if (!Number.isFinite(userAlt) || heightAboveSeed <= 0) {
+    return null;
+  }
+  return metrics.distanceM / heightAboveSeed;
+}
+
+function geoContextBarTone({ userAlt, geoCell, metrics, glideRatio }) {
+  if (!geoCell?.isReachable || !metrics) {
+    return null;
+  }
+  if (!Number.isFinite(userAlt)) {
+    return "red";
+  }
+  if (geoCell.alt !== null && userAlt < geoCell.alt) {
+    return "red";
+  }
+  const reqLd = computeReqGlideRatio(metrics, userAlt);
+  if (reqLd === null) {
+    return "red";
+  }
+  if (reqLd > glideRatio) {
+    return "red";
+  }
+  if (reqLd > glideRatio * 0.9) {
+    return "orange";
+  }
+  return "green";
+}
+
+function clearGeoContextReadings() {
+  if (computeContextMinAltReadingEl) {
+    computeContextMinAltReadingEl.textContent = "";
+  }
+  if (computeContextDeltaReadingEl) {
+    computeContextDeltaReadingEl.textContent = "";
+  }
+  if (computeContextReqLdReadingEl) {
+    computeContextReqLdReadingEl.textContent = "";
+  }
+}
+
+function setGeoContextReadings({ minAlt, userAlt, reqLd }) {
+  if (computeContextMinAltReadingEl) {
+    computeContextMinAltReadingEl.textContent =
+      minAlt !== null ? `${Math.round(minAlt)} m` : "—";
+  }
+  if (computeContextDeltaReadingEl) {
+    if (Number.isFinite(userAlt) && minAlt !== null) {
+      const delta = Math.round(userAlt - minAlt);
+      const sign = delta > 0 ? "+" : "";
+      computeContextDeltaReadingEl.textContent = `${sign}${delta} m`;
+    } else {
+      computeContextDeltaReadingEl.textContent = "—";
+    }
+  }
+  if (computeContextReqLdReadingEl) {
+    computeContextReqLdReadingEl.textContent =
+      reqLd !== null ? reqLd.toFixed(1) : "—";
+  }
+}
+
+function setComputeContextBarTone(tone) {
+  if (!computeContextBarEl) {
+    return;
+  }
+  for (const name of ["green", "orange", "red"]) {
+    computeContextBarEl.classList.toggle(`compute-context-bar--${name}`, tone === name);
+  }
+}
+
 function syncComputeContextBar() {
   if (!computeContextBarEl) {
     return;
@@ -711,29 +791,38 @@ function syncComputeContextBar() {
   }
   if (!app.coneState) {
     computeContextBarEl.hidden = true;
-    if (computeContextMinAltEl) {
-      computeContextMinAltEl.hidden = true;
+    if (computeContextGeoStatsEl) {
+      computeContextGeoStatsEl.hidden = true;
     }
-    if (computeContextMinAltValueEl) {
-      computeContextMinAltValueEl.textContent = "";
-    }
+    clearGeoContextReadings();
     if (computeContextParamsEl) {
       computeContextParamsEl.textContent = "";
     }
+    setComputeContextBarTone(null);
     document.body.classList.remove("has-compute-context");
     return;
   }
 
   const { glideRatio, groundClearance, circuitHeight } = app.coneState;
-  const geoCell = isGeoTrackingOn() ? getGeoSampleCell() : null;
+  const geoTracking = isGeoTrackingOn();
+  const geoCell = geoTracking ? getGeoSampleCell() : null;
+  const metrics = geoCell?.isReachable ? seedPathMetrics(geoCell) : null;
 
-  if (computeContextMinAltEl && computeContextMinAltValueEl) {
-    if (geoCell?.isReachable && geoCell.alt !== null) {
-      computeContextMinAltValueEl.textContent = `${Math.round(geoCell.alt)} m`;
-      computeContextMinAltEl.hidden = false;
+  if (computeContextGeoStatsEl) {
+    if (geoTracking && geoCell?.isReachable && geoCell.alt !== null) {
+      const minAlt = geoCell.alt;
+      const userAlt = app.lastGeoAltitude;
+      const reqLd = metrics ? computeReqGlideRatio(metrics, userAlt) : null;
+
+      setGeoContextReadings({ minAlt, userAlt, reqLd });
+      computeContextGeoStatsEl.hidden = false;
+      setComputeContextBarTone(
+        geoContextBarTone({ userAlt, geoCell, metrics, glideRatio })
+      );
     } else {
-      computeContextMinAltEl.hidden = true;
-      computeContextMinAltValueEl.textContent = "";
+      computeContextGeoStatsEl.hidden = true;
+      clearGeoContextReadings();
+      setComputeContextBarTone(null);
     }
   }
 
@@ -856,6 +945,7 @@ async function ensureEngine() {
 app.map.on("load", async () => {
   syncBaseMapTerrainMaxZoom();
   ensurePathLayer();
+  initFakeGeo(app, sharedHooks);
   app.map.on("moveend", () => {
     updateTerrainResolutionHint();
     onAutoModeMapMoveEnd();
@@ -864,6 +954,7 @@ app.map.on("load", async () => {
     if (isIncludeAirspaceEnabled() && !getCacheSelectMode()) {
       refreshRestAirspaceLayerData();
     }
+    sharedHooks.syncFakeGeoFromCamera?.();
   });
   app.map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);

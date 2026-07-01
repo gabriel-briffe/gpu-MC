@@ -11,6 +11,8 @@ export function createApp() {
     footerStatusText: "Loading WebGPU…",
     statusClearTimer: null,
     lastGeoLngLat: null,
+    lastGeoAltitude: null,
+    fakeGeoActive: false,
     geolocateControl: null,
     geoTrackPanZoom: null,
     geoTrackInitialPanPending: false,

@@ -402,9 +402,19 @@
     <div id="param-help-popover" hidden role="tooltip"></div>
     <div id="cell-tooltip" hidden aria-live="polite"></div>
     <div id="compute-context-bar" hidden aria-live="polite">
-      <div id="compute-context-min-alt" hidden>
-        <div class="compute-context-min-alt-label">minimum alt</div>
-        <div id="compute-context-min-alt-value"></div>
+      <div id="compute-context-geo-stats" class="compute-context-geo-stats" hidden>
+        <div class="compute-context-stat-block">
+          <div class="compute-context-stat-label">minimum alt</div>
+          <div class="compute-context-stat-value" id="compute-context-min-alt-reading"></div>
+        </div>
+        <div class="compute-context-stat-block">
+          <div class="compute-context-stat-label">delta</div>
+          <div class="compute-context-stat-value" id="compute-context-delta-reading"></div>
+        </div>
+        <div class="compute-context-stat-block">
+          <div class="compute-context-stat-label">reqL/D</div>
+          <div class="compute-context-stat-value" id="compute-context-reqld-reading"></div>
+        </div>
       </div>
       <div id="compute-context-params"></div>
     </div>
