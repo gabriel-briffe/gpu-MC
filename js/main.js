@@ -109,6 +109,7 @@ import { initAutoCompute, scheduleAutoCompute, clearAutoComputeScheduling, onAut
 import { initSingleCompute, clearSingleComputeScheduling, flushSingleAirportCompute, getSingleComputePending, scheduleSingleAirportCompute } from "./single/single-compute.js";
 import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
 import { needsStartupCacheMode } from "./cache-area.js";
+import { bindMapEvents, bindUiEvents } from "./map/events.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
 
 const app = createApp();
