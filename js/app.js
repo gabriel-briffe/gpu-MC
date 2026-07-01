@@ -44,9 +44,10 @@ import {
   AIRSPACE_TYPE_PROHIBITED,
 } from "./airspace.js";
 
-const DEFAULT_MAX_ALTITUDE = 3050;
+const DEFAULT_MAX_ALTITUDE = 4050;
 const MIN_SEEDS = 1;
 const AUTO_WINDOW_SIZE_DEFAULT_KM = 100;
+const AUTO_WINDOW_GLIDE_FACTOR = 1.25;
 const AUTO_MAX_OFFSET_FROM_CENTER = 0.25;
 const AUTO_COMPUTE_DEBOUNCE_MS = 400;
 const AIRPORT_RECT_MIN_DEG = 1e-5;
@@ -87,6 +88,9 @@ const gridRadiusHintEl = document.getElementById("grid-radius-hint");
 const terrainZoomInput = document.getElementById("terrain-zoom");
 const terrainResolutionHintEl = document.getElementById("terrain-resolution-hint");
 const autoWindowSizeInput = document.getElementById("auto-window-size");
+const autoWindowFromGlideInput = document.getElementById("auto-window-from-glide");
+const autoWindowSizeFieldEl = document.getElementById("auto-window-size-field");
+const autoWindowGlideHintEl = document.getElementById("auto-window-glide-hint");
 const includeAirspaceInput = document.getElementById("include-airspace");
 const paramHelpPopover = document.getElementById("param-help-popover");
 const compareLosBtn = document.getElementById("compare-los");
@@ -539,7 +543,9 @@ const PARAM_HELP = {
   "terrain-zoom":
     "Mapterhorn DEM tile zoom (7–10). Higher zoom = finer cell resolution and larger grids. Resolution shown is the ground distance per DEM cell at the map centre.",
   "auto-window-size":
-    "Half-width of the airport search box in Auto mode (km from map centre to each edge). A value of 100 loads all airfields in a 200 km-wide square centred on the map.",
+    "Half-width of the auto search box in km (± from map centre, total span ×2). Ignored when “Window from glide range” is on.",
+  "auto-window-from-glide":
+    "Set window half-width to 1.25 × max altitude (m) × L/D, converted to km. Updates when max altitude or L/D changes.",
   "include-airspace":
     "Show prohibited/overflight-restriction fills from cached REST data and airspace outlines from OpenAIP vector tiles. DEM capping uses the same REST volumes.",
   "los-run":
@@ -614,9 +620,48 @@ function setParamsMode(mode) {
   }
 }
 
+function computeAutoWindowSizeFromGlideKm() {
+  const glideRatio = Number.parseFloat(document.getElementById("ld")?.value ?? "");
+  const maxAltitude = Number.parseFloat(document.getElementById("max-alt")?.value ?? "");
+  if (
+    !Number.isFinite(glideRatio) ||
+    glideRatio <= 0 ||
+    !Number.isFinite(maxAltitude) ||
+    maxAltitude <= 0
+  ) {
+    return AUTO_WINDOW_SIZE_DEFAULT_KM;
+  }
+  return (AUTO_WINDOW_GLIDE_FACTOR * maxAltitude * glideRatio) / 1000;
+}
+
+function isAutoWindowFromGlideEnabled() {
+  return autoWindowFromGlideInput?.checked ?? false;
+}
+
 function getAutoWindowSizeKm() {
+  if (isAutoWindowFromGlideEnabled()) {
+    return computeAutoWindowSizeFromGlideKm();
+  }
   const value = Number.parseFloat(autoWindowSizeInput?.value ?? "");
   return Number.isFinite(value) && value > 0 ? value : AUTO_WINDOW_SIZE_DEFAULT_KM;
+}
+
+function syncAutoWindowSizeUi() {
+  const fromGlide = isAutoWindowFromGlideEnabled();
+  if (autoWindowSizeFieldEl) {
+    autoWindowSizeFieldEl.hidden = fromGlide;
+    autoWindowSizeFieldEl.classList.toggle("auto-window-size-hidden", fromGlide);
+  }
+  if (autoWindowGlideHintEl) {
+    if (fromGlide) {
+      const km = computeAutoWindowSizeFromGlideKm();
+      autoWindowGlideHintEl.textContent = `${Math.round(km)} km half-width — ${Math.round(km * 2)} km total span`;
+      autoWindowGlideHintEl.hidden = false;
+    } else {
+      autoWindowGlideHintEl.hidden = true;
+      autoWindowGlideHintEl.textContent = "";
+    }
+  }
 }
 
 function areOpenAipAirportsAvailable() {
@@ -895,6 +940,7 @@ function initParamPanel() {
   setParamsMode("auto");
   updateGridRadiusHint();
   updateTerrainResolutionHint();
+  syncAutoWindowSizeUi();
 
   paramsModeAutoBtn?.addEventListener("click", () => setParamsMode("auto"));
   paramsModeManualBtn?.addEventListener("click", () => setParamsMode("manual"));
@@ -926,6 +972,7 @@ function initParamPanel() {
   for (const id of ["ld", "max-alt"]) {
     document.getElementById(id)?.addEventListener("input", () => {
       updateGridRadiusHint();
+      syncAutoWindowSizeUi();
       if (isAutoParamsMode()) {
         scheduleAutoCompute({ debounce: true });
       }
@@ -941,6 +988,13 @@ function initParamPanel() {
   }
 
   autoWindowSizeInput?.addEventListener("input", () => {
+    if (isAutoParamsMode()) {
+      scheduleAutoCompute({ debounce: true, refreshAirports: true });
+    }
+  });
+
+  autoWindowFromGlideInput?.addEventListener("change", () => {
+    syncAutoWindowSizeUi();
     if (isAutoParamsMode()) {
       scheduleAutoCompute({ debounce: true, refreshAirports: true });
     }

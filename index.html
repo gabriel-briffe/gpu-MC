@@ -160,6 +160,11 @@
         display: flex !important;
       }
 
+      #params-shell.auto-mode #auto-window-size-field[hidden],
+      #params-shell.auto-mode #auto-window-size-field.auto-window-size-hidden {
+        display: none !important;
+      }
+
       #params {
         display: flex;
         flex-direction: column;
@@ -865,7 +870,7 @@
                   <span class="param-label">Max altitude (m)</span>
                   <button type="button" class="param-help" data-help="max-alt" aria-label="Help: max altitude">ⓘ</button>
                 </div>
-                <input id="max-alt" type="number" min="1" step="50" value="3050" />
+                <input id="max-alt" type="number" min="1" step="50" value="4050" />
                 <span class="param-hint" id="grid-radius-hint"></span>
               </div>
               <div class="param-field param-field-full">
@@ -882,6 +887,30 @@
               </div>
               <div class="param-field param-field-full params-auto-only">
                 <div class="param-label-row">
+                  <label class="param-check" for="auto-window-from-glide">
+                    <input id="auto-window-from-glide" type="checkbox" checked />
+                    <span>
+                      Window from glide range
+                      <span class="param-check-detail">(1.25 × max alt × L/D)</span>
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    class="param-help"
+                    data-help="auto-window-from-glide"
+                    aria-label="Help: window from glide range"
+                  >
+                    ⓘ
+                  </button>
+                </div>
+                <span class="param-hint" id="auto-window-glide-hint"></span>
+              </div>
+              <div
+                class="param-field param-field-full params-auto-only auto-window-size-hidden"
+                id="auto-window-size-field"
+                hidden
+              >
+                <div class="param-label-row">
                   <span class="param-label">Window size (km)</span>
                   <button
                     type="button"
@@ -893,7 +922,7 @@
                   </button>
                 </div>
                 <input id="auto-window-size" type="number" min="10" step="10" value="100" />
-                <span class="param-hint">± from map centre (total width ×2)</span>
+                <span class="param-hint" id="auto-window-size-hint">± from map centre (total width ×2)</span>
               </div>
               <div class="param-field param-field-full">
                 <div class="param-label-row">
