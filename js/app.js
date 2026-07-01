@@ -1,6 +1,5 @@
 import {
   gridBoundsLngLat,
-  gridCellDistanceM,
   gridCellToLngLat,
   gridIndexFromLngLat,
   pickTerrainZoom,
@@ -9,9 +8,6 @@ import {
   kmBoxAroundLngLat,
   isInsideKmBoxInnerZone,
 } from "./geo.js";
-import { buildDemGrid } from "./dem.js";
-import { buildAltitudeContours } from "./contours.js";
-import { buildSectorBorderGeojson } from "./sectors.js";
 import { GlideConeEngine } from "./glidecone.js";
 import {
   initOpenAipAirspaceTiles,
@@ -19,8 +15,6 @@ import {
   queryOpenAipAirspacesAt,
   airspaceFeatureKey,
   setOpenAipAirspaceVisible,
-  OPENAIP_AIRPORT_MIN_ZOOM,
-  OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
 } from "./openaip-tiles.js";
 import { loadOpenAipConfig, openAipConfigured } from "./openaip-client.js";
 import {
@@ -31,18 +25,10 @@ import {
 import {
   buildCacheBundle,
   cacheCellKey,
-  cachedAirportsToGeoJsonFeatures,
-  cachedAirspacesToGeoJsonFeatures,
   ensureAirportCellsCachedForBbox,
   getCachedAirportsInBounds,
   getLastCachedCellKeysForSelection,
-  mergedCachedAirportsToGeoJsonFeatures,
-  mergedCachedAirspacesToGeoJsonFeatures,
 } from "./cache-area.js";
-import {
-  AIRSPACE_TYPE_ADVISORY,
-  AIRSPACE_TYPE_PROHIBITED,
-} from "./airspace.js";
 import { dom } from "./dom.js";
 import {
   DEFAULT_MAX_ALTITUDE,
@@ -57,21 +43,66 @@ import {
   MAP_CENTER,
   INITIAL_TERRAIN_Z,
   MAP_MAX_ZOOM,
-  MANUAL_INSPECT_MS,
-  REST_AIRSPACE_SOURCE,
-  REST_AIRSPACE_FILL_LAYER,
-  REST_AIRSPACE_LINE_LAYER,
-  EMPTY_PATH,
-  CACHE_HIDDEN_LAYER_IDS,
   COMPUTE_DONE_STATUS_CLEAR_MS,
-  GLIDE_PATH_PAINT,
 } from "./constants.js";
 import { createApp } from "./app-state.js";
 import { formatAirportLabel, seedDisplayLabel } from "./airport-label.js";
 import {
-  formatComputeDone,
-  formatHoverTip as formatHoverTipCore,
-} from "./compute/format.js";
+  initComputeVisualization,
+  clearRasterOverlay,
+  clearContourOverlay,
+  clearSectorBorderOverlay,
+  clearComputeResults,
+  clearAllOverlays,
+} from "./compute/visualization.js";
+import {
+  initComputeSession,
+  runComputation,
+  runFullBresenhamCompare,
+  requestStopCompute,
+} from "./compute/session.js";
+import {
+  initMapLayers,
+  ensurePathLayer,
+  ensureSeedLayers,
+  raisePathLayer,
+  getSeedLayersReady,
+  ensureCachedAirportMapLayers,
+  refreshCachedAirportMapLayer,
+  ensureRestAirspaceLayers,
+  refreshRestAirspaceLayerData,
+  setRestAirspaceFillVisible,
+  setRestAirspaceLineVisible,
+  refreshCacheGridForViewport,
+  refreshCacheSelectOverlays,
+  clearCacheGridLayers,
+  clearCacheAirportLayers,
+  setOverlaysHiddenForCacheSelect,
+  syncContourLabelSpacing,
+} from "./map/layers.js";
+import {
+  initGlidePath,
+  clearAllGlidePaths,
+  clearGlidePath,
+  refreshInspectPath,
+} from "./glide-path.js";
+import {
+  initCellInspect,
+  showCellInspect,
+  clearCellInspect,
+  getLastInspectCell,
+  getGeoSampleCell,
+  positionCellTooltip,
+  updateCellTooltip,
+  pathScreenBounds,
+  setLastPathScreenBounds,
+  onMapMouseMove,
+  onMapMouseLeave,
+  onMapClickInspect,
+  syncPathsOnMapMove,
+  hasActiveInspectTooltip,
+  updateGeoLocationPath,
+} from "./inspect/cell.js";
 import {
   initParamsPanel,
   parseVizMode,
@@ -81,7 +112,6 @@ import {
   syncDebugUi,
   isDebugMode,
   isAutoParamsMode,
-  getSectorsOverlayOpacity,
 } from "./params/panel.js";
 
 const app = createApp();
@@ -153,15 +183,9 @@ const {
 let engine = null;
 let computing = false;
 let computeShouldStop = false;
-let overlayCanvas = null;
 let compareOverlayCanvas = null;
 let coneState = null;
-let pathLayerReady = false;
-let contourLayersReady = false;
-let sectorBorderLayersReady = false;
-let lastInspectCell = null;
 let pendingSeeds = [];
-let seedLayersReady = false;
 let openAipConfig = null;
 let touchHandledRecently = false;
 let footerStatusText = "Loading WebGPU…";
@@ -171,11 +195,6 @@ let autoComputeNeedsAirportRefresh = false;
 let autoComputeRegion = null;
 let statusClearTimer = null;
 
-let footerCellHtml = null;
-let lastInspectAnchor = null;
-let lastInspectLngLat = null;
-let lastPathScreenBounds = null;
-let manualInspectTimeout = null;
 let lastGeoLngLat = null;
 let geolocateControl = null;
 let geoTrackPanZoom = null;
@@ -191,12 +210,7 @@ let pendingManualAirport = null;
 let pendingManualAirportLayerReady = false;
 let manualTouchStart = null;
 let cacheSelectMode = false;
-let cacheGridReady = false;
-let cacheAirportsReady = false;
-let restAirspaceLayersReady = false;
-let cachedAirportMapReady = false;
 let cacheDownloadInProgress = false;
-let overlayVisibilityBeforeCache = null;
 
 function detectInteractionMode() {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -250,275 +264,12 @@ function updateParamsFooter() {
   statusEl.textContent = footerStatusText;
 }
 
-function pathScreenBounds(coordinates) {
-  if (!coordinates?.length) {
-    return null;
-  }
-
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-
-  for (const [lng, lat] of coordinates) {
-    const pt = map.project([lng, lat]);
-    minX = Math.min(minX, pt.x);
-    minY = Math.min(minY, pt.y);
-    maxX = Math.max(maxX, pt.x);
-    maxY = Math.max(maxY, pt.y);
-  }
-
-  const pad = 14;
-  return {
-    minX: minX - pad,
-    minY: minY - pad,
-    maxX: maxX + pad,
-    maxY: maxY + pad,
-  };
-}
-
-function tooltipOverlapsPath(left, top, width, height) {
-  if (!lastPathScreenBounds) {
-    return false;
-  }
-  const { minX, minY, maxX, maxY } = lastPathScreenBounds;
-  return left < maxX && left + width > minX && top < maxY && top + height > minY;
-}
-
-function viewportInsets() {
-  const pad = 10;
-  const bottomPad =
-    pad +
-    (document.body.classList.contains("has-compute-context")
-      ? computeContextBarEl?.offsetHeight ?? 48
-      : 0);
-  return {
-    left: pad,
-    top: pad,
-    right: window.innerWidth - pad,
-    bottom: window.innerHeight - bottomPad,
-  };
-}
-
-function positionCellTooltip() {
-  if (!cellTooltipEl || cellTooltipEl.hidden || !lastInspectAnchor) {
-    return;
-  }
-
-  const { x, y } = lastInspectAnchor;
-  const gap = 16;
-  const width = cellTooltipEl.offsetWidth;
-  const height = cellTooltipEl.offsetHeight;
-  const { left: minLeft, top: minTop, right: maxRight, bottom: maxBottom } = viewportInsets();
-
-  const placements = [
-    { left: x + gap, top: y + gap },
-    { left: x - gap - width, top: y + gap },
-    { left: x + gap, top: y - gap - height },
-    { left: x - gap - width, top: y - gap - height },
-  ];
-
-  let chosen = placements.find(
-    (place) =>
-      place.left >= minLeft &&
-      place.top >= minTop &&
-      place.left + width <= maxRight &&
-      place.top + height <= maxBottom &&
-      !tooltipOverlapsPath(place.left, place.top, width, height)
-  );
-
-  if (!chosen && lastPathScreenBounds) {
-    const pcx = (lastPathScreenBounds.minX + lastPathScreenBounds.maxX) / 2;
-    const pcy = (lastPathScreenBounds.minY + lastPathScreenBounds.maxY) / 2;
-    const dx = x - pcx;
-    const dy = y - pcy;
-    const len = Math.hypot(dx, dy) || 1;
-    const push = Math.max(width, height) / 2 + gap + 24;
-    chosen = {
-      left: x + (dx / len) * push - width / 2,
-      top: y + (dy / len) * push - height / 2,
-    };
-  }
-
-  chosen ??= placements[0];
-
-  chosen.left = Math.max(minLeft, Math.min(chosen.left, maxRight - width));
-  chosen.top = Math.max(minTop, Math.min(chosen.top, maxBottom - height));
-
-  cellTooltipEl.style.left = `${chosen.left}px`;
-  cellTooltipEl.style.top = `${chosen.top}px`;
-}
-
-function updateCellTooltip() {
-  if (!cellTooltipEl) {
-    return;
-  }
-  if (!footerCellHtml) {
-    cellTooltipEl.hidden = true;
-    cellTooltipEl.innerHTML = "";
-    return;
-  }
-
-  cellTooltipEl.innerHTML = footerCellHtml;
-  cellTooltipEl.hidden = false;
-  window.requestAnimationFrame(() => positionCellTooltip());
-}
-
-function clearManualInspectTimer() {
-  if (manualInspectTimeout !== null) {
-    window.clearTimeout(manualInspectTimeout);
-    manualInspectTimeout = null;
-  }
-}
-
-function isManualInspectActive() {
-  return manualInspectTimeout !== null;
-}
-
 function isGeoTrackingOn() {
   if (!geolocateControl) {
     return false;
   }
   const state = geolocateControl._watchState;
   return state === "ACTIVE_LOCK" || state === "BACKGROUND" || state === "WAITING_ACTIVE";
-}
-
-function scheduleManualInspectClear() {
-  clearManualInspectTimer();
-  manualInspectTimeout = window.setTimeout(() => {
-    manualInspectTimeout = null;
-    clearCellInspect();
-  }, MANUAL_INSPECT_MS);
-}
-
-function getGeoSampleCell() {
-  if (!lastGeoLngLat || !coneState) {
-    return null;
-  }
-  return sampleDemCell(lastGeoLngLat.lng, lastGeoLngLat.lat);
-}
-
-function updateGeoLocationPath() {
-  if (!isGeoTrackingOn() || !coneState || !lastGeoLngLat) {
-    clearGeoPath();
-    return;
-  }
-
-  const cell = getGeoSampleCell();
-  if (!cell?.isReachable) {
-    clearGeoPath();
-    return;
-  }
-
-  refreshGeoPath(cell);
-}
-
-function clearCellInspect() {
-  clearManualInspectTimer();
-  footerCellHtml = null;
-  lastInspectAnchor = null;
-  lastInspectLngLat = null;
-  lastInspectCell = null;
-  lastPathScreenBounds = null;
-  clearInspectPath();
-  updateCellTooltip();
-  updateParamsFooter();
-}
-
-function isPointerOverParams(clientX, clientY) {
-  if (!paramsShell) {
-    return false;
-  }
-  const target = document.elementFromPoint(clientX, clientY);
-  return Boolean(target && paramsShell.contains(target));
-}
-
-function showCellInspect(cell, anchorPoint = null, { temporary = false } = {}) {
-  if (!cell) {
-    clearCellInspect();
-    return;
-  }
-
-  footerCellHtml = formatHoverTip(cell);
-
-  if (coneState?.dem) {
-    const pt = gridCellToLngLat(cell.gi, cell.gj, coneState.dem);
-    lastInspectLngLat = { lng: pt.lng, lat: pt.lat };
-  }
-
-  if (anchorPoint) {
-    lastInspectAnchor = { x: anchorPoint.x, y: anchorPoint.y };
-  } else if (lastInspectLngLat) {
-    const projected = map.project([lastInspectLngLat.lng, lastInspectLngLat.lat]);
-    lastInspectAnchor = { x: projected.x, y: projected.y };
-  }
-
-  if (cell.isReachable) {
-    lastInspectCell = cell;
-    refreshInspectPath(cell);
-  } else {
-    lastInspectCell = null;
-    lastPathScreenBounds = null;
-    clearInspectPath();
-    updateCellTooltip();
-  }
-
-  if (temporary) {
-    scheduleManualInspectClear();
-  }
-
-  updateParamsFooter();
-}
-
-function syncInspectOnMapMove() {
-  if (!lastInspectCell || !lastInspectLngLat || !footerCellHtml) {
-    return;
-  }
-  const projected = map.project([lastInspectLngLat.lng, lastInspectLngLat.lat]);
-  lastInspectAnchor = { x: projected.x, y: projected.y };
-  refreshInspectPath(lastInspectCell);
-}
-
-function startComputeSession() {
-  computeShouldStop = false;
-  computing = true;
-  stopComputeBtn.hidden = false;
-  stopComputeBtn.disabled = false;
-  if (runComputeBtn) {
-    runComputeBtn.disabled = true;
-  }
-  if (airportAreaSelectMode) {
-    exitAirportAreaSelectMode(false);
-  }
-  if (manualAirportSelectMode) {
-    exitManualAirportSelectMode(false);
-  }
-  syncCompareLosButton();
-}
-
-function endComputeSession() {
-  computing = false;
-  computeShouldStop = false;
-  stopComputeBtn.hidden = true;
-  stopComputeBtn.disabled = false;
-  updateSeedMarkers();
-  syncCompareLosButton();
-  if (isAutoParamsMode() && autoComputePending) {
-    void flushAutoCompute();
-  }
-}
-
-function requestStopCompute() {
-  computeShouldStop = true;
-  stopComputeBtn.disabled = true;
-  setStatus("Stopping after current GPU step…");
-}
-
-function makeComputeOptions(dem, glideParams) {
-  return {
-    onProgress: makeComputeProgressHandler(dem, glideParams),
-    shouldStop: () => computeShouldStop,
-  };
 }
 
 function computeAutoWindowSizeFromGlideKm() {
@@ -778,50 +529,74 @@ function onTerrainZoomChange() {
   }
 }
 
-function getGlideParams() {
-  const glideRatio = Number.parseFloat(document.getElementById("ld").value);
-  const circuitHeight = Number.parseFloat(document.getElementById("circuit").value);
-  const groundClearance = Number.parseFloat(document.getElementById("clearance").value);
-  const maxAltitude = Number.parseFloat(document.getElementById("max-alt").value);
-  const originRunN = isDebugMode()
-    ? Number.parseInt(document.getElementById("los-run").value, 10)
-    : 0;
-  const terrainZoom = clampTerrainZoom(
-    Number.parseInt(document.getElementById("terrain-zoom")?.value ?? "", 10)
-  );
-  const includeAirspace = isIncludeAirspaceEnabled();
-  const updateMapMs = Number.parseInt(document.getElementById("update-map").value, 10);
-  const { raw, contours, pathOnly, sectors } = parseVizMode();
+const sharedHooks = {
+  getMap: () => map,
+  getConeState: () => coneState,
+  setConeState,
+  clearConeState,
+  isComputing: () => computing,
+  setComputing: (value) => {
+    computing = value;
+  },
+  getComputeShouldStop: () => computeShouldStop,
+  setComputeShouldStop: (value) => {
+    computeShouldStop = value;
+  },
+  getPendingSeeds: () => pendingSeeds,
+  getOpenAipConfig: () => openAipConfig,
+  getAutoComputePending: () => autoComputePending,
+  getCacheSelectMode: () => cacheSelectMode,
+  getSelectedCacheCells: () => app.selectedCacheCells,
+  getPendingManualAirportLayerReady: () => pendingManualAirportLayerReady,
+  getLastGeoLngLat: () => lastGeoLngLat,
+  getInteraction: () => app.interaction,
+  ensureEngine,
+  flushAutoCompute,
+  isAutoParamsMode,
+  isGeoTrackingOn,
+  isHighlightDownhillGroundPathEnabled,
+  setStatus,
+  stopComputeBtn,
+  runComputeBtn,
+  compareLosBtn,
+  infoEl: info,
+  cellTooltipEl,
+  paramsShell,
+  computeContextBarEl,
+  clearCellInspect,
+  clearGlidePath,
+  clearCompareOverlay,
+  updateCompareOverlay,
+  setCompareButtonVisible,
+  setDownloadContoursVisible,
+  syncCompareLosButton,
+  ensurePathLayer,
+  raisePathLayer,
+  updateSeedMarkers,
+  syncSeedLayerVisibility,
+  syncAirspaceUi,
+  exitManualAirportSelectMode,
+  exitAirportAreaSelectMode,
+  getManualAirportSelectMode: () => manualAirportSelectMode,
+  getAirportAreaSelectMode: () => airportAreaSelectMode,
+  clearAllGlidePaths,
+  pathScreenBounds,
+  setLastPathScreenBounds,
+  updateCellTooltip,
+  updateParamsFooter,
+};
 
-  return {
-    glideRatio: Number.isFinite(glideRatio) && glideRatio > 0 ? glideRatio : 20,
-    circuitHeight: Number.isFinite(circuitHeight) && circuitHeight >= 0 ? circuitHeight : 250,
-    groundClearance:
-      Number.isFinite(groundClearance) && groundClearance >= 0 ? groundClearance : 100,
-    maxAltitude:
-      Number.isFinite(maxAltitude) && maxAltitude > 0 ? maxAltitude : DEFAULT_MAX_ALTITUDE,
-    terrainZoom,
-    includeAirspace,
-    originRunN:
-      Number.isFinite(originRunN) && originRunN === 0
-        ? 0
-        : Number.isFinite(originRunN) && originRunN >= 1
-          ? originRunN
-          : 0,
-    raw,
-    contours,
-    pathOnly,
-    sectors,
-    updateMapMs:
-      Number.isFinite(updateMapMs) && updateMapMs >= 0 ? updateMapMs : 100,
-  };
-}
+initMapLayers(sharedHooks);
+initGlidePath(sharedHooks);
+initCellInspect(sharedHooks);
+initComputeVisualization(sharedHooks);
+initComputeSession(sharedHooks);
 
 app.hooks = {
   getMap: () => map,
   getConeState: () => coneState,
   isComputing: () => computing,
-  getLastInspectCell: () => lastInspectCell,
+  getLastInspectCell,
   getManualAirportSelectMode: () => manualAirportSelectMode,
   getAirportAreaSelectMode: () => airportAreaSelectMode,
   clearAutoComputeScheduling: () => {
@@ -1031,74 +806,8 @@ function setTerrainTileMaxZoom(zoom) {
   }
 }
 
-function isSeedCell(x, y, dem) {
-  if (dem.seeds?.length) {
-    return dem.seeds.some((seed) => seed.x === x && seed.y === y);
-  }
-  return x === dem.homeX && y === dem.homeY;
-}
-
-function ensureSeedLayers() {
-  if (!map.getSource("seeds")) {
-    map.addSource("seeds", {
-      type: "geojson",
-      data: { type: "FeatureCollection", features: [] },
-    });
-  }
-
-  if (!map.getLayer("seeds-circle")) {
-    map.addLayer({
-      id: "seeds-circle",
-      type: "circle",
-      source: "seeds",
-      paint: {
-        "circle-radius": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          OPENAIP_AIRPORT_MIN_ZOOM,
-          4,
-          14,
-          10,
-        ],
-        "circle-color": "#ffcc00",
-        "circle-stroke-width": 2,
-        "circle-stroke-color": "#ffffff",
-      },
-    });
-  }
-
-  if (!map.getLayer("seeds-label")) {
-    map.addLayer({
-      id: "seeds-label",
-      type: "symbol",
-      source: "seeds",
-      minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-      layout: {
-        "text-field": ["get", "label"],
-        "text-font": ["Noto Sans Regular"],
-        "text-size": 11,
-        "text-offset": [0, -1.35],
-        "text-anchor": "bottom",
-        "text-max-width": 14,
-        "symbol-sort-key": 200,
-        "text-optional": false,
-      },
-      paint: {
-        "text-color": "#ffe066",
-        "text-halo-color": "rgba(18, 22, 28, 0.92)",
-        "text-halo-width": 2,
-      },
-    });
-  }
-
-  seedLayersReady = true;
-  syncSeedLayerVisibility();
-  raisePathLayer();
-}
-
 function syncSeedLayerVisibility() {
-  if (!seedLayersReady || !map) {
+  if (!getSeedLayersReady() || !map) {
     return;
   }
   const visibility = isAutoParamsMode() ? "none" : "visible";
@@ -1885,58 +1594,6 @@ function clearPendingSeeds() {
   setStatus("Airports cleared — add airports, then Run");
 }
 
-function raisePathLayer() {
-  if (contourLayersReady && map.getLayer("glide-contours-line")) {
-    map.moveLayer("glide-contours-line");
-    map.moveLayer("glide-contours-label");
-  }
-  if (sectorBorderLayersReady && map.getLayer("glide-sectors-line")) {
-    map.moveLayer("glide-sectors-line");
-  }
-  for (const layerId of ["airports-cached", "airports-cached-labels"]) {
-    if (map.getLayer(layerId)) {
-      map.moveLayer(layerId);
-    }
-  }
-  if (seedLayersReady && map.getLayer("seeds-circle")) {
-    map.moveLayer("seeds-circle");
-  }
-  if (seedLayersReady && map.getLayer("seeds-label")) {
-    map.moveLayer("seeds-label");
-  }
-  if (pendingManualAirportLayerReady && map.getLayer("pending-manual-airport-circle")) {
-    map.moveLayer("pending-manual-airport-circle");
-  }
-  if (pathLayerReady && map.getLayer("glide-path-geo")) {
-    map.moveLayer("glide-path-geo");
-  }
-  if (pathLayerReady && map.getLayer("glide-path")) {
-    map.moveLayer("glide-path");
-  }
-}
-
-function ensurePathLayer() {
-  if (pathLayerReady) {
-    return;
-  }
-
-  for (const sourceId of ["glide-path-geo", "glide-path"]) {
-    map.addSource(sourceId, {
-      type: "geojson",
-      data: { type: "FeatureCollection", features: [] },
-    });
-    map.addLayer({
-      id: sourceId,
-      type: "line",
-      source: sourceId,
-      paint: GLIDE_PATH_PAINT,
-    });
-  }
-
-  pathLayerReady = true;
-  raisePathLayer();
-}
-
 function setConeState(dem, result, glideParams) {
   coneState = {
     dem,
@@ -1956,6 +1613,12 @@ function setConeState(dem, result, glideParams) {
     contourGeojson: null,
     sectorBorderGeojson: null,
   };
+  syncComputeContextBar();
+  updateGeoLocationPath();
+}
+
+function clearConeState() {
+  coneState = null;
   syncComputeContextBar();
   updateGeoLocationPath();
 }
@@ -1999,280 +1662,9 @@ function syncComputeContextBar() {
   computeContextBarEl.hidden = false;
   document.body.classList.add("has-compute-context");
 
-  if (lastInspectCell && footerCellHtml) {
+  if (hasActiveInspectTooltip()) {
     window.requestAnimationFrame(() => positionCellTooltip());
   }
-}
-
-function traceOriginRelayPath(x, y, dem, originX, originY) {
-  let totalDistM = 0;
-  let cx = x;
-  let cy = y;
-  const visited = new Set();
-  const maxSteps = dem.width + dem.height;
-
-  for (let step = 0; step < maxSteps; step += 1) {
-    const key = cellKey(cx, cy);
-    if (visited.has(key)) {
-      return { distanceM: totalDistM, seedX: cx, seedY: cy, complete: false };
-    }
-    visited.add(key);
-
-    const idx = cellIndex(cx, cy, dem);
-    const ox = originX[idx];
-    const oy = originY[idx];
-    if (ox < 0 || oy < 0) {
-      return null;
-    }
-
-    totalDistM += gridCellDistanceM(cx, cy, ox, oy, dem);
-
-    if (ox === cx && oy === cy) {
-      return { distanceM: totalDistM, seedX: cx, seedY: cy, complete: true };
-    }
-
-    cx = ox;
-    cy = oy;
-  }
-
-  return { distanceM: totalDistM, seedX: cx, seedY: cy, complete: false };
-}
-
-function seedAltitudeAt(dem, seedIdx, circuitHeight) {
-  const terrain = dem.terrainMsl
-    ? dem.terrainMsl[seedIdx]
-    : dem.elevation[seedIdx] - dem.groundClearance;
-  return terrain + circuitHeight;
-}
-
-function seedPathMetrics(cell) {
-  const { dem, originX, originY, ground, glideRatio, circuitHeight } = coneState;
-  const path = traceOriginRelayPath(cell.gi, cell.gj, dem, originX, originY);
-  if (!path) {
-    return null;
-  }
-
-  const seedIdx = cellIndex(path.seedX, path.seedY, dem);
-  const seedAlt = seedAltitudeAt(dem, seedIdx, circuitHeight);
-  const requiredAlt = seedAlt + path.distanceM / glideRatio;
-
-  return {
-    distanceM: path.distanceM,
-    requiredAlt,
-    seedAlt,
-    isGroundSeed: ground[seedIdx] === 1,
-    complete: path.complete,
-  };
-}
-
-function cellKey(x, y) {
-  return `${x},${y}`;
-}
-
-function cellIndex(x, y, dem) {
-  return y * dem.width + x;
-}
-
-function pushPathPoint(coordinates, x, y, dem) {
-  const pt = gridCellToLngLat(x, y, dem);
-  const last = coordinates[coordinates.length - 1];
-  if (last && last[0] === pt.lng && last[1] === pt.lat) {
-    return;
-  }
-  coordinates.push([pt.lng, pt.lat]);
-}
-
-function terrainMslAtCell(x, y, dem) {
-  const idx = cellIndex(x, y, dem);
-  return dem.terrainMsl
-    ? dem.terrainMsl[idx]
-    : dem.elevation[idx] - dem.groundClearance;
-}
-
-function isDownhillGroundSegment(from, to, ground, dem) {
-  const fromIdx = cellIndex(from.x, from.y, dem);
-  const toIdx = cellIndex(to.x, to.y, dem);
-  if (ground[fromIdx] !== 1 || ground[toIdx] !== 1) {
-    return false;
-  }
-  return terrainMslAtCell(to.x, to.y, dem) < terrainMslAtCell(from.x, from.y, dem);
-}
-
-function cellToLngLatCoord(x, y, dem) {
-  const pt = gridCellToLngLat(x, y, dem);
-  return [pt.lng, pt.lat];
-}
-
-function buildPathGeoJson(cells, dem, ground, coordinates) {
-  if (!isHighlightDownhillGroundPathEnabled() || cells.length < 2) {
-    return {
-      type: "FeatureCollection",
-      features:
-        coordinates.length >= 2
-          ? [
-              {
-                type: "Feature",
-                geometry: { type: "LineString", coordinates },
-                properties: {},
-              },
-            ]
-          : [],
-    };
-  }
-
-  const features = [];
-  let segmentCoords = [];
-  let segmentKind = null;
-
-  for (let i = 1; i < cells.length; i += 1) {
-    const from = cells[i - 1];
-    const to = cells[i];
-    const kind = isDownhillGroundSegment(from, to, ground, dem)
-      ? "downhill-ground"
-      : "default";
-    const fromCoord = cellToLngLatCoord(from.x, from.y, dem);
-    const toCoord = cellToLngLatCoord(to.x, to.y, dem);
-
-    if (segmentKind === kind && segmentCoords.length > 0) {
-      segmentCoords.push(toCoord);
-    } else {
-      if (segmentCoords.length >= 2) {
-        features.push({
-          type: "Feature",
-          geometry: { type: "LineString", coordinates: segmentCoords },
-          properties: { segment: segmentKind },
-        });
-      }
-      segmentKind = kind;
-      segmentCoords = [fromCoord, toCoord];
-    }
-  }
-
-  if (segmentCoords.length >= 2) {
-    features.push({
-      type: "Feature",
-      geometry: { type: "LineString", coordinates: segmentCoords },
-      properties: { segment: segmentKind },
-    });
-  }
-
-  return { type: "FeatureCollection", features };
-}
-
-function traceGlidePath(gi, gj) {
-  const { dem, originX, originY } = coneState;
-  const coordinates = [];
-  const cells = [];
-  const visited = new Set();
-  let x = gi;
-  let y = gj;
-  const maxSteps = (dem.width + dem.height) * 2;
-
-  for (let step = 0; step < maxSteps; step += 1) {
-    const key = cellKey(x, y);
-    if (visited.has(key)) {
-      break;
-    }
-    visited.add(key);
-
-    cells.push({ x, y });
-    pushPathPoint(coordinates, x, y, dem);
-
-    if (isSeedCell(x, y, dem)) {
-      break;
-    }
-
-    const idx = cellIndex(x, y, dem);
-    const nx = originX[idx];
-    const ny = originY[idx];
-    if (nx < 0 || ny < 0 || (nx === x && ny === y)) {
-      break;
-    }
-
-    x = nx;
-    y = ny;
-  }
-
-  return { coordinates, cells };
-}
-
-function refreshGeoPath(cell) {
-  const path = traceGlidePath(cell.gi, cell.gj);
-  if (path.coordinates.length >= 2) {
-    setPathSourceData("glide-path-geo", path);
-  } else if (path.coordinates.length === 1) {
-    const pt = path.coordinates[0];
-    setPathSourceData("glide-path-geo", { coordinates: [pt, pt], cells: path.cells });
-  } else {
-    clearGeoPath();
-  }
-}
-
-function refreshInspectPath(cell) {
-  const path = traceGlidePath(cell.gi, cell.gj);
-  if (path.coordinates.length >= 2) {
-    setPathSourceData("glide-path", path);
-    lastPathScreenBounds = pathScreenBounds(path.coordinates);
-  } else if (path.coordinates.length === 1) {
-    const pt = path.coordinates[0];
-    setPathSourceData("glide-path", { coordinates: [pt, pt], cells: path.cells });
-    lastPathScreenBounds = pathScreenBounds([pt, pt]);
-  } else {
-    clearInspectPath();
-    lastPathScreenBounds = null;
-  }
-  updateCellTooltip();
-}
-
-function setPathSourceData(sourceId, pathData) {
-  ensurePathLayer();
-  const coordinates = pathData.coordinates ?? pathData;
-  const cells = pathData.cells ?? [];
-  const { dem, ground } = coneState ?? {};
-
-  map.getSource(sourceId).setData(
-    dem && ground
-      ? buildPathGeoJson(cells, dem, ground, coordinates)
-      : {
-          type: "FeatureCollection",
-          features:
-            coordinates.length >= 2
-              ? [
-                  {
-                    type: "Feature",
-                    geometry: { type: "LineString", coordinates },
-                    properties: {},
-                  },
-                ]
-              : [],
-        }
-  );
-  raisePathLayer();
-}
-
-function clearGeoPath() {
-  if (!pathLayerReady || !map.getSource("glide-path-geo")) {
-    return;
-  }
-  map.getSource("glide-path-geo").setData({
-    type: "FeatureCollection",
-    features: [],
-  });
-}
-
-function clearInspectPath() {
-  if (!pathLayerReady || !map.getSource("glide-path")) {
-    return;
-  }
-  map.getSource("glide-path").setData({
-    type: "FeatureCollection",
-    features: [],
-  });
-}
-
-function clearAllGlidePaths() {
-  clearGeoPath();
-  clearInspectPath();
 }
 
 function syncCompareLosButton() {
@@ -2369,440 +1761,12 @@ function updateCompareOverlay(imageData, dem) {
   raisePathLayer();
 }
 
-function clearComputeResults() {
-  coneState = null;
-  syncComputeContextBar();
-  clearRasterOverlay();
-  clearContourOverlay();
-  clearSectorBorderOverlay();
-  clearCompareOverlay();
-  clearCellInspect();
-  clearAllGlidePaths();
-  setDownloadContoursVisible(false);
-  syncCompareLosButton();
-}
-
-function clearAllOverlays() {
-  clearComputeResults();
-  setStatus("Overlay cleared");
-}
-
 function syncCacheDownloadButton() {
   if (!runCacheDownloadBtn) {
     return;
   }
   runCacheDownloadBtn.disabled =
     !cacheSelectMode || app.selectedCacheCells.size === 0 || cacheDownloadInProgress;
-}
-
-function buildCacheGridFeatures() {
-  if (!map) {
-    return [];
-  }
-
-  const bounds = map.getBounds();
-  const west = Math.floor(bounds.getWest());
-  const east = Math.ceil(bounds.getEast());
-  const south = Math.max(-85, Math.floor(bounds.getSouth()));
-  const north = Math.min(85, Math.ceil(bounds.getNorth()));
-  const features = [];
-
-  for (let lng = west; lng < east; lng += 1) {
-    for (let lat = south; lat < north; lat += 1) {
-      const cellKey = `${lng},${lat}`;
-      features.push({
-        type: "Feature",
-        properties: {
-          cellKey,
-          selected: app.selectedCacheCells.has(cellKey),
-        },
-        geometry: {
-          type: "Polygon",
-          coordinates: [
-            [
-              [lng, lat],
-              [lng + 1, lat],
-              [lng + 1, lat + 1],
-              [lng, lat + 1],
-              [lng, lat],
-            ],
-          ],
-        },
-      });
-    }
-  }
-
-  return features;
-}
-
-function ensureCacheGridLayers() {
-  if (!map || cacheGridReady) {
-    return;
-  }
-
-  map.addSource("cache-grid", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
-  map.addLayer({
-    id: "cache-grid-fill",
-    type: "fill",
-    source: "cache-grid",
-    paint: {
-      "fill-color": [
-        "case",
-        ["boolean", ["get", "selected"], false],
-        "rgba(80, 140, 255, 0.42)",
-        "rgba(255, 255, 255, 0.04)",
-      ],
-    },
-  });
-
-  map.addLayer({
-    id: "cache-grid-line",
-    type: "line",
-    source: "cache-grid",
-    paint: {
-      "line-color": "#000000",
-      "line-width": 1,
-    },
-  });
-
-  cacheGridReady = true;
-}
-
-function buildCacheAirportFeatures() {
-  return mergedCachedAirportsToGeoJsonFeatures();
-}
-
-function ensureCachedAirportMapLayers() {
-  if (!map || cachedAirportMapReady) {
-    return;
-  }
-
-  map.addSource("airports-cached", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
-  map.addLayer({
-    id: "airports-cached",
-    type: "circle",
-    source: "airports-cached",
-    minzoom: OPENAIP_AIRPORT_MIN_ZOOM,
-    paint: {
-      "circle-radius": [
-        "interpolate",
-        ["linear"],
-        ["zoom"],
-        OPENAIP_AIRPORT_MIN_ZOOM,
-        2,
-        14,
-        5,
-      ],
-      "circle-color": "#bf2d2d",
-      "circle-stroke-width": 1,
-      "circle-stroke-color": "#ffffff",
-    },
-  });
-
-  map.addLayer({
-    id: "airports-cached-labels",
-    type: "symbol",
-    source: "airports-cached",
-    minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-    layout: {
-      "text-field": ["coalesce", ["get", "name"], ["get", "icao_code"], ["get", "icaoCode"]],
-      "text-font": ["Noto Sans Regular"],
-      "text-size": 10,
-      "text-offset": [0, -1.2],
-      "text-anchor": "bottom",
-      "text-max-width": 14,
-      "symbol-sort-key": 0,
-      "text-optional": false,
-    },
-    paint: {
-      "text-color": "#f5f7fa",
-      "text-halo-color": "rgba(18, 22, 28, 0.92)",
-      "text-halo-width": 2,
-    },
-  });
-
-  cachedAirportMapReady = true;
-  raisePathLayer();
-}
-
-function refreshCachedAirportMapLayer() {
-  if (!cachedAirportMapReady || cacheSelectMode || !map?.getSource("airports-cached")) {
-    return;
-  }
-  const bounds = map.getBounds();
-  map.getSource("airports-cached").setData({
-    type: "FeatureCollection",
-    features: cachedAirportsToGeoJsonFeatures(
-      bounds.getWest(),
-      bounds.getSouth(),
-      bounds.getEast(),
-      bounds.getNorth()
-    ),
-  });
-}
-
-function restAirspaceFillPaint() {
-  return {
-    "fill-color": [
-      "match",
-      ["get", "type"],
-      AIRSPACE_TYPE_PROHIBITED,
-      "#c62828",
-      AIRSPACE_TYPE_ADVISORY,
-      "#e65100",
-      "#c62828",
-    ],
-    "fill-opacity": 0.28,
-  };
-}
-
-function restAirspaceLinePaint() {
-  return {
-    "line-color": [
-      "match",
-      ["get", "type"],
-      AIRSPACE_TYPE_PROHIBITED,
-      "#9a0e0e",
-      AIRSPACE_TYPE_ADVISORY,
-      "#bf360c",
-      "#9a0e0e",
-    ],
-    "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 12, 2],
-    "line-opacity": 0.85,
-  };
-}
-
-function ensureRestAirspaceLayers() {
-  if (!map || restAirspaceLayersReady) {
-    return;
-  }
-
-  map.addSource(REST_AIRSPACE_SOURCE, {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
-  map.addLayer({
-    id: REST_AIRSPACE_FILL_LAYER,
-    type: "fill",
-    source: REST_AIRSPACE_SOURCE,
-    paint: restAirspaceFillPaint(),
-  });
-
-  map.addLayer({
-    id: REST_AIRSPACE_LINE_LAYER,
-    type: "line",
-    source: REST_AIRSPACE_SOURCE,
-    paint: restAirspaceLinePaint(),
-  });
-
-  restAirspaceLayersReady = true;
-  raisePathLayer();
-}
-
-function refreshRestAirspaceLayerData({ allCells = false } = {}) {
-  if (!restAirspaceLayersReady || !map?.getSource(REST_AIRSPACE_SOURCE)) {
-    return;
-  }
-
-  let features;
-  if (allCells) {
-    features = mergedCachedAirspacesToGeoJsonFeatures();
-  } else {
-    const bounds = map.getBounds();
-    features = cachedAirspacesToGeoJsonFeatures(
-      bounds.getWest(),
-      bounds.getSouth(),
-      bounds.getEast(),
-      bounds.getNorth()
-    );
-  }
-
-  map.getSource(REST_AIRSPACE_SOURCE).setData({
-    type: "FeatureCollection",
-    features,
-  });
-}
-
-function setRestAirspaceFillVisible(visible) {
-  if (!map?.getLayer(REST_AIRSPACE_FILL_LAYER)) {
-    return;
-  }
-  map.setLayoutProperty(REST_AIRSPACE_FILL_LAYER, "visibility", visible ? "visible" : "none");
-}
-
-function setRestAirspaceLineVisible(visible) {
-  if (!map?.getLayer(REST_AIRSPACE_LINE_LAYER)) {
-    return;
-  }
-  map.setLayoutProperty(REST_AIRSPACE_LINE_LAYER, "visibility", visible ? "visible" : "none");
-}
-
-function ensureCacheAirportLayers() {
-  if (!map || cacheAirportsReady) {
-    return;
-  }
-
-  map.addSource("cache-airports", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
-  map.addLayer({
-    id: "cache-airports",
-    type: "circle",
-    source: "cache-airports",
-    minzoom: OPENAIP_AIRPORT_MIN_ZOOM,
-    paint: {
-      "circle-radius": [
-        "interpolate",
-        ["linear"],
-        ["zoom"],
-        OPENAIP_AIRPORT_MIN_ZOOM,
-        2,
-        14,
-        5,
-      ],
-      "circle-color": "#bf2d2d",
-      "circle-stroke-width": 1,
-      "circle-stroke-color": "#ffffff",
-    },
-  });
-
-  map.addLayer({
-    id: "cache-airport-labels",
-    type: "symbol",
-    source: "cache-airports",
-    minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-    layout: {
-      "text-field": ["coalesce", ["get", "name"], ["get", "icao_code"], ["get", "icaoCode"]],
-      "text-font": ["Noto Sans Regular"],
-      "text-size": 10,
-      "text-offset": [0, -1.2],
-      "text-anchor": "bottom",
-      "text-max-width": 14,
-      "symbol-sort-key": 0,
-      "text-optional": false,
-    },
-    paint: {
-      "text-color": "#f5f7fa",
-      "text-halo-color": "rgba(18, 22, 28, 0.92)",
-      "text-halo-width": 2,
-    },
-  });
-
-  cacheAirportsReady = true;
-}
-
-function updateCacheAirportData() {
-  if (!cacheAirportsReady || !map.getSource("cache-airports")) {
-    return;
-  }
-  map.getSource("cache-airports").setData({
-    type: "FeatureCollection",
-    features: buildCacheAirportFeatures(),
-  });
-}
-
-function clearCacheAirportLayers() {
-  if (!map || !cacheAirportsReady) {
-    return;
-  }
-  if (map.getLayer("cache-airport-labels")) {
-    map.removeLayer("cache-airport-labels");
-  }
-  if (map.getLayer("cache-airports")) {
-    map.removeLayer("cache-airports");
-  }
-  if (map.getSource("cache-airports")) {
-    map.removeSource("cache-airports");
-  }
-  cacheAirportsReady = false;
-}
-
-function refreshCacheSelectOverlays() {
-  if (!cacheSelectMode) {
-    return;
-  }
-  ensureCacheGridLayers();
-  updateCacheGridData();
-  ensureRestAirspaceLayers();
-  refreshRestAirspaceLayerData({ allCells: true });
-  setRestAirspaceFillVisible(true);
-  setRestAirspaceLineVisible(true);
-  ensureCacheAirportLayers();
-  updateCacheAirportData();
-}
-
-function updateCacheGridData() {
-  if (!cacheGridReady || !map.getSource("cache-grid")) {
-    return;
-  }
-  map.getSource("cache-grid").setData({
-    type: "FeatureCollection",
-    features: buildCacheGridFeatures(),
-  });
-}
-
-function refreshCacheGridForViewport() {
-  refreshCacheSelectOverlays();
-}
-
-function clearCacheGridLayers() {
-  if (!map || !cacheGridReady) {
-    return;
-  }
-  if (map.getLayer("cache-grid-line")) {
-    map.removeLayer("cache-grid-line");
-  }
-  if (map.getLayer("cache-grid-fill")) {
-    map.removeLayer("cache-grid-fill");
-  }
-  if (map.getSource("cache-grid")) {
-    map.removeSource("cache-grid");
-  }
-  cacheGridReady = false;
-}
-
-function setOverlaysHiddenForCacheSelect(hidden) {
-  if (!map) {
-    return;
-  }
-
-  if (hidden) {
-    overlayVisibilityBeforeCache = new Map();
-    for (const layerId of CACHE_HIDDEN_LAYER_IDS) {
-      if (!map.getLayer(layerId)) {
-        continue;
-      }
-      overlayVisibilityBeforeCache.set(
-        layerId,
-        map.getLayoutProperty(layerId, "visibility") ?? "visible"
-      );
-      map.setLayoutProperty(layerId, "visibility", "none");
-    }
-    clearCellInspect();
-    info.classList.remove("visible");
-    return;
-  }
-
-  if (overlayVisibilityBeforeCache) {
-    for (const [layerId, visibility] of overlayVisibilityBeforeCache) {
-      if (map.getLayer(layerId)) {
-        map.setLayoutProperty(layerId, "visibility", visibility);
-      }
-    }
-    overlayVisibilityBeforeCache = null;
-  }
-  syncAirspaceUi();
 }
 
 function enterCacheSelectMode() {
@@ -2902,316 +1866,6 @@ async function runCacheDownload() {
   }
 }
 
-function clearRasterOverlay() {
-  if (map.getLayer("glide-cone")) {
-    map.removeLayer("glide-cone");
-  }
-  if (map.getSource("glide-cone")) {
-    map.removeSource("glide-cone");
-  }
-}
-
-function clearContourOverlay() {
-  if (!contourLayersReady) {
-    return;
-  }
-  map.getSource("glide-contours").setData({
-    type: "FeatureCollection",
-    features: [],
-  });
-}
-
-function clearSectorBorderOverlay() {
-  if (!sectorBorderLayersReady) {
-    return;
-  }
-  map.getSource("glide-sectors").setData({
-    type: "FeatureCollection",
-    features: [],
-  });
-}
-
-function contourLabelSymbolSpacing() {
-  return Math.min(window.innerWidth, window.innerHeight) / 3;
-}
-
-function syncContourLabelSpacing() {
-  if (!contourLayersReady || !map.getLayer("glide-contours-label")) {
-    return;
-  }
-  map.setLayoutProperty(
-    "glide-contours-label",
-    "symbol-spacing",
-    contourLabelSymbolSpacing()
-  );
-}
-
-function ensureContourLayers() {
-  if (contourLayersReady) {
-    return;
-  }
-
-  map.addSource("glide-contours", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
-  map.addLayer({
-    id: "glide-contours-line",
-    type: "line",
-    source: "glide-contours",
-    paint: {
-      "line-color": "#000000",
-      "line-width": 1.5,
-      "line-opacity": 0.85,
-    },
-  });
-
-  map.addLayer({
-    id: "glide-contours-label",
-    type: "symbol",
-    source: "glide-contours",
-    layout: {
-      "symbol-placement": "line",
-      "text-field": ["get", "label"],
-      "text-font": ["Noto Sans Regular"],
-      "text-size": 11,
-      "text-max-angle": 25,
-      "symbol-spacing": contourLabelSymbolSpacing(),
-      "text-keep-upright": true,
-      "symbol-sort-key": 100,
-      "text-optional": true,
-    },
-    paint: {
-      "text-color": "#a8c8ff",
-      "text-halo-color": "rgba(18, 22, 28, 0.92)",
-      "text-halo-width": 2,
-    },
-  });
-
-  contourLayersReady = true;
-  syncContourLabelSpacing();
-}
-
-function ensureSectorBorderLayers() {
-  if (sectorBorderLayersReady) {
-    return;
-  }
-
-  map.addSource("glide-sectors", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
-  map.addLayer({
-    id: "glide-sectors-line",
-    type: "line",
-    source: "glide-sectors",
-    paint: {
-      "line-color": "#5c6573",
-      "line-width": 1.5,
-      "line-opacity": 0.9,
-    },
-  });
-
-  sectorBorderLayersReady = true;
-  raisePathLayer();
-}
-
-function updateSectorBorderOverlay(geojson) {
-  ensureSectorBorderLayers();
-  map.getSource("glide-sectors").setData(geojson);
-  applySectorsOverlayOpacity();
-  raisePathLayer();
-}
-
-function updateContourOverlay(geojson) {
-  ensureContourLayers();
-  syncContourLabelSpacing();
-  map.getSource("glide-contours").setData(geojson);
-  raisePathLayer();
-}
-
-function updateConeVisualization(result, dem, glideParams) {
-  if (glideParams.pathOnly) {
-    coneState.contourGeojson = null;
-    coneState.sectorBorderGeojson = null;
-    setDownloadContoursVisible(false);
-    clearRasterOverlay();
-    clearContourOverlay();
-    clearSectorBorderOverlay();
-    return;
-  }
-
-  if (glideParams.raw) {
-    coneState.contourGeojson = null;
-    coneState.sectorBorderGeojson = null;
-    setDownloadContoursVisible(false);
-    clearContourOverlay();
-    clearSectorBorderOverlay();
-    if (result.imageData) {
-      updateOverlay(result.imageData, dem);
-    }
-    return;
-  }
-
-  if (glideParams.contours) {
-    coneState.sectorBorderGeojson = null;
-    clearSectorBorderOverlay();
-    clearRasterOverlay();
-    const geojson = buildAltitudeContours(
-      dem,
-      result.altitudes,
-      result.ground,
-      result.originX,
-      glideParams.maxAltitude
-    );
-    coneState.contourGeojson = geojson;
-    updateContourOverlay(geojson);
-    setDownloadContoursVisible(true);
-    return;
-  }
-
-  if (glideParams.sectors) {
-    coneState.contourGeojson = null;
-    setDownloadContoursVisible(false);
-    clearContourOverlay();
-    if (result.imageData) {
-      updateOverlay(result.imageData, dem);
-    }
-    const borderGeojson = buildSectorBorderGeojson(
-      dem,
-      result.altitudes,
-      result.ground,
-      result.originX,
-      result.originY,
-      glideParams.maxAltitude
-    );
-    coneState.sectorBorderGeojson = borderGeojson;
-    updateSectorBorderOverlay(borderGeojson);
-    return;
-  }
-
-  coneState.contourGeojson = null;
-  coneState.sectorBorderGeojson = null;
-  setDownloadContoursVisible(false);
-  clearContourOverlay();
-  clearSectorBorderOverlay();
-  if (result.imageData) {
-    updateOverlay(result.imageData, dem);
-  }
-}
-
-function updateOverlay(imageData, dem) {
-  if (!overlayCanvas) {
-    overlayCanvas = document.createElement("canvas");
-  }
-  overlayCanvas.width = imageData.width;
-  overlayCanvas.height = imageData.height;
-  overlayCanvas.getContext("2d").putImageData(imageData, 0, 0);
-
-  const coords = gridBoundsLngLat(dem.gx0, dem.gy0, dem.width, dem.height, dem.zoom);
-  const coordinates = [
-    [coords[0].lng, coords[0].lat],
-    [coords[1].lng, coords[1].lat],
-    [coords[2].lng, coords[2].lat],
-    [coords[3].lng, coords[3].lat],
-  ];
-
-  if (map.getSource("glide-cone")) {
-    map.getSource("glide-cone").updateImage({
-      url: overlayCanvas.toDataURL(),
-      coordinates,
-    });
-    raisePathLayer();
-    if (parseVizMode().sectors) {
-      applySectorsOverlayOpacity();
-    }
-    return;
-  }
-
-  map.addSource("glide-cone", {
-    type: "image",
-    url: overlayCanvas.toDataURL(),
-    coordinates,
-  });
-
-  map.addLayer({
-    id: "glide-cone",
-    type: "raster",
-    source: "glide-cone",
-    paint: {
-      "raster-opacity": parseVizMode().sectors ? getSectorsOverlayOpacity() : 1,
-    },
-  });
-  raisePathLayer();
-  if (parseVizMode().sectors) {
-    applySectorsOverlayOpacity();
-  }
-}
-
-function sampleDemCell(lng, lat) {
-  if (!coneState) {
-    return null;
-  }
-
-  const { dem, altitudes, ground, maxAltitude, originX, originY } = coneState;
-  const { gi, gj } = gridIndexFromLngLat(lng, lat, dem);
-
-  if (gi < 0 || gj < 0 || gi >= dem.width || gj >= dem.height) {
-    return null;
-  }
-
-  const idx = gj * dem.width + gi;
-  const groundElev = dem.terrainMsl
-    ? dem.terrainMsl[idx]
-    : dem.elevation[idx] - dem.groundClearance;
-  const alt = altitudes[idx];
-  const hasOrigin = originX[idx] >= 0 && originY[idx] >= 0;
-  const isGroundCell = ground[idx] === 1;
-  const isReachable = Number.isFinite(alt) && alt < maxAltitude && hasOrigin;
-
-  return {
-    gi,
-    gj,
-    idx,
-    groundElev,
-    alt: isReachable ? alt : null,
-    isReachable,
-    isGround: isGroundCell,
-    isCone: isReachable && !isGroundCell,
-  };
-}
-
-function formatHoverTip(cell) {
-  return formatHoverTipCore(cell, {
-    groundClearance: coneState?.groundClearance ?? 100,
-    debugMode: isDebugMode(),
-    metrics: seedPathMetrics(cell),
-  });
-}
-
-function updateGlidePath(pathData) {
-  setPathSourceData("glide-path", pathData);
-}
-
-function clearGlidePath() {
-  clearAllGlidePaths();
-}
-
-function makeComputeProgressHandler(dem, glideParams) {
-  return ({ imageData, iteration, elapsedMs }) => {
-    if (
-      !glideParams.pathOnly &&
-      (glideParams.raw || !glideParams.contours) &&
-      imageData
-    ) {
-      updateOverlay(imageData, dem);
-    }
-    setStatus(`Computing… iter ${iteration}, ${elapsedMs.toFixed(0)} ms GPU`);
-  };
-}
-
 async function ensureEngine() {
   if (!engine) {
     engine = new GlideConeEngine();
@@ -3282,32 +1936,8 @@ map.on("mousemove", (event) => {
     return;
   }
 
-  if (!app.interaction.hoverPath) {
-    return;
-  }
-
-  const { clientX, clientY } = event.originalEvent;
-  if (isPointerOverParams(clientX, clientY)) {
-    return;
-  }
-
-  const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
-  if (cell === null) {
-    if (!isDebugMode()) {
-      clearCellInspect();
-    }
-    return;
-  }
-
-  showCellInspect(cell, event.point);
+  onMapMouseMove(event);
 });
-
-function syncPathsOnMapMove() {
-  if (isGeoTrackingOn()) {
-    updateGeoLocationPath();
-  }
-  syncInspectOnMapMove();
-}
 
 map.on("move", syncPathsOnMapMove);
 map.on("zoom", syncPathsOnMapMove);
@@ -3331,9 +1961,7 @@ map.on("mouseleave", () => {
   if (!app.interaction.hoverPath) {
     return;
   }
-  if (!isDebugMode()) {
-    clearCellInspect();
-  }
+  onMapMouseLeave();
 });
 
 map.on("touchstart", (event) => {
@@ -3423,15 +2051,7 @@ map.on("click", (event) => {
     return;
   }
 
-  const { clientX, clientY } = event.originalEvent;
-  if (isPointerOverParams(clientX, clientY)) {
-    return;
-  }
-
-  const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
-  if (cell?.isReachable) {
-    showCellInspect(cell, event.point, { temporary: true });
-  }
+  onMapClickInspect(event);
 });
 
 paramsForm.addEventListener("submit", (event) => {
@@ -3476,101 +2096,6 @@ compareLosBtn.addEventListener("click", () => {
 downloadContoursBtn.addEventListener("click", () => {
   downloadContourGeojson();
 });
-
-async function runFullBresenhamCompare() {
-  if (!coneState || computing) {
-    return;
-  }
-
-  startComputeSession();
-  compareLosBtn.disabled = true;
-  setStatus("Running full Bresenham on current grid…");
-
-  try {
-    const gpu = await ensureEngine();
-    const result = await gpu.compute(coneState.dem, getGlideParams(), {
-      fullBresenham: true,
-      overlayColor: "red",
-      imageOnly: true,
-      raw: false,
-      shouldStop: () => computeShouldStop,
-    });
-    updateCompareOverlay(result.imageData, coneState.dem);
-    setStatus(formatComputeDone(result), { clearAfterMs: COMPUTE_DONE_STATUS_CLEAR_MS });
-  } catch (error) {
-    setStatus(`Error: ${error.message}`);
-    console.error(error);
-  } finally {
-    endComputeSession();
-    compareLosBtn.disabled = false;
-  }
-}
-
-async function runComputation(seedsOverride = null, { gridBounds = null } = {}) {
-  if (computing) {
-    return;
-  }
-
-  const seeds =
-    seedsOverride ?? pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
-
-  if (seeds.length < MIN_SEEDS) {
-    setStatus(`Place at least ${MIN_SEEDS} airport on the map before running`);
-    return;
-  }
-  const glideParams = getGlideParams();
-  clearCellInspect();
-  clearGlidePath();
-  clearCompareOverlay();
-  setCompareButtonVisible(false);
-  setDownloadContoursVisible(false);
-
-  startComputeSession();
-
-  try {
-    const dem = await buildDemGrid(seeds, {
-      ...glideParams,
-      openAipConfig,
-      onStatus: setStatus,
-      gridBounds,
-    });
-
-    if (computeShouldStop) {
-      setStatus("Stopped before GPU compute");
-      return;
-    }
-
-    const airspaceNote =
-      dem.airspaces.length > 0
-        ? `, ${dem.airspaces.length} airspace volumes (${dem.airspaceAffectedCells} cells capped)`
-        : "";
-
-    setStatus(
-      `Computing ${dem.width}×${dem.height} grid (${dem.tileCount} tiles) on GPU${airspaceNote}…`
-    );
-    const gpu = await ensureEngine();
-    const result = await gpu.compute(dem, glideParams, makeComputeOptions(dem, glideParams));
-
-    setConeState(dem, result, glideParams);
-    updateConeVisualization(result, dem, glideParams);
-    ensurePathLayer();
-    syncCompareLosButton();
-    setDownloadContoursVisible(glideParams.contours);
-
-    setStatus(
-      formatComputeDone(
-        result,
-        ` — z${dem.zoom}, ${dem.width}×${dem.height}, ${seeds.length} airports`
-      ),
-      { clearAfterMs: COMPUTE_DONE_STATUS_CLEAR_MS }
-    );
-  } catch (error) {
-    setStatus(`Error: ${error.message}`);
-    console.error(error);
-  } finally {
-    endComputeSession();
-  }
-}
 
 clearOverlayBtn?.addEventListener("click", () => {
   clearAllOverlays();
