@@ -5,13 +5,12 @@ import {
 } from "../cache-area.js";
 
 let hooks;
-
-let cacheSelectMode = false;
-let cacheDownloadInProgress = false;
+let app;
 
 export function initCacheUi(h) {
   hooks = h;
-  hooks.getCacheSelectMode = () => cacheSelectMode;
+  app = h.app;
+  hooks.getCacheSelectMode = () => app.cacheSelectMode;
   hooks.enterCacheSelectMode = enterCacheSelectMode;
   hooks.exitCacheSelectMode = exitCacheSelectMode;
   hooks.toggleCacheCellSelection = toggleCacheCellSelection;
@@ -33,7 +32,7 @@ export function initCacheUi(h) {
 }
 
 export function getCacheSelectMode() {
-  return cacheSelectMode;
+  return app.cacheSelectMode;
 }
 
 function syncCacheDownloadButton() {
@@ -41,13 +40,13 @@ function syncCacheDownloadButton() {
     return;
   }
   hooks.runCacheDownloadBtn.disabled =
-    !cacheSelectMode ||
+    !app.cacheSelectMode ||
     hooks.getSelectedCacheCells().size === 0 ||
-    cacheDownloadInProgress;
+    app.cacheDownloadInProgress;
 }
 
 export function enterCacheSelectMode() {
-  if (cacheSelectMode || hooks.isComputing()) {
+  if (app.cacheSelectMode || hooks.isComputing()) {
     return;
   }
   if (hooks.getManualAirportSelectMode?.()) {
@@ -58,7 +57,7 @@ export function enterCacheSelectMode() {
   }
 
   hooks.cancelPendingAutoCompute?.();
-  cacheSelectMode = true;
+  app.cacheSelectMode = true;
   hooks.getSelectedCacheCells().clear();
   for (const cellKey of getLastCachedCellKeysForSelection()) {
     hooks.getSelectedCacheCells().add(cellKey);
@@ -86,11 +85,11 @@ export function enterCacheSelectMode() {
 }
 
 export function exitCacheSelectMode() {
-  if (!cacheSelectMode) {
+  if (!app.cacheSelectMode) {
     return;
   }
 
-  cacheSelectMode = false;
+  app.cacheSelectMode = false;
   hooks.getSelectedCacheCells().clear();
   hooks.paramsShell?.classList.remove("cache-select-mode");
   if (hooks.cacheDataPanel) {
@@ -125,11 +124,11 @@ export function toggleCacheCellSelection(lng, lat) {
 }
 
 async function runCacheDownload() {
-  if (!cacheSelectMode || hooks.getSelectedCacheCells().size === 0 || cacheDownloadInProgress) {
+  if (!app.cacheSelectMode || hooks.getSelectedCacheCells().size === 0 || app.cacheDownloadInProgress) {
     return;
   }
 
-  cacheDownloadInProgress = true;
+  app.cacheDownloadInProgress = true;
   syncCacheDownloadButton();
   try {
     await buildCacheBundle(
@@ -139,12 +138,12 @@ async function runCacheDownload() {
     );
     hooks.refreshCacheSelectOverlays();
     hooks.refreshCachedAirportMapLayer?.();
-    hooks.refreshRestAirspaceLayerData?.({ allCells: cacheSelectMode });
+    hooks.refreshRestAirspaceLayerData?.({ allCells: app.cacheSelectMode });
   } catch (error) {
     hooks.setStatus(`Cache error: ${error.message}`);
     console.error(error);
   } finally {
-    cacheDownloadInProgress = false;
+    app.cacheDownloadInProgress = false;
     syncCacheDownloadButton();
   }
 }

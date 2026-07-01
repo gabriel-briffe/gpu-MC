@@ -10,16 +10,12 @@ import {
 import { formatAirportLabel } from "../airport-label.js";
 
 let hooks;
-
-let airportAreaSelectMode = false;
-let airportAreaDrawMode = false;
-let airportSelectRects = [];
-let airportSelectLayersReady = false;
-let airportRectInteraction = null;
+let app;
 
 export function initAreaSelect(h) {
   hooks = h;
-  hooks.getAirportAreaSelectMode = () => airportAreaSelectMode;
+  app = h.app;
+  hooks.getAirportAreaSelectMode = () => app.airportAreaSelectMode;
   hooks.exitAirportAreaSelectMode = exitAirportAreaSelectMode;
   hooks.syncAirportAreaSelectUi = syncAirportAreaSelectUi;
   hooks.syncAreaSelectCursor = syncAreaSelectCursor;
@@ -63,11 +59,11 @@ export function initAreaSelect(h) {
 }
 
 export function hasAirportRectInteraction() {
-  return Boolean(airportRectInteraction);
+  return Boolean(app.airportRectInteraction);
 }
 
 export function getAirportAreaSelectMode() {
-  return airportAreaSelectMode;
+  return app.airportAreaSelectMode;
 }
 
 function normalizeAirportSelectRect(a, b) {
@@ -116,8 +112,8 @@ function resizeAnchorForHandle(rect, handle) {
 
 function hitTestRectHandle(point) {
   const map = hooks.getMap();
-  for (let index = airportSelectRects.length - 1; index >= 0; index -= 1) {
-    const rect = airportSelectRects[index];
+  for (let index = app.airportSelectRects.length - 1; index >= 0; index -= 1) {
+    const rect = app.airportSelectRects[index];
     for (const corner of airportSelectRectCorners(rect)) {
       const projected = map.project([corner.lng, corner.lat]);
       if (Math.hypot(point.x - projected.x, point.y - projected.y) <= AIRPORT_HANDLE_HIT_PX) {
@@ -130,7 +126,7 @@ function hitTestRectHandle(point) {
 
 export function syncAreaSelectCursor(point) {
   const map = hooks.getMap();
-  if (!airportAreaSelectMode || !map?.getCanvas() || airportRectInteraction) {
+  if (!app.airportAreaSelectMode || !map?.getCanvas() || app.airportRectInteraction) {
     return;
   }
   const hit = hitTestRectHandle(point);
@@ -138,12 +134,12 @@ export function syncAreaSelectCursor(point) {
     map.getCanvas().style.cursor = AIRPORT_HANDLE_CURSORS[hit.handle];
     return;
   }
-  map.getCanvas().style.cursor = airportAreaDrawMode ? "crosshair" : "";
+  map.getCanvas().style.cursor = app.airportAreaDrawMode ? "crosshair" : "";
 }
 
 function ensureAirportSelectLayers() {
   const map = hooks.getMap();
-  if (airportSelectLayersReady) {
+  if (app.airportSelectLayersReady) {
     return;
   }
 
@@ -187,16 +183,16 @@ function ensureAirportSelectLayers() {
     },
   });
 
-  airportSelectLayersReady = true;
+  app.airportSelectLayersReady = true;
 }
 
 function updateAirportSelectLayer() {
   const map = hooks.getMap();
-  if (!airportSelectLayersReady) {
+  if (!app.airportSelectLayersReady) {
     return;
   }
 
-  const features = airportSelectRects.flatMap((rect, index) => {
+  const features = app.airportSelectRects.flatMap((rect, index) => {
     const polygon = {
       type: "Feature",
       properties: { index, preview: false, handle: false },
@@ -216,7 +212,7 @@ function updateAirportSelectLayer() {
     return [polygon, ...handles];
   });
 
-  if (airportRectInteraction?.kind === "draw") {
+  if (app.airportRectInteraction?.kind === "draw") {
     features.push({
       type: "Feature",
       properties: { preview: true, handle: false },
@@ -224,7 +220,7 @@ function updateAirportSelectLayer() {
         type: "Polygon",
         coordinates: [
           airportSelectRectRing(
-            normalizeAirportSelectRect(airportRectInteraction.start, airportRectInteraction.current)
+            normalizeAirportSelectRect(app.airportRectInteraction.start, app.airportRectInteraction.current)
           ),
         ],
       },
@@ -257,35 +253,35 @@ export function syncAirportAreaSelectUi() {
   if (addAirportsFromAreasBtn) {
     addAirportsFromAreasBtn.disabled =
       hooks.isComputing() ||
-      airportSelectRects.length === 0 ||
+      app.airportSelectRects.length === 0 ||
       !hooks.areOpenAipAirportsAvailable();
   }
   if (clearAirportAreasBtn) {
-    clearAirportAreasBtn.disabled = hooks.isComputing() || airportSelectRects.length === 0;
+    clearAirportAreasBtn.disabled = hooks.isComputing() || app.airportSelectRects.length === 0;
   }
   if (addAirportAreaBtn) {
     addAirportAreaBtn.disabled =
       hooks.isComputing() ||
-      !airportAreaSelectMode ||
-      airportAreaDrawMode ||
-      airportRectInteraction;
+      !app.airportAreaSelectMode ||
+      app.airportAreaDrawMode ||
+      app.airportRectInteraction;
   }
   if (airportAreaSelectPanel) {
-    airportAreaSelectPanel.hidden = !airportAreaSelectMode;
+    airportAreaSelectPanel.hidden = !app.airportAreaSelectMode;
   }
   hooks.syncManualAirportSelectUi?.();
   const map = hooks.getMap();
-  if (map?.getCanvas() && !airportAreaSelectMode && !hooks.getManualAirportSelectMode?.()) {
+  if (map?.getCanvas() && !app.airportAreaSelectMode && !hooks.getManualAirportSelectMode?.()) {
     map.getCanvas().style.cursor = "";
   }
 }
 
 export function cancelAirportRectInteraction() {
   const map = hooks.getMap();
-  if (airportRectInteraction) {
+  if (app.airportRectInteraction) {
     map.dragPan.enable();
   }
-  airportRectInteraction = null;
+  app.airportRectInteraction = null;
   updateAirportSelectLayer();
 }
 
@@ -296,32 +292,32 @@ export function enterAirportAreaSelectMode() {
   if (hooks.getManualAirportSelectMode?.()) {
     hooks.exitManualAirportSelectMode(false);
   }
-  airportAreaSelectMode = true;
-  airportAreaDrawMode = airportSelectRects.length === 0;
+  app.airportAreaSelectMode = true;
+  app.airportAreaDrawMode = app.airportSelectRects.length === 0;
   if (hooks.paramsPanel) {
     hooks.paramsPanel.open = false;
   }
   ensureAirportSelectLayers();
   syncAirportAreaSelectUi();
   hooks.setStatus(
-    airportAreaDrawMode
+    app.airportAreaDrawMode
       ? "Drag on the map to draw an area."
       : "Pan and zoom freely, or use Add new area to draw another."
   );
 }
 
 function startAddAirportArea() {
-  if (!airportAreaSelectMode || hooks.isComputing()) {
+  if (!app.airportAreaSelectMode || hooks.isComputing()) {
     return;
   }
-  airportAreaDrawMode = true;
+  app.airportAreaDrawMode = true;
   syncAirportAreaSelectUi();
   hooks.setStatus("Drag on the map to draw a new area.");
 }
 
 export function exitAirportAreaSelectMode(reopenParams = false) {
-  airportAreaSelectMode = false;
-  airportAreaDrawMode = false;
+  app.airportAreaSelectMode = false;
+  app.airportAreaDrawMode = false;
   cancelAirportRectInteraction();
   syncAirportAreaSelectUi();
   if (reopenParams && hooks.paramsPanel) {
@@ -335,7 +331,7 @@ export function exitAirportAreaSelectMode(reopenParams = false) {
 }
 
 function commitAirportSelectRect(endLngLat) {
-  const { start } = airportRectInteraction ?? {};
+  const { start } = app.airportRectInteraction ?? {};
   if (!start || !endLngLat) {
     return false;
   }
@@ -348,18 +344,18 @@ function commitAirportSelectRect(endLngLat) {
     return false;
   }
 
-  airportSelectRects.push(rect);
-  airportAreaDrawMode = false;
+  app.airportSelectRects.push(rect);
+  app.airportAreaDrawMode = false;
   syncAirportAreaSelectUi();
   hooks.setStatus(
-    `${airportSelectRects.length} area${airportSelectRects.length === 1 ? "" : "s"} drawn — pan/zoom freely, or Add new area`
+    `${app.airportSelectRects.length} area${app.airportSelectRects.length === 1 ? "" : "s"} drawn — pan/zoom freely, or Add new area`
   );
   return true;
 }
 
 export function beginAirportAreaInteraction(lngLat, point) {
   const map = hooks.getMap();
-  if (!airportAreaSelectMode || hooks.isComputing()) {
+  if (!app.airportAreaSelectMode || hooks.isComputing()) {
     return false;
   }
 
@@ -367,8 +363,8 @@ export function beginAirportAreaInteraction(lngLat, point) {
 
   const hit = hitTestRectHandle(point);
   if (hit) {
-    const rect = airportSelectRects[hit.rectIndex];
-    airportRectInteraction = {
+    const rect = app.airportSelectRects[hit.rectIndex];
+    app.airportRectInteraction = {
       kind: "resize",
       rectIndex: hit.rectIndex,
       handle: hit.handle,
@@ -379,11 +375,11 @@ export function beginAirportAreaInteraction(lngLat, point) {
     return true;
   }
 
-  if (!airportAreaDrawMode) {
+  if (!app.airportAreaDrawMode) {
     return false;
   }
 
-  airportRectInteraction = {
+  app.airportRectInteraction = {
     kind: "draw",
     start: lngLat,
     current: lngLat,
@@ -394,26 +390,26 @@ export function beginAirportAreaInteraction(lngLat, point) {
 }
 
 export function updateAirportAreaInteraction(lngLat) {
-  if (!airportRectInteraction) {
+  if (!app.airportRectInteraction) {
     return;
   }
 
-  if (airportRectInteraction.kind === "draw") {
-    airportRectInteraction.current = lngLat;
-  } else if (airportRectInteraction.kind === "resize") {
-    const { rectIndex, anchor } = airportRectInteraction;
-    airportSelectRects[rectIndex] = normalizeAirportSelectRect(anchor, lngLat);
+  if (app.airportRectInteraction.kind === "draw") {
+    app.airportRectInteraction.current = lngLat;
+  } else if (app.airportRectInteraction.kind === "resize") {
+    const { rectIndex, anchor } = app.airportRectInteraction;
+    app.airportSelectRects[rectIndex] = normalizeAirportSelectRect(anchor, lngLat);
   }
 
   updateAirportSelectLayer();
 }
 
 export function finishAirportAreaInteraction(lngLat) {
-  if (!airportRectInteraction) {
+  if (!app.airportRectInteraction) {
     return false;
   }
 
-  if (airportRectInteraction.kind === "draw") {
+  if (app.airportRectInteraction.kind === "draw") {
     commitAirportSelectRect(lngLat);
   }
 
@@ -423,7 +419,7 @@ export function finishAirportAreaInteraction(lngLat) {
 }
 
 async function addAirportsFromSelectAreas() {
-  if (airportSelectRects.length === 0) {
+  if (app.airportSelectRects.length === 0) {
     hooks.setStatus("Draw one or more areas on the map first");
     return;
   }
@@ -431,7 +427,7 @@ async function addAirportsFromSelectAreas() {
   const pendingSeeds = hooks.getPendingSeeds();
   const existing = new Set(pendingSeeds.map((seed) => hooks.seedKey(seed)));
   let added = 0;
-  for (const rect of airportSelectRects) {
+  for (const rect of app.airportSelectRects) {
     await ensureAirportCellsCachedForBbox(rect, hooks.getOpenAipConfig(), hooks.setStatus);
     const airports = getCachedAirportsInBounds(
       rect.west,
@@ -458,7 +454,7 @@ async function addAirportsFromSelectAreas() {
 
   hooks.updateSeedMarkers();
   hooks.refreshCachedAirportMapLayer?.();
-  const areaCount = airportSelectRects.length;
+  const areaCount = app.airportSelectRects.length;
   clearAirportSelectAreas();
   exitAirportAreaSelectMode(true);
   if (added === 0) {
@@ -471,11 +467,11 @@ async function addAirportsFromSelectAreas() {
 }
 
 function clearAirportSelectAreas() {
-  airportSelectRects = [];
-  airportAreaDrawMode = airportAreaSelectMode;
+  app.airportSelectRects = [];
+  app.airportAreaDrawMode = app.airportAreaSelectMode;
   cancelAirportRectInteraction();
   const map = hooks.getMap();
-  if (airportSelectLayersReady && map.getSource("airport-select-areas")) {
+  if (app.airportSelectLayersReady && map.getSource("airport-select-areas")) {
     updateAirportSelectLayer();
   }
   syncAirportAreaSelectUi();

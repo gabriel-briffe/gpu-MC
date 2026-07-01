@@ -11,13 +11,10 @@ import {
   runComputation,
 } from "../compute/session.js";
 
-let touchHandledRecently = false;
-let manualTouchStart = null;
-
-function markTouchHandled() {
-  touchHandledRecently = true;
+function markTouchHandled(app) {
+  app.touchHandledRecently = true;
   window.setTimeout(() => {
-    touchHandledRecently = false;
+    app.touchHandledRecently = false;
   }, 400);
 }
 
@@ -74,7 +71,7 @@ export function bindMapEvents(app, hooks) {
       return;
     }
     if (hooks.getManualAirportSelectMode() && !hooks.isComputing() && event.points.length === 1) {
-      manualTouchStart = event.point;
+      app.manualTouchStart = event.point;
     }
   });
 
@@ -86,11 +83,11 @@ export function bindMapEvents(app, hooks) {
       return;
     }
 
-    if (manualTouchStart) {
-      const dx = event.point.x - manualTouchStart.x;
-      const dy = event.point.y - manualTouchStart.y;
+    if (app.manualTouchStart) {
+      const dx = event.point.x - app.manualTouchStart.x;
+      const dy = event.point.y - app.manualTouchStart.y;
       if (dx * dx + dy * dy > 100) {
-        manualTouchStart = null;
+        app.manualTouchStart = null;
       }
     }
   });
@@ -100,27 +97,27 @@ export function bindMapEvents(app, hooks) {
 
     if (hooks.getAirportAreaSelectMode() && hooks.hasAirportRectInteraction()) {
       hooks.finishAirportAreaInteraction(event.lngLat);
-      markTouchHandled();
+      markTouchHandled(app);
       return;
     }
 
     if (hooks.getManualAirportSelectMode() && !hooks.isComputing()) {
-      if (manualTouchStart) {
-        const dx = event.point.x - manualTouchStart.x;
-        const dy = event.point.y - manualTouchStart.y;
+      if (app.manualTouchStart) {
+        const dx = event.point.x - app.manualTouchStart.x;
+        const dy = event.point.y - app.manualTouchStart.y;
         if (dx * dx + dy * dy > 100) {
-          manualTouchStart = null;
+          app.manualTouchStart = null;
           return;
         }
-        manualTouchStart = null;
+        app.manualTouchStart = null;
       }
-      markTouchHandled();
+      markTouchHandled(app);
       hooks.setPendingManualAirport(event.lngLat.lng, event.lngLat.lat);
     }
   });
 
   map.on("touchcancel", () => {
-    manualTouchStart = null;
+    app.manualTouchStart = null;
     if (hooks.hasAirportRectInteraction()) {
       hooks.cancelAirportRectInteraction();
       hooks.syncAirportAreaSelectUi();
@@ -138,7 +135,7 @@ export function bindMapEvents(app, hooks) {
 
     if (
       hooks.isComputing() ||
-      touchHandledRecently ||
+      app.touchHandledRecently ||
       hooks.getAirportAreaSelectMode() ||
       hooks.hasAirportRectInteraction()
     ) {

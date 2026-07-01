@@ -14,11 +14,11 @@ import {
 } from "../map/layers.js";
 
 let hooks;
-
-let overlayCanvas = null;
+let app;
 
 export function initComputeVisualization(h) {
   hooks = h;
+  app = h.app;
 }
 
 export function clearRasterOverlay() {
@@ -95,12 +95,12 @@ export function updateOverlay(imageData, dem) {
     return;
   }
 
-  if (!overlayCanvas) {
-    overlayCanvas = document.createElement("canvas");
+  if (!app.overlayCanvas) {
+    app.overlayCanvas = document.createElement("canvas");
   }
-  overlayCanvas.width = imageData.width;
-  overlayCanvas.height = imageData.height;
-  overlayCanvas.getContext("2d").putImageData(imageData, 0, 0);
+  app.overlayCanvas.width = imageData.width;
+  app.overlayCanvas.height = imageData.height;
+  app.overlayCanvas.getContext("2d").putImageData(imageData, 0, 0);
 
   const coords = gridBoundsLngLat(dem.gx0, dem.gy0, dem.width, dem.height, dem.zoom);
   const coordinates = [
@@ -112,7 +112,7 @@ export function updateOverlay(imageData, dem) {
 
   if (map.getSource("glide-cone")) {
     map.getSource("glide-cone").updateImage({
-      url: overlayCanvas.toDataURL(),
+      url: app.overlayCanvas.toDataURL(),
       coordinates,
     });
     raisePathLayer();
@@ -124,7 +124,7 @@ export function updateOverlay(imageData, dem) {
 
   map.addSource("glide-cone", {
     type: "image",
-    url: overlayCanvas.toDataURL(),
+    url: app.overlayCanvas.toDataURL(),
     coordinates,
   });
 

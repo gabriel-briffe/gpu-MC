@@ -21,35 +21,27 @@ import {
 } from "../cache-area.js";
 
 let hooks;
-
-let pathLayerReady = false;
-let seedLayersReady = false;
-let contourLayersReady = false;
-let sectorBorderLayersReady = false;
-let cacheGridReady = false;
-let cachedAirportMapReady = false;
-let restAirspaceLayersReady = false;
-let cacheAirportsReady = false;
-let overlayVisibilityBeforeCache = null;
+let app;
 
 export function initMapLayers(h) {
   hooks = h;
+  app = h.app;
 }
 
 export function getPathLayerReady() {
-  return pathLayerReady;
+  return app.pathLayerReady;
 }
 
 export function getSeedLayersReady() {
-  return seedLayersReady;
+  return app.seedLayersReady;
 }
 
 export function getContourLayersReady() {
-  return contourLayersReady;
+  return app.contourLayersReady;
 }
 
 export function getSectorBorderLayersReady() {
-  return sectorBorderLayersReady;
+  return app.sectorBorderLayersReady;
 }
 
 export function raisePathLayer() {
@@ -57,11 +49,11 @@ export function raisePathLayer() {
   if (!map) {
     return;
   }
-  if (contourLayersReady && map.getLayer("glide-contours-line")) {
+  if (app.contourLayersReady && map.getLayer("glide-contours-line")) {
     map.moveLayer("glide-contours-line");
     map.moveLayer("glide-contours-label");
   }
-  if (sectorBorderLayersReady && map.getLayer("glide-sectors-line")) {
+  if (app.sectorBorderLayersReady && map.getLayer("glide-sectors-line")) {
     map.moveLayer("glide-sectors-line");
   }
   for (const layerId of ["airports-cached", "airports-cached-labels"]) {
@@ -69,26 +61,26 @@ export function raisePathLayer() {
       map.moveLayer(layerId);
     }
   }
-  if (seedLayersReady && map.getLayer("seeds-circle")) {
+  if (app.seedLayersReady && map.getLayer("seeds-circle")) {
     map.moveLayer("seeds-circle");
   }
-  if (seedLayersReady && map.getLayer("seeds-label")) {
+  if (app.seedLayersReady && map.getLayer("seeds-label")) {
     map.moveLayer("seeds-label");
   }
   if (hooks.getPendingManualAirportLayerReady() && map.getLayer("pending-manual-airport-circle")) {
     map.moveLayer("pending-manual-airport-circle");
   }
-  if (pathLayerReady && map.getLayer("glide-path-geo")) {
+  if (app.pathLayerReady && map.getLayer("glide-path-geo")) {
     map.moveLayer("glide-path-geo");
   }
-  if (pathLayerReady && map.getLayer("glide-path")) {
+  if (app.pathLayerReady && map.getLayer("glide-path")) {
     map.moveLayer("glide-path");
   }
 }
 
 export function ensurePathLayer() {
   const map = hooks.getMap();
-  if (pathLayerReady || !map) {
+  if (app.pathLayerReady || !map) {
     return;
   }
 
@@ -105,7 +97,7 @@ export function ensurePathLayer() {
     });
   }
 
-  pathLayerReady = true;
+  app.pathLayerReady = true;
   raisePathLayer();
 }
 
@@ -168,7 +160,7 @@ export function ensureSeedLayers() {
     });
   }
 
-  seedLayersReady = true;
+  app.seedLayersReady = true;
   hooks.syncSeedLayerVisibility();
   raisePathLayer();
 }
@@ -179,7 +171,7 @@ function contourLabelSymbolSpacing() {
 
 export function syncContourLabelSpacing() {
   const map = hooks.getMap();
-  if (!contourLayersReady || !map?.getLayer("glide-contours-label")) {
+  if (!app.contourLayersReady || !map?.getLayer("glide-contours-label")) {
     return;
   }
   map.setLayoutProperty(
@@ -191,7 +183,7 @@ export function syncContourLabelSpacing() {
 
 export function ensureContourLayers() {
   const map = hooks.getMap();
-  if (contourLayersReady || !map) {
+  if (app.contourLayersReady || !map) {
     return;
   }
 
@@ -233,13 +225,13 @@ export function ensureContourLayers() {
     },
   });
 
-  contourLayersReady = true;
+  app.contourLayersReady = true;
   syncContourLabelSpacing();
 }
 
 export function ensureSectorBorderLayers() {
   const map = hooks.getMap();
-  if (sectorBorderLayersReady || !map) {
+  if (app.sectorBorderLayersReady || !map) {
     return;
   }
 
@@ -259,7 +251,7 @@ export function ensureSectorBorderLayers() {
     },
   });
 
-  sectorBorderLayersReady = true;
+  app.sectorBorderLayersReady = true;
   raisePathLayer();
 }
 
@@ -307,7 +299,7 @@ function buildCacheGridFeatures() {
 
 export function ensureCacheGridLayers() {
   const map = hooks.getMap();
-  if (!map || cacheGridReady) {
+  if (!map || app.cacheGridReady) {
     return;
   }
 
@@ -340,12 +332,12 @@ export function ensureCacheGridLayers() {
     },
   });
 
-  cacheGridReady = true;
+  app.cacheGridReady = true;
 }
 
 export function ensureCachedAirportMapLayers() {
   const map = hooks.getMap();
-  if (!map || cachedAirportMapReady) {
+  if (!map || app.cachedAirportMapReady) {
     return;
   }
 
@@ -397,13 +389,13 @@ export function ensureCachedAirportMapLayers() {
     },
   });
 
-  cachedAirportMapReady = true;
+  app.cachedAirportMapReady = true;
   raisePathLayer();
 }
 
 export function refreshCachedAirportMapLayer() {
   const map = hooks.getMap();
-  if (!cachedAirportMapReady || hooks.getCacheSelectMode() || !map?.getSource("airports-cached")) {
+  if (!app.cachedAirportMapReady || hooks.getCacheSelectMode() || !map?.getSource("airports-cached")) {
     return;
   }
   const bounds = map.getBounds();
@@ -451,7 +443,7 @@ function restAirspaceLinePaint() {
 
 export function ensureRestAirspaceLayers() {
   const map = hooks.getMap();
-  if (!map || restAirspaceLayersReady) {
+  if (!map || app.restAirspaceLayersReady) {
     return;
   }
 
@@ -474,13 +466,13 @@ export function ensureRestAirspaceLayers() {
     paint: restAirspaceLinePaint(),
   });
 
-  restAirspaceLayersReady = true;
+  app.restAirspaceLayersReady = true;
   raisePathLayer();
 }
 
 export function refreshRestAirspaceLayerData({ allCells = false } = {}) {
   const map = hooks.getMap();
-  if (!restAirspaceLayersReady || !map?.getSource(REST_AIRSPACE_SOURCE)) {
+  if (!app.restAirspaceLayersReady || !map?.getSource(REST_AIRSPACE_SOURCE)) {
     return;
   }
 
@@ -525,7 +517,7 @@ function buildCacheAirportFeatures() {
 
 export function ensureCacheAirportLayers() {
   const map = hooks.getMap();
-  if (!map || cacheAirportsReady) {
+  if (!map || app.cacheAirportsReady) {
     return;
   }
 
@@ -577,12 +569,12 @@ export function ensureCacheAirportLayers() {
     },
   });
 
-  cacheAirportsReady = true;
+  app.cacheAirportsReady = true;
 }
 
 export function updateCacheAirportData() {
   const map = hooks.getMap();
-  if (!cacheAirportsReady || !map.getSource("cache-airports")) {
+  if (!app.cacheAirportsReady || !map.getSource("cache-airports")) {
     return;
   }
   map.getSource("cache-airports").setData({
@@ -593,7 +585,7 @@ export function updateCacheAirportData() {
 
 export function clearCacheAirportLayers() {
   const map = hooks.getMap();
-  if (!map || !cacheAirportsReady) {
+  if (!map || !app.cacheAirportsReady) {
     return;
   }
   if (map.getLayer("cache-airport-labels")) {
@@ -605,12 +597,12 @@ export function clearCacheAirportLayers() {
   if (map.getSource("cache-airports")) {
     map.removeSource("cache-airports");
   }
-  cacheAirportsReady = false;
+  app.cacheAirportsReady = false;
 }
 
 export function updateCacheGridData() {
   const map = hooks.getMap();
-  if (!cacheGridReady || !map.getSource("cache-grid")) {
+  if (!app.cacheGridReady || !map.getSource("cache-grid")) {
     return;
   }
   map.getSource("cache-grid").setData({
@@ -621,7 +613,7 @@ export function updateCacheGridData() {
 
 export function clearCacheGridLayers() {
   const map = hooks.getMap();
-  if (!map || !cacheGridReady) {
+  if (!map || !app.cacheGridReady) {
     return;
   }
   if (map.getLayer("cache-grid-line")) {
@@ -633,7 +625,7 @@ export function clearCacheGridLayers() {
   if (map.getSource("cache-grid")) {
     map.removeSource("cache-grid");
   }
-  cacheGridReady = false;
+  app.cacheGridReady = false;
 }
 
 export function refreshCacheSelectOverlays() {
@@ -661,12 +653,12 @@ export function setOverlaysHiddenForCacheSelect(hidden) {
   }
 
   if (hidden) {
-    overlayVisibilityBeforeCache = new Map();
+    app.overlayVisibilityBeforeCache = new Map();
     for (const layerId of CACHE_HIDDEN_LAYER_IDS) {
       if (!map.getLayer(layerId)) {
         continue;
       }
-      overlayVisibilityBeforeCache.set(
+      app.overlayVisibilityBeforeCache.set(
         layerId,
         map.getLayoutProperty(layerId, "visibility") ?? "visible"
       );
@@ -677,13 +669,13 @@ export function setOverlaysHiddenForCacheSelect(hidden) {
     return;
   }
 
-  if (overlayVisibilityBeforeCache) {
-    for (const [layerId, visibility] of overlayVisibilityBeforeCache) {
+  if (app.overlayVisibilityBeforeCache) {
+    for (const [layerId, visibility] of app.overlayVisibilityBeforeCache) {
       if (map.getLayer(layerId)) {
         map.setLayoutProperty(layerId, "visibility", visibility);
       }
     }
-    overlayVisibilityBeforeCache = null;
+    app.overlayVisibilityBeforeCache = null;
   }
   hooks.syncAirspaceUi();
 }

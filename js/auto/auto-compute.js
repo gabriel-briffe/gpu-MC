@@ -14,33 +14,30 @@ import { formatAirportLabel } from "../airport-label.js";
 import { isAutoParamsMode } from "../params/panel.js";
 
 let hooks;
-
-let autoComputePending = false;
-let autoComputeDebounceTimer = null;
-let autoComputeNeedsAirportRefresh = false;
-let autoComputeRegion = null;
+let app;
 
 export function initAutoCompute(h) {
   hooks = h;
+  app = h.app;
   hooks.scheduleAutoCompute = scheduleAutoCompute;
   hooks.flushAutoCompute = flushAutoCompute;
   hooks.cancelPendingAutoCompute = cancelPendingAutoCompute;
   hooks.onAutoModeMapMoveEnd = onAutoModeMapMoveEnd;
   hooks.syncAutoWindowSizeUi = syncAutoWindowSizeUi;
-  hooks.getAutoComputePending = () => autoComputePending;
+  hooks.getAutoComputePending = () => app.autoComputePending;
   hooks.clearAutoComputeScheduling = clearAutoComputeScheduling;
 }
 
 export function getAutoComputePending() {
-  return autoComputePending;
+  return app.autoComputePending;
 }
 
 export function clearAutoComputeScheduling() {
-  clearTimeout(autoComputeDebounceTimer);
-  autoComputeDebounceTimer = null;
-  autoComputePending = false;
-  autoComputeNeedsAirportRefresh = false;
-  autoComputeRegion = null;
+  clearTimeout(app.autoComputeDebounceTimer);
+  app.autoComputeDebounceTimer = null;
+  app.autoComputePending = false;
+  app.autoComputeNeedsAirportRefresh = false;
+  app.autoComputeRegion = null;
 }
 
 function computeAutoWindowSizeFromGlideKm() {
@@ -102,7 +99,7 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
   const windowSizeKm = getAutoWindowSizeKm();
   const center = map.getCenter();
   const bounds = kmBoxAroundLngLat(center.lng, center.lat, windowSizeKm);
-  autoComputeRegion = { ...bounds, windowSizeKm };
+  app.autoComputeRegion = { ...bounds, windowSizeKm };
 
   let seedsForCompute;
 
@@ -147,28 +144,28 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
 }
 
 export function cancelPendingAutoCompute() {
-  clearTimeout(autoComputeDebounceTimer);
-  autoComputeDebounceTimer = null;
-  autoComputePending = false;
-  autoComputeNeedsAirportRefresh = false;
+  clearTimeout(app.autoComputeDebounceTimer);
+  app.autoComputeDebounceTimer = null;
+  app.autoComputePending = false;
+  app.autoComputeNeedsAirportRefresh = false;
 }
 
 export function scheduleAutoCompute({ debounce = false, refreshAirports = false } = {}) {
   if (!isAutoParamsMode() || hooks.getCacheSelectMode()) {
     return;
   }
-  autoComputePending = true;
+  app.autoComputePending = true;
   if (refreshAirports) {
-    autoComputeNeedsAirportRefresh = true;
+    app.autoComputeNeedsAirportRefresh = true;
   }
   if (hooks.isComputing()) {
     hooks.setComputeShouldStop(true);
     return;
   }
-  clearTimeout(autoComputeDebounceTimer);
+  clearTimeout(app.autoComputeDebounceTimer);
   if (debounce) {
-    autoComputeDebounceTimer = window.setTimeout(() => {
-      autoComputeDebounceTimer = null;
+    app.autoComputeDebounceTimer = window.setTimeout(() => {
+      app.autoComputeDebounceTimer = null;
       void flushAutoCompute();
     }, AUTO_COMPUTE_DEBOUNCE_MS);
     return;
@@ -177,20 +174,20 @@ export function scheduleAutoCompute({ debounce = false, refreshAirports = false 
 }
 
 export async function flushAutoCompute() {
-  if (!autoComputePending || !isAutoParamsMode() || hooks.getCacheSelectMode() || hooks.isComputing()) {
+  if (!app.autoComputePending || !isAutoParamsMode() || hooks.getCacheSelectMode() || hooks.isComputing()) {
     return;
   }
   if (!hooks.getMap()) {
     return;
   }
-  autoComputePending = false;
-  const refreshAirports = autoComputeNeedsAirportRefresh;
-  autoComputeNeedsAirportRefresh = false;
+  app.autoComputePending = false;
+  const refreshAirports = app.autoComputeNeedsAirportRefresh;
+  app.autoComputeNeedsAirportRefresh = false;
   await runAutoComputation({ refreshAirports });
 }
 
 export function onAutoModeMapMoveEnd() {
-  if (!isAutoParamsMode() || hooks.getCacheSelectMode() || !autoComputeRegion || hooks.isComputing()) {
+  if (!isAutoParamsMode() || hooks.getCacheSelectMode() || !app.autoComputeRegion || hooks.isComputing()) {
     return;
   }
   const map = hooks.getMap();
@@ -199,7 +196,7 @@ export function onAutoModeMapMoveEnd() {
     isInsideKmBoxInnerZone(
       center.lng,
       center.lat,
-      autoComputeRegion,
+      app.autoComputeRegion,
       AUTO_MAX_OFFSET_FROM_CENTER
     )
   ) {

@@ -104,8 +104,6 @@ import { bindMapEvents, bindUiEvents } from "./map/events.js";
 
 const app = createApp();
 
-let map;
-
 const {
   info,
   airspaceInfoEl,
@@ -168,20 +166,6 @@ const {
   finishCacheSelectBtn,
 } = dom;
 
-let engine = null;
-let computing = false;
-let computeShouldStop = false;
-let compareOverlayCanvas = null;
-let coneState = null;
-let openAipConfig = null;
-let footerStatusText = "Loading WebGPU…";
-let statusClearTimer = null;
-
-let lastGeoLngLat = null;
-let geolocateControl = null;
-let geoTrackPanZoom = null;
-let geoTrackInitialPanPending = false;
-
 function detectInteractionMode() {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   const fine = window.matchMedia("(pointer: fine)").matches;
@@ -216,14 +200,14 @@ function updateParamsFooter() {
     return;
   }
   statusEl.hidden = false;
-  statusEl.textContent = footerStatusText;
+  statusEl.textContent = app.footerStatusText;
 }
 
 function isGeoTrackingOn() {
-  if (!geolocateControl) {
+  if (!app.geolocateControl) {
     return false;
   }
-  const state = geolocateControl._watchState;
+  const state = app.geolocateControl._watchState;
   return state === "ACTIVE_LOCK" || state === "BACKGROUND" || state === "WAITING_ACTIVE";
 }
 
@@ -232,21 +216,21 @@ function isHighlightDownhillGroundPathEnabled() {
 }
 
 function areOpenAipAirportsAvailable() {
-  return openAipConfigured(openAipConfig);
+  return openAipConfigured(app.openAipConfig);
 }
 
 function syncOpenAipVectorTiles() {
-  if (!map) {
+  if (!app.map) {
     return;
   }
   const wantTiles = isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable();
   if (wantTiles) {
-    if (initOpenAipAirspaceTiles(map, openAipConfig)) {
-      setOpenAipAirspaceVisible(map, true);
+    if (initOpenAipAirspaceTiles(app.map, app.openAipConfig)) {
+      setOpenAipAirspaceVisible(app.map, true);
     }
     return;
   }
-  removeOpenAipVectorTiles(map);
+  removeOpenAipVectorTiles(app.map);
 }
 
 function isIncludeAirspaceEnabled() {
@@ -264,13 +248,13 @@ function syncAirspaceUi() {
     refreshRestAirspaceLayerData();
     setRestAirspaceFillVisible(true);
     setRestAirspaceLineVisible(false);
-    if (map?.getSource("openaip")) {
-      setOpenAipAirspaceVisible(map, true);
+    if (app.map?.getSource("openaip")) {
+      setOpenAipAirspaceVisible(app.map, true);
     }
     info.classList.add("visible");
   } else {
-    if (map?.getSource("openaip")) {
-      setOpenAipAirspaceVisible(map, false);
+    if (app.map?.getSource("openaip")) {
+      setOpenAipAirspaceVisible(app.map, false);
     }
     setRestAirspaceFillVisible(false);
     setRestAirspaceLineVisible(false);
@@ -296,7 +280,7 @@ function updateGridRadiusHint() {
 }
 
 function getMapCenterLat() {
-  return map?.getCenter?.().lat ?? MAP_CENTER.lat;
+  return app.map?.getCenter?.().lat ?? MAP_CENTER.lat;
 }
 
 function updateTerrainResolutionHint() {
@@ -309,7 +293,7 @@ function updateTerrainResolutionHint() {
 }
 
 function syncBaseMapTerrainMaxZoom() {
-  if (!map?.getStyle?.()?.sources?.hillshadeSource) {
+  if (!app.map?.getStyle?.()?.sources?.hillshadeSource) {
     return;
   }
   setTerrainTileMaxZoom(BASE_MAP_TERRAIN_MAX_ZOOM);
@@ -323,22 +307,23 @@ function onTerrainZoomChange() {
 }
 
 const sharedHooks = {
-  getMap: () => map,
-  getConeState: () => coneState,
+  app,
+  getMap: () => app.map,
+  getConeState: () => app.coneState,
   setConeState,
   clearConeState,
   clearComputeResults,
-  isComputing: () => computing,
+  isComputing: () => app.computing,
   setComputing: (value) => {
-    computing = value;
+    app.computing = value;
   },
-  getComputeShouldStop: () => computeShouldStop,
+  getComputeShouldStop: () => app.computeShouldStop,
   setComputeShouldStop: (value) => {
-    computeShouldStop = value;
+    app.computeShouldStop = value;
   },
-  getOpenAipConfig: () => openAipConfig,
+  getOpenAipConfig: () => app.openAipConfig,
   getSelectedCacheCells: () => app.selectedCacheCells,
-  getLastGeoLngLat: () => lastGeoLngLat,
+  getLastGeoLngLat: () => app.lastGeoLngLat,
   getInteraction: () => app.interaction,
   runComputation,
   ensureEngine,
@@ -425,9 +410,9 @@ initComputeVisualization(sharedHooks);
 initComputeSession(sharedHooks);
 
 app.hooks = {
-  getMap: () => map,
-  getConeState: () => coneState,
-  isComputing: () => computing,
+  getMap: () => app.map,
+  getConeState: () => app.coneState,
+  isComputing: () => app.computing,
   getLastInspectCell,
   getManualAirportSelectMode,
   getAirportAreaSelectMode,
@@ -459,7 +444,7 @@ initParamsPanel(app, dom);
 
 registerTerrainTileProtocol();
 
-map = new maplibregl.Map({
+app.map = new maplibregl.Map({
   container: "map",
   hash: "map",
   zoom: Math.min(INITIAL_TERRAIN_Z, MAP_MAX_ZOOM),
@@ -495,71 +480,71 @@ map = new maplibregl.Map({
 });
 
 function lockGeolocatePanZoom() {
-  if (!map || !geolocateControl) {
+  if (!app.map || !app.geolocateControl) {
     return;
   }
-  geoTrackPanZoom = map.getZoom();
-  geoTrackInitialPanPending = true;
-  geolocateControl.options.fitBoundsOptions = {
-    maxZoom: geoTrackPanZoom,
-    minZoom: geoTrackPanZoom,
+  app.geoTrackPanZoom = app.map.getZoom();
+  app.geoTrackInitialPanPending = true;
+  app.geolocateControl.options.fitBoundsOptions = {
+    maxZoom: app.geoTrackPanZoom,
+    minZoom: app.geoTrackPanZoom,
     linear: true,
   };
 }
 
 function panGeolocateToPosition(coords) {
-  if (geoTrackPanZoom === null) {
+  if (app.geoTrackPanZoom === null) {
     return;
   }
-  map.easeTo(
+  app.map.easeTo(
     {
       center: [coords.longitude, coords.latitude],
-      zoom: geoTrackPanZoom,
-      bearing: map.getBearing(),
+      zoom: app.geoTrackPanZoom,
+      bearing: app.map.getBearing(),
       duration: 500,
     },
     { geolocateSource: true }
   );
-  geoTrackInitialPanPending = false;
+  app.geoTrackInitialPanPending = false;
 }
 
-map.addControl(new maplibregl.NavigationControl(), "top-right");
-geolocateControl = new maplibregl.GeolocateControl({
+app.map.addControl(new maplibregl.NavigationControl(), "top-right");
+app.geolocateControl = new maplibregl.GeolocateControl({
   positionOptions: { enableHighAccuracy: true },
   trackUserLocation: true,
 });
-map.addControl(geolocateControl, "top-right");
-geolocateControl._container?.addEventListener("click", lockGeolocatePanZoom, true);
+app.map.addControl(app.geolocateControl, "top-right");
+app.geolocateControl._container?.addEventListener("click", lockGeolocatePanZoom, true);
 
-geolocateControl.on("geolocate", (event) => {
-  lastGeoLngLat = {
+app.geolocateControl.on("geolocate", (event) => {
+  app.lastGeoLngLat = {
     lng: event.coords.longitude,
     lat: event.coords.latitude,
   };
-  if (geoTrackInitialPanPending) {
+  if (app.geoTrackInitialPanPending) {
     panGeolocateToPosition(event.coords);
   }
   updateGeoLocationPath();
   syncComputeContextBar();
 });
 
-geolocateControl.on("trackuserlocationstart", () => {
+app.geolocateControl.on("trackuserlocationstart", () => {
   lockGeolocatePanZoom();
   updateGeoLocationPath();
   syncComputeContextBar();
 });
 
-geolocateControl.on("trackuserlocationend", () => {
-  geoTrackInitialPanPending = false;
+app.geolocateControl.on("trackuserlocationend", () => {
+  app.geoTrackInitialPanPending = false;
   if (!isGeoTrackingOn()) {
-    lastGeoLngLat = null;
+    app.lastGeoLngLat = null;
     clearGeoPath();
     syncComputeContextBar();
   }
 });
 
 function updateAirspaceInfo(lng, lat) {
-  if (!isIncludeAirspaceEnabled() || !map?.getSource("openaip")) {
+  if (!isIncludeAirspaceEnabled() || !app.map?.getSource("openaip")) {
     return;
   }
 
@@ -570,7 +555,7 @@ function updateAirspaceInfo(lng, lat) {
     }
   }
 
-  const features = queryOpenAipAirspacesAt(map, lng, lat);
+  const features = queryOpenAipAirspacesAt(app.map, lng, lat);
   airspaceInfoEl.replaceChildren();
 
   if (!features.length) {
@@ -599,18 +584,18 @@ function updateAirspaceInfo(lng, lat) {
 }
 
 function setStatus(text, { clearAfterMs } = {}) {
-  if (statusClearTimer !== null) {
-    window.clearTimeout(statusClearTimer);
-    statusClearTimer = null;
+  if (app.statusClearTimer !== null) {
+    window.clearTimeout(app.statusClearTimer);
+    app.statusClearTimer = null;
   }
-  footerStatusText = text;
+  app.footerStatusText = text;
   updateParamsFooter();
   if (clearAfterMs) {
     const snapshot = text;
-    statusClearTimer = window.setTimeout(() => {
-      statusClearTimer = null;
-      if (footerStatusText === snapshot) {
-        footerStatusText = "";
+    app.statusClearTimer = window.setTimeout(() => {
+      app.statusClearTimer = null;
+      if (app.footerStatusText === snapshot) {
+        app.footerStatusText = "";
         updateParamsFooter();
       }
     }, clearAfterMs);
@@ -618,14 +603,14 @@ function setStatus(text, { clearAfterMs } = {}) {
 }
 
 function setTerrainTileMaxZoom(zoom) {
-  const style = map.getStyle();
+  const style = app.map.getStyle();
   if (!style?.sources?.hillshadeSource) {
     return;
   }
 
   style.sources.hillshadeSource.maxzoom = zoom;
 
-  const cache = map.style?.sourceCaches?.hillshadeSource;
+  const cache = app.map.style?.sourceCaches?.hillshadeSource;
   if (cache?._source) {
     cache._source.maxzoom = zoom;
     cache.reload();
@@ -634,7 +619,7 @@ function setTerrainTileMaxZoom(zoom) {
 
 
 function setConeState(dem, result, glideParams) {
-  coneState = {
+  app.coneState = {
     dem,
     altitudes: result.altitudes,
     originX: result.originX,
@@ -657,7 +642,7 @@ function setConeState(dem, result, glideParams) {
 }
 
 function clearConeState() {
-  coneState = null;
+  app.coneState = null;
   syncComputeContextBar();
   updateGeoLocationPath();
 }
@@ -666,7 +651,7 @@ function syncComputeContextBar() {
   if (!computeContextBarEl) {
     return;
   }
-  if (!coneState) {
+  if (!app.coneState) {
     computeContextBarEl.hidden = true;
     if (computeContextMinAltEl) {
       computeContextMinAltEl.hidden = true;
@@ -681,7 +666,7 @@ function syncComputeContextBar() {
     return;
   }
 
-  const { glideRatio, groundClearance, circuitHeight } = coneState;
+  const { glideRatio, groundClearance, circuitHeight } = app.coneState;
   const geoCell = isGeoTrackingOn() ? getGeoSampleCell() : null;
 
   if (computeContextMinAltEl && computeContextMinAltValueEl) {
@@ -707,7 +692,7 @@ function syncComputeContextBar() {
 }
 
 function syncCompareLosButton() {
-  const show = isDebugMode() && coneState && !computing;
+  const show = isDebugMode() && app.coneState && !app.computing;
   if (compareLosRow) {
     compareLosRow.hidden = !show;
   }
@@ -724,7 +709,7 @@ function syncDownloadContoursButton() {
   if (!downloadContoursBtn) {
     return;
   }
-  const hasContours = Boolean(coneState?.contourGeojson);
+  const hasContours = Boolean(app.coneState?.contourGeojson);
   downloadContoursBtn.hidden = !hasContours;
   downloadContoursBtn.disabled = !hasContours;
 }
@@ -734,11 +719,11 @@ function setDownloadContoursVisible(_visible) {
 }
 
 function downloadContourGeojson() {
-  if (!coneState?.contourGeojson) {
+  if (!app.coneState?.contourGeojson) {
     return;
   }
-  const dem = coneState.dem;
-  const blob = new Blob([JSON.stringify(coneState.contourGeojson, null, 2)], {
+  const dem = app.coneState.dem;
+  const blob = new Blob([JSON.stringify(app.coneState.contourGeojson, null, 2)], {
     type: "application/geo+json",
   });
   const url = URL.createObjectURL(blob);
@@ -750,21 +735,21 @@ function downloadContourGeojson() {
 }
 
 function clearCompareOverlay() {
-  if (map.getLayer("glide-cone-full")) {
-    map.removeLayer("glide-cone-full");
+  if (app.map.getLayer("glide-cone-full")) {
+    app.map.removeLayer("glide-cone-full");
   }
-  if (map.getSource("glide-cone-full")) {
-    map.removeSource("glide-cone-full");
+  if (app.map.getSource("glide-cone-full")) {
+    app.map.removeSource("glide-cone-full");
   }
 }
 
 function updateCompareOverlay(imageData, dem) {
-  if (!compareOverlayCanvas) {
-    compareOverlayCanvas = document.createElement("canvas");
+  if (!app.compareOverlayCanvas) {
+    app.compareOverlayCanvas = document.createElement("canvas");
   }
-  compareOverlayCanvas.width = imageData.width;
-  compareOverlayCanvas.height = imageData.height;
-  compareOverlayCanvas.getContext("2d").putImageData(imageData, 0, 0);
+  app.compareOverlayCanvas.width = imageData.width;
+  app.compareOverlayCanvas.height = imageData.height;
+  app.compareOverlayCanvas.getContext("2d").putImageData(imageData, 0, 0);
 
   const coords = gridBoundsLngLat(dem.gx0, dem.gy0, dem.width, dem.height, dem.zoom);
   const coordinates = [
@@ -774,22 +759,22 @@ function updateCompareOverlay(imageData, dem) {
     [coords[3].lng, coords[3].lat],
   ];
 
-  if (map.getSource("glide-cone-full")) {
-    map.getSource("glide-cone-full").updateImage({
-      url: compareOverlayCanvas.toDataURL(),
+  if (app.map.getSource("glide-cone-full")) {
+    app.map.getSource("glide-cone-full").updateImage({
+      url: app.compareOverlayCanvas.toDataURL(),
       coordinates,
     });
     raisePathLayer();
     return;
   }
 
-  map.addSource("glide-cone-full", {
+  app.map.addSource("glide-cone-full", {
     type: "image",
-    url: compareOverlayCanvas.toDataURL(),
+    url: app.compareOverlayCanvas.toDataURL(),
     coordinates,
   });
 
-  map.addLayer({
+  app.map.addLayer({
     id: "glide-cone-full",
     type: "raster",
     source: "glide-cone-full",
@@ -802,17 +787,17 @@ function updateCompareOverlay(imageData, dem) {
 
 
 async function ensureEngine() {
-  if (!engine) {
-    engine = new GlideConeEngine();
-    await engine.init();
+  if (!app.engine) {
+    app.engine = new GlideConeEngine();
+    await app.engine.init();
   }
-  return engine;
+  return app.engine;
 }
 
-map.on("load", async () => {
+app.map.on("load", async () => {
   syncBaseMapTerrainMaxZoom();
   ensurePathLayer();
-  map.on("moveend", () => {
+  app.map.on("moveend", () => {
     updateTerrainResolutionHint();
     onAutoModeMapMoveEnd();
     refreshCacheGridForViewport();
@@ -821,12 +806,12 @@ map.on("load", async () => {
       refreshRestAirspaceLayerData();
     }
   });
-  map.on("resize", syncContourLabelSpacing);
+  app.map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);
 
   try {
-    openAipConfig = await loadOpenAipConfig();
-    if (openAipConfigured(openAipConfig)) {
+    app.openAipConfig = await loadOpenAipConfig();
+    if (openAipConfigured(app.openAipConfig)) {
       console.info("OpenAIP REST caching enabled");
       ensureCachedAirportMapLayers();
       refreshCachedAirportMapLayer();

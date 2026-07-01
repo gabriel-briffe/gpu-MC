@@ -12,28 +12,23 @@ import {
 } from "../glide-path.js";
 
 let hooks;
-
-let footerCellHtml = null;
-let lastInspectAnchor = null;
-let lastInspectLngLat = null;
-let lastPathScreenBounds = null;
-let lastInspectCell = null;
-let manualInspectTimeout = null;
+let app;
 
 export function initCellInspect(h) {
   hooks = h;
+  app = h.app;
 }
 
 export function getLastInspectCell() {
-  return lastInspectCell;
+  return app.lastInspectCell;
 }
 
 export function getLastPathScreenBounds() {
-  return lastPathScreenBounds;
+  return app.lastPathScreenBounds;
 }
 
 export function setLastPathScreenBounds(bounds) {
-  lastPathScreenBounds = bounds;
+  app.lastPathScreenBounds = bounds;
 }
 
 export function pathScreenBounds(coordinates) {
@@ -65,10 +60,10 @@ export function pathScreenBounds(coordinates) {
 }
 
 function tooltipOverlapsPath(left, top, width, height) {
-  if (!lastPathScreenBounds) {
+  if (!app.lastPathScreenBounds) {
     return false;
   }
-  const { minX, minY, maxX, maxY } = lastPathScreenBounds;
+  const { minX, minY, maxX, maxY } = app.lastPathScreenBounds;
   return left < maxX && left + width > minX && top < maxY && top + height > minY;
 }
 
@@ -89,11 +84,11 @@ function viewportInsets() {
 
 export function positionCellTooltip() {
   const cellTooltipEl = hooks.cellTooltipEl;
-  if (!cellTooltipEl || cellTooltipEl.hidden || !lastInspectAnchor) {
+  if (!cellTooltipEl || cellTooltipEl.hidden || !app.lastInspectAnchor) {
     return;
   }
 
-  const { x, y } = lastInspectAnchor;
+  const { x, y } = app.lastInspectAnchor;
   const gap = 16;
   const width = cellTooltipEl.offsetWidth;
   const height = cellTooltipEl.offsetHeight;
@@ -115,9 +110,9 @@ export function positionCellTooltip() {
       !tooltipOverlapsPath(place.left, place.top, width, height)
   );
 
-  if (!chosen && lastPathScreenBounds) {
-    const pcx = (lastPathScreenBounds.minX + lastPathScreenBounds.maxX) / 2;
-    const pcy = (lastPathScreenBounds.minY + lastPathScreenBounds.maxY) / 2;
+  if (!chosen && app.lastPathScreenBounds) {
+    const pcx = (app.lastPathScreenBounds.minX + app.lastPathScreenBounds.maxX) / 2;
+    const pcy = (app.lastPathScreenBounds.minY + app.lastPathScreenBounds.maxY) / 2;
     const dx = x - pcx;
     const dy = y - pcy;
     const len = Math.hypot(dx, dy) || 1;
@@ -142,28 +137,28 @@ export function updateCellTooltip() {
   if (!cellTooltipEl) {
     return;
   }
-  if (!footerCellHtml) {
+  if (!app.footerCellHtml) {
     cellTooltipEl.hidden = true;
     cellTooltipEl.innerHTML = "";
     return;
   }
 
-  cellTooltipEl.innerHTML = footerCellHtml;
+  cellTooltipEl.innerHTML = app.footerCellHtml;
   cellTooltipEl.hidden = false;
   positionCellTooltip();
 }
 
 function clearManualInspectTimer() {
-  if (manualInspectTimeout !== null) {
-    clearTimeout(manualInspectTimeout);
-    manualInspectTimeout = null;
+  if (app.manualInspectTimeout !== null) {
+    clearTimeout(app.manualInspectTimeout);
+    app.manualInspectTimeout = null;
   }
 }
 
 function scheduleManualInspectClear() {
   clearManualInspectTimer();
-  manualInspectTimeout = window.setTimeout(() => {
-    manualInspectTimeout = null;
+  app.manualInspectTimeout = window.setTimeout(() => {
+    app.manualInspectTimeout = null;
     clearCellInspect();
   }, MANUAL_INSPECT_MS);
 }
@@ -213,11 +208,11 @@ export function sampleDemCell(lng, lat) {
 
 export function clearCellInspect() {
   clearManualInspectTimer();
-  footerCellHtml = null;
-  lastInspectAnchor = null;
-  lastInspectLngLat = null;
-  lastInspectCell = null;
-  lastPathScreenBounds = null;
+  app.footerCellHtml = null;
+  app.lastInspectAnchor = null;
+  app.lastInspectLngLat = null;
+  app.lastInspectCell = null;
+  app.lastPathScreenBounds = null;
   clearInspectPath();
   updateCellTooltip();
   hooks.updateParamsFooter();
@@ -238,28 +233,28 @@ export function showCellInspect(cell, anchorPoint = null, { temporary = false } 
     return;
   }
 
-  footerCellHtml = formatHoverTip(cell);
+  app.footerCellHtml = formatHoverTip(cell);
 
   const coneState = hooks.getConeState();
   if (coneState?.dem) {
     const pt = gridCellToLngLat(cell.gi, cell.gj, coneState.dem);
-    lastInspectLngLat = { lng: pt.lng, lat: pt.lat };
+    app.lastInspectLngLat = { lng: pt.lng, lat: pt.lat };
   }
 
   const map = hooks.getMap();
   if (anchorPoint) {
-    lastInspectAnchor = { x: anchorPoint.x, y: anchorPoint.y };
-  } else if (lastInspectLngLat && map) {
-    const projected = map.project([lastInspectLngLat.lng, lastInspectLngLat.lat]);
-    lastInspectAnchor = { x: projected.x, y: projected.y };
+    app.lastInspectAnchor = { x: anchorPoint.x, y: anchorPoint.y };
+  } else if (app.lastInspectLngLat && map) {
+    const projected = map.project([app.lastInspectLngLat.lng, app.lastInspectLngLat.lat]);
+    app.lastInspectAnchor = { x: projected.x, y: projected.y };
   }
 
   if (cell.isReachable) {
-    lastInspectCell = cell;
+    app.lastInspectCell = cell;
     refreshInspectPath(cell);
   } else {
-    lastInspectCell = null;
-    lastPathScreenBounds = null;
+    app.lastInspectCell = null;
+    app.lastPathScreenBounds = null;
     clearInspectPath();
     updateCellTooltip();
   }
@@ -273,12 +268,12 @@ export function showCellInspect(cell, anchorPoint = null, { temporary = false } 
 
 export function syncInspectOnMapMove() {
   const map = hooks.getMap();
-  if (!lastInspectCell || !lastInspectLngLat || !footerCellHtml || !map) {
+  if (!app.lastInspectCell || !app.lastInspectLngLat || !app.footerCellHtml || !map) {
     return;
   }
-  const projected = map.project([lastInspectLngLat.lng, lastInspectLngLat.lat]);
-  lastInspectAnchor = { x: projected.x, y: projected.y };
-  refreshInspectPath(lastInspectCell);
+  const projected = map.project([app.lastInspectLngLat.lng, app.lastInspectLngLat.lat]);
+  app.lastInspectAnchor = { x: projected.x, y: projected.y };
+  refreshInspectPath(app.lastInspectCell);
 }
 
 export function getGeoSampleCell() {
@@ -351,7 +346,7 @@ export function onMapClickInspect(event) {
 }
 
 export function hasActiveInspectTooltip() {
-  return Boolean(getLastInspectCell() && footerCellHtml);
+  return Boolean(getLastInspectCell() && app.footerCellHtml);
 }
 
 export function syncPathsOnMapMove() {
