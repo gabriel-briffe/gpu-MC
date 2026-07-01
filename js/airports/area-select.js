@@ -27,6 +27,7 @@ export function initAreaSelect(h) {
   hooks.updateAirportAreaInteraction = updateAirportAreaInteraction;
   hooks.finishAirportAreaInteraction = finishAirportAreaInteraction;
   hooks.cancelAirportRectInteraction = cancelAirportRectInteraction;
+  hooks.hasAirportRectInteraction = hasAirportRectInteraction;
 
   hooks.toggleAirportAreaSelectBtn?.addEventListener("click", () => {
     if (hooks.isComputing()) {

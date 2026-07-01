@@ -1,0 +1,225 @@
+import { parseVizMode, syncParamVisibility, isAutoParamsMode, applySectorsOverlayOpacity } from "../params/panel.js";
+import {
+  clearRasterOverlay,
+  clearContourOverlay,
+  clearSectorBorderOverlay,
+  clearAllOverlays,
+} from "../compute/visualization.js";
+import {
+  runFullBresenhamCompare,
+  requestStopCompute,
+  runComputation,
+} from "../compute/session.js";
+
+let touchHandledRecently = false;
+let manualTouchStart = null;
+
+function markTouchHandled() {
+  touchHandledRecently = true;
+  window.setTimeout(() => {
+    touchHandledRecently = false;
+  }, 400);
+}
+
+export function bindMapEvents(app, hooks) {
+  const map = hooks.getMap();
+
+  map.on("mousemove", (event) => {
+    hooks.updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
+
+    if (hooks.getAirportAreaSelectMode()) {
+      if (hooks.hasAirportRectInteraction()) {
+        hooks.updateAirportAreaInteraction(event.lngLat);
+      } else {
+        hooks.syncAreaSelectCursor(event.point);
+      }
+      return;
+    }
+
+    if (hooks.getManualAirportSelectMode()) {
+      return;
+    }
+
+    hooks.onMapMouseMove(event);
+  });
+
+  map.on("move", hooks.syncPathsOnMapMove);
+  map.on("zoom", hooks.syncPathsOnMapMove);
+
+  map.on("mousedown", (event) => {
+    if (event.originalEvent.button !== 0 || !hooks.getAirportAreaSelectMode()) {
+      return;
+    }
+    hooks.beginAirportAreaInteraction(event.lngLat, event.point);
+  });
+
+  map.on("mouseup", (event) => {
+    hooks.finishAirportAreaInteraction(event.lngLat);
+  });
+
+  map.on("mouseleave", () => {
+    if (hooks.hasAirportRectInteraction()) {
+      hooks.cancelAirportRectInteraction();
+      hooks.syncAirportAreaSelectUi();
+    }
+    if (!app.interaction.hoverPath) {
+      return;
+    }
+    hooks.onMapMouseLeave();
+  });
+
+  map.on("touchstart", (event) => {
+    if (hooks.getAirportAreaSelectMode() && !hooks.isComputing() && event.points.length === 1) {
+      hooks.beginAirportAreaInteraction(event.lngLat, event.point);
+      return;
+    }
+    if (hooks.getManualAirportSelectMode() && !hooks.isComputing() && event.points.length === 1) {
+      manualTouchStart = event.point;
+    }
+  });
+
+  map.on("touchmove", (event) => {
+    hooks.updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
+
+    if (hooks.getAirportAreaSelectMode() && hooks.hasAirportRectInteraction()) {
+      hooks.updateAirportAreaInteraction(event.lngLat);
+      return;
+    }
+
+    if (manualTouchStart) {
+      const dx = event.point.x - manualTouchStart.x;
+      const dy = event.point.y - manualTouchStart.y;
+      if (dx * dx + dy * dy > 100) {
+        manualTouchStart = null;
+      }
+    }
+  });
+
+  map.on("touchend", (event) => {
+    hooks.updateAirspaceInfo(event.lngLat.lng, event.lngLat.lat);
+
+    if (hooks.getAirportAreaSelectMode() && hooks.hasAirportRectInteraction()) {
+      hooks.finishAirportAreaInteraction(event.lngLat);
+      markTouchHandled();
+      return;
+    }
+
+    if (hooks.getManualAirportSelectMode() && !hooks.isComputing()) {
+      if (manualTouchStart) {
+        const dx = event.point.x - manualTouchStart.x;
+        const dy = event.point.y - manualTouchStart.y;
+        if (dx * dx + dy * dy > 100) {
+          manualTouchStart = null;
+          return;
+        }
+        manualTouchStart = null;
+      }
+      markTouchHandled();
+      hooks.setPendingManualAirport(event.lngLat.lng, event.lngLat.lat);
+    }
+  });
+
+  map.on("touchcancel", () => {
+    manualTouchStart = null;
+    if (hooks.hasAirportRectInteraction()) {
+      hooks.cancelAirportRectInteraction();
+      hooks.syncAirportAreaSelectUi();
+    }
+  });
+
+  map.on("click", (event) => {
+    if (hooks.getCacheSelectMode()) {
+      const features = map.queryRenderedFeatures(event.point, { layers: ["cache-grid-fill"] });
+      if (features.length > 0) {
+        hooks.toggleCacheCellSelection(event.lngLat.lng, event.lngLat.lat);
+      }
+      return;
+    }
+
+    if (
+      hooks.isComputing() ||
+      touchHandledRecently ||
+      hooks.getAirportAreaSelectMode() ||
+      hooks.hasAirportRectInteraction()
+    ) {
+      return;
+    }
+
+    if (hooks.getManualAirportSelectMode()) {
+      hooks.setPendingManualAirport(event.lngLat.lng, event.lngLat.lat);
+      return;
+    }
+
+    if (!app.interaction.tapPath || !hooks.getConeState()) {
+      return;
+    }
+
+    hooks.onMapClickInspect(event);
+  });
+}
+
+export function bindUiEvents(app, hooks) {
+  hooks.paramsForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+  });
+
+  hooks.vizModeSelect?.addEventListener("change", () => {
+    syncParamVisibility();
+    const mode = parseVizMode();
+    const coneState = hooks.getConeState();
+    if (mode.pathOnly && coneState && !hooks.isComputing()) {
+      clearRasterOverlay();
+      clearContourOverlay();
+      clearSectorBorderOverlay();
+      coneState.contourGeojson = null;
+      coneState.sectorBorderGeojson = null;
+      hooks.setDownloadContoursVisible(false);
+    } else if (!mode.sectors && coneState && !hooks.isComputing()) {
+      clearSectorBorderOverlay();
+      coneState.sectorBorderGeojson = null;
+    } else if (mode.sectors) {
+      applySectorsOverlayOpacity();
+    }
+    if (isAutoParamsMode()) {
+      hooks.scheduleAutoCompute({ debounce: false });
+      return;
+    }
+    if (coneState && !hooks.isComputing()) {
+      hooks.setStatus("Overlay type changed — click Run to refresh");
+    }
+  });
+
+  hooks.stopComputeBtn?.addEventListener("click", () => {
+    if (hooks.isComputing()) {
+      requestStopCompute();
+    }
+  });
+
+  hooks.compareLosBtn?.addEventListener("click", () => {
+    runFullBresenhamCompare();
+  });
+
+  hooks.downloadContoursBtn?.addEventListener("click", () => {
+    hooks.downloadContourGeojson();
+  });
+
+  hooks.clearOverlayBtn?.addEventListener("click", () => {
+    clearAllOverlays();
+  });
+
+  hooks.runComputeBtn?.addEventListener("click", () => {
+    if (hooks.paramsPanel) {
+      hooks.paramsPanel.open = false;
+    }
+    runComputation();
+  });
+
+  hooks.paramsPanel?.addEventListener("toggle", () => {
+    if (hooks.paramsPanel.open && hooks.getAirportAreaSelectMode()) {
+      hooks.exitAirportAreaSelectMode(false);
+    }
+    if (hooks.paramsPanel.open && hooks.getManualAirportSelectMode()) {
+      hooks.exitManualAirportSelectMode(false);
+    }
+  });
+}
