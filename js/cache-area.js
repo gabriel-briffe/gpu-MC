@@ -289,6 +289,19 @@ export function mergedCachedAirspacesToGeoJsonFeatures(cellKeys = null) {
   return airspacesToGeoJsonFeatures(mergeCachedAirspaces(cellKeys));
 }
 
+export function cachedAirspacesToGeoJsonFeatures(west, south, east, north) {
+  const cellKeys = cellKeysInBbox(west, south, east, north);
+  return airspacesToGeoJsonFeatures(
+    mergeCachedAirspaces(cellKeys).filter(
+      (airspace) =>
+        airspace.bbox.maxLng >= west &&
+        airspace.bbox.minLng <= east &&
+        airspace.bbox.maxLat >= south &&
+        airspace.bbox.minLat <= north
+    )
+  );
+}
+
 export function getCachedAirportsInBounds(west, south, east, north) {
   const cellKeys = cellKeysInBbox(west, south, east, north);
   return mergeCachedAirports(cellKeys).filter(

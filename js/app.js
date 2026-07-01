@@ -20,7 +20,6 @@ import {
   setOpenAipAirspaceVisible,
   OPENAIP_AIRPORT_MIN_ZOOM,
   OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-  OPENAIP_AIRSPACE_FILL_LAYER,
   OPENAIP_AIRSPACE_LAYER,
 } from "./openaip-tiles.js";
 import { loadOpenAipConfig, openAipConfigured } from "./openaip-client.js";
@@ -32,6 +31,7 @@ import {
   buildCacheBundle,
   cacheCellKey,
   cachedAirportsToGeoJsonFeatures,
+  cachedAirspacesToGeoJsonFeatures,
   ensureAirportCellsCachedForBbox,
   getCachedAirportsInBounds,
   getLastCachedCellKeysForSelection,
@@ -62,6 +62,10 @@ const MAP_MAX_ZOOM = 22;
 let map;
 
 const MANUAL_INSPECT_MS = 5000;
+
+const REST_AIRSPACE_SOURCE = "rest-airspaces";
+const REST_AIRSPACE_FILL_LAYER = "rest-airspaces-fill";
+const REST_AIRSPACE_LINE_LAYER = "rest-airspaces-line";
 
 const EMPTY_PATH = {
   type: "Feature",
@@ -130,7 +134,6 @@ const CACHE_HIDDEN_LAYER_IDS = [
   "glide-contours-label",
   "airports-cached",
   "airports-cached-labels",
-  OPENAIP_AIRSPACE_FILL_LAYER,
   OPENAIP_AIRSPACE_LAYER,
   "seeds-circle",
   "seeds-label",
@@ -185,7 +188,7 @@ let manualTouchStart = null;
 let cacheSelectMode = false;
 let cacheGridReady = false;
 let cacheAirportsReady = false;
-let cacheRestAirspaceReady = false;
+let restAirspaceLayersReady = false;
 let cachedAirportMapReady = false;
 let cacheDownloadInProgress = false;
 let overlayVisibilityBeforeCache = null;
@@ -537,7 +540,7 @@ const PARAM_HELP = {
   "auto-window-size":
     "Half-width of the airport search box in Auto mode (km from map centre to each edge). A value of 100 loads all airfields in a 200 km-wide square centred on the map.",
   "include-airspace":
-    "Show airspace on the map (OpenAIP vector tiles) and cap the DEM under prohibited volumes and overflight-restriction areas. Airports use cached REST data, not vector tiles.",
+    "Show prohibited/overflight-restriction fills from cached REST data and airspace outlines from OpenAIP vector tiles. DEM capping uses the same REST volumes.",
   "los-run":
     "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate, but slower.\n\nANYTHING ELSE THAN N=0 IS EXPERIMENTAL, MIGHT INTRODUCE MISTAKES, BUGS, PATH ENDING TOO EARLY.. DON'T USE IF YOU DON'T UNDERSTAND THE CODE BEHIND\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source. Faster, and often accurate enough.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule). Fast, but usually not accurate enough.",
   "viz-mode":
@@ -651,6 +654,7 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
   if (refreshAirports) {
     await ensureAirportCellsCachedForBbox(bounds, openAipConfig, setStatus);
     refreshCachedAirportMapLayer();
+    refreshRestAirspaceLayerData();
     setStatus(`Finding airports in ${windowSizeKm * 2} km window…`);
     const airports = getCachedAirportsInBounds(
       bounds.west,
@@ -784,14 +788,26 @@ function isIncludeAirspaceEnabled() {
 }
 
 function syncAirspaceUi() {
+  if (cacheSelectMode) {
+    return;
+  }
+  const enabled = isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable();
   syncOpenAipVectorTiles();
-  if (isIncludeAirspaceEnabled() && map?.getSource("openaip")) {
-    setOpenAipAirspaceVisible(map, true);
+  if (enabled) {
+    ensureRestAirspaceLayers();
+    refreshRestAirspaceLayerData();
+    setRestAirspaceFillVisible(true);
+    setRestAirspaceLineVisible(false);
+    if (map?.getSource("openaip")) {
+      setOpenAipAirspaceVisible(map, true);
+    }
     info.classList.add("visible");
   } else {
     if (map?.getSource("openaip")) {
       setOpenAipAirspaceVisible(map, false);
     }
+    setRestAirspaceFillVisible(false);
+    setRestAirspaceLineVisible(false);
     info.classList.remove("visible");
     if (airspaceInfoEl) {
       airspaceInfoEl.textContent = "—";
@@ -2701,6 +2717,103 @@ function refreshCachedAirportMapLayer() {
   });
 }
 
+function restAirspaceFillPaint() {
+  return {
+    "fill-color": [
+      "match",
+      ["get", "type"],
+      AIRSPACE_TYPE_PROHIBITED,
+      "#c62828",
+      AIRSPACE_TYPE_ADVISORY,
+      "#e65100",
+      "#c62828",
+    ],
+    "fill-opacity": 0.28,
+  };
+}
+
+function restAirspaceLinePaint() {
+  return {
+    "line-color": [
+      "match",
+      ["get", "type"],
+      AIRSPACE_TYPE_PROHIBITED,
+      "#9a0e0e",
+      AIRSPACE_TYPE_ADVISORY,
+      "#bf360c",
+      "#9a0e0e",
+    ],
+    "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 12, 2],
+    "line-opacity": 0.85,
+  };
+}
+
+function ensureRestAirspaceLayers() {
+  if (!map || restAirspaceLayersReady) {
+    return;
+  }
+
+  map.addSource(REST_AIRSPACE_SOURCE, {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  map.addLayer({
+    id: REST_AIRSPACE_FILL_LAYER,
+    type: "fill",
+    source: REST_AIRSPACE_SOURCE,
+    paint: restAirspaceFillPaint(),
+  });
+
+  map.addLayer({
+    id: REST_AIRSPACE_LINE_LAYER,
+    type: "line",
+    source: REST_AIRSPACE_SOURCE,
+    paint: restAirspaceLinePaint(),
+  });
+
+  restAirspaceLayersReady = true;
+  raisePathLayer();
+}
+
+function refreshRestAirspaceLayerData({ allCells = false } = {}) {
+  if (!restAirspaceLayersReady || !map?.getSource(REST_AIRSPACE_SOURCE)) {
+    return;
+  }
+
+  let features;
+  if (allCells) {
+    features = mergedCachedAirspacesToGeoJsonFeatures();
+  } else {
+    const bounds = map.getBounds();
+    features = cachedAirspacesToGeoJsonFeatures(
+      bounds.getWest(),
+      bounds.getSouth(),
+      bounds.getEast(),
+      bounds.getNorth()
+    );
+  }
+
+  map.getSource(REST_AIRSPACE_SOURCE).setData({
+    type: "FeatureCollection",
+    features,
+  });
+}
+
+function setRestAirspaceFillVisible(visible) {
+  if (!map?.getLayer(REST_AIRSPACE_FILL_LAYER)) {
+    return;
+  }
+  map.setLayoutProperty(REST_AIRSPACE_FILL_LAYER, "visibility", visible ? "visible" : "none");
+}
+
+function setRestAirspaceLineVisible(visible) {
+  if (!map?.getLayer(REST_AIRSPACE_LINE_LAYER)) {
+    return;
+  }
+  map.setLayoutProperty(REST_AIRSPACE_LINE_LAYER, "visibility", visible ? "visible" : "none");
+}
+
 function ensureCacheAirportLayers() {
   if (!map || cacheAirportsReady) {
     return;
@@ -2783,91 +2896,18 @@ function clearCacheAirportLayers() {
   cacheAirportsReady = false;
 }
 
-function ensureCacheRestAirspaceLayers() {
-  if (!map || cacheRestAirspaceReady) {
-    return;
-  }
-
-  map.addSource("cache-rest-airspaces", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
-  map.addLayer({
-    id: "cache-rest-airspaces-fill",
-    type: "fill",
-    source: "cache-rest-airspaces",
-    paint: {
-      "fill-color": [
-        "match",
-        ["get", "type"],
-        AIRSPACE_TYPE_PROHIBITED,
-        "#c62828",
-        AIRSPACE_TYPE_ADVISORY,
-        "#e65100",
-        "#c62828",
-      ],
-      "fill-opacity": 0.28,
-    },
-  });
-
-  map.addLayer({
-    id: "cache-rest-airspaces-line",
-    type: "line",
-    source: "cache-rest-airspaces",
-    paint: {
-      "line-color": [
-        "match",
-        ["get", "type"],
-        AIRSPACE_TYPE_PROHIBITED,
-        "#9a0e0e",
-        AIRSPACE_TYPE_ADVISORY,
-        "#bf360c",
-        "#9a0e0e",
-      ],
-      "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 12, 2],
-      "line-opacity": 0.85,
-    },
-  });
-
-  cacheRestAirspaceReady = true;
-}
-
-function updateCacheRestAirspaceData() {
-  if (!cacheRestAirspaceReady || !map.getSource("cache-rest-airspaces")) {
-    return;
-  }
-  map.getSource("cache-rest-airspaces").setData({
-    type: "FeatureCollection",
-    features: mergedCachedAirspacesToGeoJsonFeatures(),
-  });
-}
-
-function clearCacheRestAirspaceLayers() {
-  if (!map || !cacheRestAirspaceReady) {
-    return;
-  }
-  for (const layerId of ["cache-rest-airspaces-line", "cache-rest-airspaces-fill"]) {
-    if (map.getLayer(layerId)) {
-      map.removeLayer(layerId);
-    }
-  }
-  if (map.getSource("cache-rest-airspaces")) {
-    map.removeSource("cache-rest-airspaces");
-  }
-  cacheRestAirspaceReady = false;
-}
-
 function refreshCacheSelectOverlays() {
   if (!cacheSelectMode) {
     return;
   }
   ensureCacheGridLayers();
   updateCacheGridData();
-  ensureCacheRestAirspaceLayers();
+  ensureRestAirspaceLayers();
+  refreshRestAirspaceLayerData({ allCells: true });
+  setRestAirspaceFillVisible(true);
+  setRestAirspaceLineVisible(true);
   ensureCacheAirportLayers();
   updateCacheAirportData();
-  updateCacheRestAirspaceData();
 }
 
 function updateCacheGridData() {
@@ -2987,7 +3027,6 @@ function exitCacheSelectMode() {
 
   clearCacheGridLayers();
   clearCacheAirportLayers();
-  clearCacheRestAirspaceLayers();
   setOverlaysHiddenForCacheSelect(false);
   syncCacheDownloadButton();
   setStatus("Cache selection closed");
@@ -3020,6 +3059,7 @@ async function runCacheDownload() {
     await buildCacheBundle([...selectedCacheCells], openAipConfig, setStatus);
     refreshCacheSelectOverlays();
     refreshCachedAirportMapLayer();
+    refreshRestAirspaceLayerData({ allCells: cacheSelectMode });
   } catch (error) {
     setStatus(`Cache error: ${error.message}`);
     console.error(error);
@@ -3314,6 +3354,9 @@ map.on("load", async () => {
     onAutoModeMapMoveEnd();
     refreshCacheGridForViewport();
     refreshCachedAirportMapLayer();
+    if (isIncludeAirspaceEnabled() && !cacheSelectMode) {
+      refreshRestAirspaceLayerData();
+    }
   });
   map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);
@@ -3324,7 +3367,7 @@ map.on("load", async () => {
       console.info("OpenAIP REST caching enabled");
       ensureCachedAirportMapLayers();
       refreshCachedAirportMapLayer();
-      syncOpenAipVectorTiles();
+      syncAirspaceUi();
       raisePathLayer();
       updateSeedMarkers();
       if (isAutoParamsMode()) {
