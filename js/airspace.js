@@ -1,5 +1,5 @@
 import { globalPixelToLngLat } from "./geo.js";
-import { openAipAirspacesUrl, openAipConfigured } from "./openaip-client.js";
+import { openAipAirspacesUrl, openAipConfigured, setOpenAipTypeFilter } from "./openaip-client.js";
 
 export const AIRSPACE_TYPE_PROHIBITED = 3;
 export const AIRSPACE_TYPE_ADVISORY = 29;
@@ -317,6 +317,7 @@ export async function fetchOverlayAirspaces(bbox, config) {
     bbox: `${minLng},${minLat},${maxLng},${maxLat}`,
     limit: "500",
   });
+  setOpenAipTypeFilter(query, OVERLAY_AIRSPACE_TYPES);
 
   const items = [];
   let page = 1;
@@ -335,9 +336,6 @@ export async function fetchOverlayAirspaces(bbox, config) {
     const json = await response.json();
     totalPages = json.totalPages ?? 1;
     for (const item of json.items ?? []) {
-      if (!OVERLAY_AIRSPACE_TYPES.has(item.type)) {
-        continue;
-      }
       const normalized = normalizeAirspace(item);
       if (normalized) {
         items.push(normalized);

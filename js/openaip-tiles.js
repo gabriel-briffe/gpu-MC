@@ -41,6 +41,14 @@ export const OPENAIP_AIRSPACE_FILL_LAYER = "openaip-airspaces-fill";
 export const OPENAIP_AIRSPACE_LAYER = "openaip-airspaces-line";
 export const OPENAIP_AIRSPACE_LAYERS = [OPENAIP_AIRSPACE_FILL_LAYER, OPENAIP_AIRSPACE_LAYER];
 
+export const CACHE_OPENAIP_SOURCE = "openaip-cached";
+export const CACHE_OPENAIP_AIRSPACE_FILL_LAYER = "cache-openaip-airspaces-fill";
+export const CACHE_OPENAIP_AIRSPACE_LAYER = "cache-openaip-airspaces-line";
+export const CACHE_OPENAIP_AIRSPACE_LAYERS = [
+  CACHE_OPENAIP_AIRSPACE_FILL_LAYER,
+  CACHE_OPENAIP_AIRSPACE_LAYER,
+];
+
 export function isIncludedAirportType(type) {
   return isIncludedOpenAipAirportType(type);
 }
@@ -112,33 +120,7 @@ export function initOpenAipAirspaceTiles(map, config) {
       '<a href="https://www.openaip.net" target="_blank" rel="noopener">OpenAIP</a>',
   });
 
-  map.addLayer({
-    id: OPENAIP_AIRSPACE_FILL_LAYER,
-    type: "fill",
-    source: "openaip",
-    "source-layer": "airspaces",
-    minzoom: 6,
-    layout: { visibility: "none" },
-    filter: ["in", ["get", "type"], ["literal", OVERLAY_AIRSPACE_TILE_TYPES]],
-    paint: {
-      "fill-color": "#c62828",
-      "fill-opacity": 0.28,
-    },
-  });
-
-  map.addLayer({
-    id: OPENAIP_AIRSPACE_LAYER,
-    type: "line",
-    source: "openaip",
-    "source-layer": "airspaces",
-    minzoom: 6,
-    layout: { visibility: "none" },
-    paint: {
-      "line-color": AIRSPACE_TYPE_COLOR,
-      "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 12, 2],
-      "line-opacity": 0.85,
-    },
-  });
+  addOpenAipAirspaceLayers(map, "openaip", OPENAIP_AIRSPACE_FILL_LAYER, OPENAIP_AIRSPACE_LAYER);
 
   return true;
 }
@@ -163,6 +145,79 @@ export function removeOpenAipVectorTiles(map) {
 export function setOpenAipAirspaceVisible(map, visible) {
   const visibility = visible ? "visible" : "none";
   for (const layerId of OPENAIP_AIRSPACE_LAYERS) {
+    if (map.getLayer(layerId)) {
+      map.setLayoutProperty(layerId, "visibility", visibility);
+    }
+  }
+}
+
+function addOpenAipAirspaceLayers(map, sourceId, fillLayerId, lineLayerId, { minzoom = 6, visible = false } = {}) {
+  map.addLayer({
+    id: fillLayerId,
+    type: "fill",
+    source: sourceId,
+    "source-layer": "airspaces",
+    minzoom,
+    layout: { visibility: visible ? "visible" : "none" },
+    filter: ["in", ["get", "type"], ["literal", OVERLAY_AIRSPACE_TILE_TYPES]],
+    paint: {
+      "fill-color": "#c62828",
+      "fill-opacity": 0.28,
+    },
+  });
+
+  map.addLayer({
+    id: lineLayerId,
+    type: "line",
+    source: sourceId,
+    "source-layer": "airspaces",
+    minzoom,
+    layout: { visibility: visible ? "visible" : "none" },
+    paint: {
+      "line-color": AIRSPACE_TYPE_COLOR,
+      "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 12, 2],
+      "line-opacity": 0.85,
+    },
+  });
+}
+
+export function initCachedOpenAipAirspaceLayers(map, { minZoom = 3, maxZoom = 7 } = {}) {
+  if (!map || map.getSource(CACHE_OPENAIP_SOURCE)) {
+    return false;
+  }
+
+  map.addSource(CACHE_OPENAIP_SOURCE, {
+    type: "vector",
+    tiles: ["openaip-cache://{z}/{x}/{y}.pbf"],
+    minzoom: minZoom,
+    maxzoom: maxZoom,
+    attribution:
+      '<a href="https://www.openaip.net" target="_blank" rel="noopener">OpenAIP</a>',
+  });
+
+  addOpenAipAirspaceLayers(map, CACHE_OPENAIP_SOURCE, CACHE_OPENAIP_AIRSPACE_FILL_LAYER, CACHE_OPENAIP_AIRSPACE_LAYER, {
+    minzoom: minZoom,
+    visible: true,
+  });
+
+  return true;
+}
+
+export function removeCachedOpenAipAirspaceLayers(map) {
+  if (!map?.getSource(CACHE_OPENAIP_SOURCE)) {
+    return;
+  }
+  for (const layerId of CACHE_OPENAIP_AIRSPACE_LAYERS) {
+    if (map.getLayer(layerId)) {
+      map.removeLayer(layerId);
+    }
+  }
+  map.removeSource(CACHE_OPENAIP_SOURCE);
+}
+
+export function setCachedOpenAipAirspaceVisible(map, visible) {
+  const visibility = visible ? "visible" : "none";
+  for (const layerId of CACHE_OPENAIP_AIRSPACE_LAYERS) {
     if (map.getLayer(layerId)) {
       map.setLayoutProperty(layerId, "visibility", visibility);
     }

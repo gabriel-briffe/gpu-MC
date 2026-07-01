@@ -33,6 +33,14 @@ function resolveOpenAipConfig(config) {
   return { apiKey, proxyBase: "", useProxy: false };
 }
 
+/** OpenAIP Core API accepts comma-separated integer codes for array `type` query params. */
+export function setOpenAipTypeFilter(query, types) {
+  const codes = [...types].map(String);
+  if (codes.length) {
+    query.set("type", codes.join(","));
+  }
+}
+
 export function openAipConfigured(config) {
   const resolved = resolveOpenAipConfig(config);
   if (resolved.useProxy) {

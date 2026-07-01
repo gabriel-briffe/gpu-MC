@@ -1,5 +1,5 @@
-import { openAipAirportsUrl, openAipConfigured } from "./openaip-client.js";
-import { isIncludedOpenAipAirportType } from "./openaip-airport-types.js";
+import { openAipAirportsUrl, openAipConfigured, setOpenAipTypeFilter } from "./openaip-client.js";
+import { OPENAIP_INCLUDED_AIRPORT_TYPE_CODES } from "./openaip-airport-types.js";
 import { openAipAirportKey } from "./openaip-tiles.js";
 
 function normalizeCoreAirport(item) {
@@ -19,9 +19,6 @@ function normalizeCoreAirport(item) {
   }
 
   const type = item.type ?? item.airportType;
-  if (!isIncludedOpenAipAirportType(type)) {
-    return null;
-  }
 
   const properties = {
     ...item,
@@ -44,6 +41,7 @@ export async function fetchAirportsInBbox(bbox, config) {
     bbox: `${west},${south},${east},${north}`,
     limit: "1000",
   });
+  setOpenAipTypeFilter(query, OPENAIP_INCLUDED_AIRPORT_TYPE_CODES);
 
   const items = [];
   let page = 1;

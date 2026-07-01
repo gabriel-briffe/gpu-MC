@@ -15,12 +15,14 @@ import { GlideConeEngine } from "./glidecone.js";
 import {
   initOpenAipAirspaceTiles,
   removeOpenAipVectorTiles,
+  initCachedOpenAipAirspaceLayers,
+  removeCachedOpenAipAirspaceLayers,
+  setCachedOpenAipAirspaceVisible,
   queryOpenAipAirspacesAt,
   airspaceFeatureKey,
   setOpenAipAirspaceVisible,
   OPENAIP_AIRPORT_MIN_ZOOM,
   OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-  OPENAIP_AIRPORT_FILTER,
   OPENAIP_AIRSPACE_FILL_LAYER,
   OPENAIP_AIRSPACE_LAYER,
 } from "./openaip-tiles.js";
@@ -29,6 +31,10 @@ import {
   registerTerrainTileProtocol,
   TERRAIN_TILE_URL_TEMPLATE,
 } from "./terrain-tiles.js";
+import {
+  registerOpenAipTileProtocol,
+  setOpenAipTileCacheConfig,
+} from "./openaip-vector-tiles-cache.js";
 import {
   buildCacheBundle,
   cacheCellKey,
@@ -181,6 +187,7 @@ let manualTouchStart = null;
 let cacheSelectMode = false;
 let cacheGridReady = false;
 let cacheAirportsReady = false;
+let cacheAirspaceReady = false;
 let cachedAirportMapReady = false;
 let cacheDownloadInProgress = false;
 let overlayVisibilityBeforeCache = null;
@@ -996,6 +1003,7 @@ function getGlideParams() {
 }
 
 registerTerrainTileProtocol();
+registerOpenAipTileProtocol();
 
 map = new maplibregl.Map({
   container: "map",
@@ -2638,7 +2646,6 @@ function ensureCachedAirportMapLayers() {
     type: "circle",
     source: "airports-cached",
     minzoom: OPENAIP_AIRPORT_MIN_ZOOM,
-    filter: OPENAIP_AIRPORT_FILTER,
     paint: {
       "circle-radius": [
         "interpolate",
@@ -2660,7 +2667,6 @@ function ensureCachedAirportMapLayers() {
     type: "symbol",
     source: "airports-cached",
     minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-    filter: OPENAIP_AIRPORT_FILTER,
     layout: {
       "text-field": ["coalesce", ["get", "icao_code"], ["get", "icaoCode"], ["get", "name"]],
       "text-font": ["Noto Sans Regular"],
@@ -2713,7 +2719,6 @@ function ensureCacheAirportLayers() {
     type: "circle",
     source: "cache-airports",
     minzoom: OPENAIP_AIRPORT_MIN_ZOOM,
-    filter: OPENAIP_AIRPORT_FILTER,
     paint: {
       "circle-radius": [
         "interpolate",
@@ -2735,7 +2740,6 @@ function ensureCacheAirportLayers() {
     type: "symbol",
     source: "cache-airports",
     minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-    filter: OPENAIP_AIRPORT_FILTER,
     layout: {
       "text-field": ["coalesce", ["get", "icao_code"], ["get", "icaoCode"], ["get", "name"]],
       "text-font": ["Noto Sans Regular"],
@@ -2782,12 +2786,38 @@ function clearCacheAirportLayers() {
   cacheAirportsReady = false;
 }
 
+function ensureCacheAirspaceLayers() {
+  if (!map || cacheAirspaceReady || !openAipConfigured(openAipConfig)) {
+    return;
+  }
+  initCachedOpenAipAirspaceLayers(map, { minZoom: 3, maxZoom: 7 });
+  setCachedOpenAipAirspaceVisible(map, true);
+  cacheAirspaceReady = true;
+}
+
+function clearCacheAirspaceLayers() {
+  if (!map || !cacheAirspaceReady) {
+    return;
+  }
+  removeCachedOpenAipAirspaceLayers(map);
+  cacheAirspaceReady = false;
+}
+
+function refreshCacheAirspaceLayers() {
+  if (!map || !cacheSelectMode) {
+    return;
+  }
+  clearCacheAirspaceLayers();
+  ensureCacheAirspaceLayers();
+}
+
 function refreshCacheSelectOverlays() {
   if (!cacheSelectMode) {
     return;
   }
   ensureCacheGridLayers();
   updateCacheGridData();
+  ensureCacheAirspaceLayers();
   ensureCacheAirportLayers();
   updateCacheAirportData();
 }
@@ -2909,6 +2939,7 @@ function exitCacheSelectMode() {
 
   clearCacheGridLayers();
   clearCacheAirportLayers();
+  clearCacheAirspaceLayers();
   setOverlaysHiddenForCacheSelect(false);
   syncCacheDownloadButton();
   setStatus("Cache selection closed");
@@ -2940,6 +2971,7 @@ async function runCacheDownload() {
   try {
     await buildCacheBundle([...selectedCacheCells], openAipConfig, setStatus);
     refreshCacheSelectOverlays();
+    refreshCacheAirspaceLayers();
     refreshCachedAirportMapLayer();
   } catch (error) {
     setStatus(`Cache error: ${error.message}`);
@@ -3242,6 +3274,7 @@ map.on("load", async () => {
   try {
     openAipConfig = await loadOpenAipConfig();
     if (openAipConfigured(openAipConfig)) {
+      setOpenAipTileCacheConfig(openAipConfig);
       console.info("OpenAIP REST caching enabled");
       ensureCachedAirportMapLayers();
       refreshCachedAirportMapLayer();

@@ -41,6 +41,11 @@ export const OPENAIP_AIRPORT_TYPE_SLUG_BY_CODE = {
 /** Types excluded from fetch, map display, and compute seeds. */
 export const OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES = [4, 6, 7, 8, 10, 11, 12, 13];
 
+/** REST API `type` query values (all known codes minus {@link OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES}). */
+export const OPENAIP_INCLUDED_AIRPORT_TYPE_CODES = Object.keys(OPENAIP_AIRPORT_TYPES_BY_CODE)
+  .map(Number)
+  .filter((code) => !OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES.includes(code));
+
 export const OPENAIP_EXCLUDED_AIRPORT_TYPE_TILE_SLUGS = OPENAIP_EXCLUDED_AIRPORT_TYPE_CODES.map(
   (code) => OPENAIP_AIRPORT_TYPE_SLUG_BY_CODE[code]
 ).filter(Boolean);

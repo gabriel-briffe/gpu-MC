@@ -1,10 +1,13 @@
 import { TILE_SIZE, lngLatToGlobalPixel } from "./geo.js";
 import { fetchTerrainTileBlob } from "./terrain-tiles.js";
+import { fetchOpenAipTileBlob } from "./openaip-vector-tiles-cache.js";
 import { dedupeAirports, fetchAirportsInBbox } from "./openaip-airports.js";
-import { isIncludedOpenAipAirportType } from "./openaip-airport-types.js";
+import { openAipConfigured } from "./openaip-client.js";
 
 export const CACHE_TERRAIN_Z_MIN = 3;
 export const CACHE_TERRAIN_Z_MAX = 7;
+export const CACHE_OPENAIP_Z_MIN = 3;
+export const CACHE_OPENAIP_Z_MAX = 7;
 export const CACHE_CELL_TTL_MS = 24 * 60 * 60 * 1000;
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
 const CELL_CACHE_STORAGE_KEY = "gpu-mc-cell-cache-v1";
@@ -161,6 +164,27 @@ export function terrariumTileIndicesForBounds(west, south, east, north, z) {
   return tiles;
 }
 
+function openAipVectorTileJobsForCellKeys(cellKeys) {
+  const seen = new Set();
+  const jobs = [];
+
+  for (const cellKey of cellKeys) {
+    const { west, south, east, north } = cacheCellBounds(cellKey);
+    for (let z = CACHE_OPENAIP_Z_MIN; z <= CACHE_OPENAIP_Z_MAX; z += 1) {
+      for (const tile of terrariumTileIndicesForBounds(west, south, east, north, z)) {
+        const key = `${tile.z}/${tile.x}/${tile.y}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        jobs.push(tile);
+      }
+    }
+  }
+
+  return jobs;
+}
+
 async function prefetchTerrariumTiles(bounds, onStatus) {
   const jobs = [];
   for (let z = CACHE_TERRAIN_Z_MIN; z <= CACHE_TERRAIN_Z_MAX; z += 1) {
@@ -190,6 +214,46 @@ async function prefetchTerrariumTiles(bounds, onStatus) {
   }
 
   return { tileCount: jobs.length, tileFetches };
+}
+
+async function prefetchOpenAipVectorTiles(jobs, config, onStatus) {
+  if (!openAipConfigured(config) || jobs.length === 0) {
+    return { tileCount: jobs.length, tileFetches: 0 };
+  }
+
+  let loaded = 0;
+  let tileFetches = 0;
+  onStatus?.(
+    `Caching OpenAIP airspace tiles 0/${jobs.length} (z${CACHE_OPENAIP_Z_MIN}–${CACHE_OPENAIP_Z_MAX})…`
+  );
+
+  for (let index = 0; index < jobs.length; index += TERRAIN_PREFETCH_CONCURRENCY) {
+    const batch = jobs.slice(index, index + TERRAIN_PREFETCH_CONCURRENCY);
+    await Promise.all(
+      batch.map(async ({ z, x, y }) => {
+        const { fromNetwork } = await fetchOpenAipTileBlob(z, x, y, config);
+        if (fromNetwork) {
+          tileFetches += 1;
+        }
+        loaded += 1;
+        onStatus?.(
+          `Caching OpenAIP airspace tiles ${loaded}/${jobs.length} (z${CACHE_OPENAIP_Z_MIN}–${CACHE_OPENAIP_Z_MAX})…`
+        );
+      })
+    );
+  }
+
+  return { tileCount: jobs.length, tileFetches };
+}
+
+async function prefetchOpenAipVectorTilesForCellKeys(cellKeys, config, onStatus) {
+  const staleCellKeys = cellKeys.filter((cellKey) => !isCellCacheFresh(cellCache.get(cellKey)));
+  if (staleCellKeys.length === 0) {
+    return { tileCount: 0, tileFetches: 0, cellsSkipped: cellKeys.length };
+  }
+  const jobs = openAipVectorTileJobsForCellKeys(staleCellKeys);
+  const stats = await prefetchOpenAipVectorTiles(jobs, config, onStatus);
+  return { ...stats, cellsSkipped: cellKeys.length - staleCellKeys.length };
 }
 
 async function cacheAirportsForCells(cellKeys, config, onStatus) {
@@ -252,9 +316,7 @@ export function mergeCachedAirports(cellKeys = null) {
     }
   }
 
-  return dedupeAirports(all).filter((airport) =>
-    isIncludedOpenAipAirportType(airport.properties?.type)
-  );
+  return dedupeAirports(all);
 }
 
 export function getCachedAirportsInBounds(west, south, east, north) {
@@ -297,18 +359,32 @@ export async function buildCacheBundle(cellKeys, config, onStatus) {
 
   const bounds = unionCellBounds(cellKeys);
   const { tileCount, tileFetches } = await prefetchTerrariumTiles(bounds, onStatus);
+  const {
+    tileCount: airspaceTileCount,
+    tileFetches: airspaceTileFetches,
+    cellsSkipped: airspaceCellsSkipped = 0,
+  } = await prefetchOpenAipVectorTilesForCellKeys(cellKeys, config, onStatus);
   onStatus?.(`Fetching airports for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`);
   const { airportFetches, cellsFetched, cellsSkipped } = await cacheAirportsForCells(
     cellKeys,
     config,
     onStatus
   );
-  const networkFetches = tileFetches + airportFetches;
+  const networkFetches = tileFetches + airspaceTileFetches + airportFetches;
   const airportCount = mergeCachedAirports(cellKeys).length;
   setLastCachedCellKeys(cellKeys);
 
+  const keptParts = [];
+  if (cellsSkipped > 0) {
+    keptParts.push(`${cellsSkipped} airport cell${cellsSkipped === 1 ? "" : "s"}`);
+  }
+  if (airspaceCellsSkipped > 0) {
+    keptParts.push(`${airspaceCellsSkipped} airspace cell${airspaceCellsSkipped === 1 ? "" : "s"}`);
+  }
+  const keptSuffix = keptParts.length ? `, ${keptParts.join(", ")} kept` : "";
+
   onStatus?.(
-    `Cache done — ${tileCount} terrarium tiles, ${airportCount} airports in ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${networkFetches} fetched${cellsSkipped ? `, ${cellsSkipped} cell${cellsSkipped === 1 ? "" : "s"} kept` : ""})`
+    `Cache done — ${tileCount} terrarium + ${airspaceTileCount} airspace tiles, ${airportCount} airports in ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${networkFetches} fetched${keptSuffix})`
   );
 
   return {
@@ -316,6 +392,9 @@ export async function buildCacheBundle(cellKeys, config, onStatus) {
     bounds,
     tileCount,
     tileFetches,
+    airspaceTileCount,
+    airspaceTileFetches,
+    airspaceCellsSkipped,
     airportFetches,
     cellsFetched,
     cellsSkipped,

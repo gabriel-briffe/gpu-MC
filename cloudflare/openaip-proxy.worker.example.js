@@ -39,7 +39,7 @@ function copySearchParams(source, target, { skip = [] } = {}) {
     if (skip.includes(key)) {
       continue;
     }
-    target.searchParams.set(key, value);
+    target.searchParams.append(key, value);
   }
 }
 
