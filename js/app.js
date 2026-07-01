@@ -893,7 +893,7 @@ function openParamHelp(button) {
 
 function initParamPanel() {
   syncParamVisibility();
-  setParamsMode("manual");
+  setParamsMode("auto");
   updateGridRadiusHint();
   updateTerrainResolutionHint();
 
