@@ -508,6 +508,73 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+const SECTOR_ORIGIN_RESOLVE_PASSES = 16;
+const SECTOR_PALETTE_SIZE = 8;
+
+function hashLatLngToPaletteSlot(lat, lng) {
+  const latQ = Math.round(lat * 1e5);
+  const lngQ = Math.round(lng * 1e5);
+  let hash = 2_166_136_261;
+  hash ^= latQ;
+  hash = Math.imul(hash, 16_777_619);
+  hash ^= lngQ;
+  hash = Math.imul(hash, 16_777_619);
+  return (hash >>> 0) % SECTOR_PALETTE_SIZE;
+}
+
+function buildSeedPaletteGrid(width, height, seeds) {
+  const grid = new Uint32Array(width * height);
+  for (const seed of seeds) {
+    const idx = seed.y * width + seed.x;
+    grid[idx] = hashLatLngToPaletteSlot(seed.lat, seed.lng) + 1;
+  }
+  return grid;
+}
+
+const RESOLVE_ORIGIN_SHADER = /* wgsl */ `
+struct Params {
+  width: u32,
+  height: u32,
+};
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> originIn: array<vec2<i32>>;
+@group(0) @binding(2) var<storage, read> ground: array<u32>;
+@group(0) @binding(3) var<storage, read_write> originOut: array<vec2<i32>>;
+
+fn idx(x: i32, y: i32) -> u32 {
+  return u32(y) * params.width + u32(x);
+}
+
+fn inBounds(x: i32, y: i32) -> bool {
+  return x >= 0 && y >= 0 && x < i32(params.width) && y < i32(params.height);
+}
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let x = i32(gid.x);
+  let y = i32(gid.y);
+  if (!inBounds(x, y)) {
+    return;
+  }
+
+  let i = idx(x, y);
+  let o = originIn[i];
+
+  if (ground[i] == 1u || o.x < 0 || o.y < 0) {
+    originOut[i] = o;
+    return;
+  }
+
+  if (!inBounds(o.x, o.y)) {
+    originOut[i] = o;
+    return;
+  }
+
+  originOut[i] = originIn[idx(o.x, o.y)];
+}
+`;
+
 const COLOR_SHADER_SECTORS = /* wgsl */ `
 struct Params {
   width: u32,
@@ -525,6 +592,25 @@ struct Params {
 @group(0) @binding(2) var<storage, read> origin: array<vec2<i32>>;
 @group(0) @binding(3) var<storage, read> ground: array<u32>;
 @group(0) @binding(4) var<storage, read_write> rgba: array<u32>;
+@group(0) @binding(5) var<storage, read> seedPalette: array<u32>;
+
+fn packRgba(r: u32, g: u32, b: u32, a: u32) -> u32 {
+  return r | (g << 8u) | (b << 16u) | (a << 24u);
+}
+
+fn sectorColor(slot: u32) -> u32 {
+  switch slot {
+    case 1u: { return packRgba(40u, 120u, 255u, 170u); }
+    case 2u: { return packRgba(48u, 200u, 72u, 170u); }
+    case 3u: { return packRgba(230u, 140u, 40u, 170u); }
+    case 4u: { return packRgba(200u, 80u, 200u, 170u); }
+    case 5u: { return packRgba(40u, 190u, 210u, 170u); }
+    case 6u: { return packRgba(230u, 210u, 60u, 170u); }
+    case 7u: { return packRgba(220u, 80u, 90u, 170u); }
+    case 8u: { return packRgba(130u, 100u, 220u, 170u); }
+    default: { return packRgba(128u, 128u, 128u, 170u); }
+  }
+}
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -540,11 +626,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   if (ground[i] == 1u) {
     if (o.x == x && o.y == y) {
-      let r = 255u;
-      let g = 48u;
-      let b = 48u;
-      let alpha = 220u;
-      rgba[i] = r | (g << 8u) | (b << 16u) | (alpha << 24u);
+      rgba[i] = packRgba(255u, 48u, 48u, 220u);
     } else {
       rgba[i] = 0u;
     }
@@ -556,11 +638,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
 
-  let r = 40u;
-  let g = 120u;
-  let b = 255u;
-  let alpha = 170u;
-  rgba[i] = r | (g << 8u) | (b << 16u) | (alpha << 24u);
+  let rootIdx = u32(o.y) * params.width + u32(o.x);
+  let paletteSlot = seedPalette[rootIdx];
+  if (paletteSlot == 0u) {
+    rgba[i] = 0u;
+    return;
+  }
+
+  rgba[i] = sectorColor(paletteSlot);
 }
 `;
 
@@ -598,7 +683,6 @@ function packedRgbaToImageData(packed, width, height) {
 async function renderColorFrame(
   device,
   {
-    pipelines,
     colorPipeline,
     colorLayout,
     colorUniform,
@@ -607,22 +691,29 @@ async function renderColorFrame(
     groundRead,
     rgbaBuffer,
     readBuffer,
+    seedPaletteBuffer,
     wgX,
     wgY,
     width,
     height,
     count,
-  }
+  },
+  { sectors = false } = {}
 ) {
+  const entries = [
+    { binding: 0, resource: { buffer: colorUniform } },
+    { binding: 1, resource: { buffer: altRead } },
+    { binding: 2, resource: { buffer: originRead } },
+    { binding: 3, resource: { buffer: groundRead } },
+    { binding: 4, resource: { buffer: rgbaBuffer } },
+  ];
+  if (sectors) {
+    entries.push({ binding: 5, resource: { buffer: seedPaletteBuffer } });
+  }
+
   const colorBind = device.createBindGroup({
     layout: colorLayout,
-    entries: [
-      { binding: 0, resource: { buffer: colorUniform } },
-      { binding: 1, resource: { buffer: altRead } },
-      { binding: 2, resource: { buffer: originRead } },
-      { binding: 3, resource: { buffer: groundRead } },
-      { binding: 4, resource: { buffer: rgbaBuffer } },
-    ],
+    entries,
   });
 
   const colorEncoder = device.createCommandEncoder();
@@ -640,6 +731,50 @@ async function renderColorFrame(
   const packed = new Uint32Array(readBuffer.getMappedRange().slice(0));
   readBuffer.unmap();
   return packedRgbaToImageData(packed, width, height);
+}
+
+function resolveDeepOriginsGpu(
+  device,
+  pipelines,
+  {
+    uniformBuffer,
+    originRead,
+    groundRead,
+    resolveRead,
+    resolveWrite,
+    pairBytes,
+    wgX,
+    wgY,
+  }
+) {
+  const copyEncoder = device.createCommandEncoder();
+  copyEncoder.copyBufferToBuffer(originRead, 0, resolveRead, 0, pairBytes);
+  device.queue.submit([copyEncoder.finish()]);
+
+  let readBuf = resolveRead;
+  let writeBuf = resolveWrite;
+
+  for (let pass = 0; pass < SECTOR_ORIGIN_RESOLVE_PASSES; pass += 1) {
+    const bind = device.createBindGroup({
+      layout: pipelines.resolveOrigin.layout,
+      entries: [
+        { binding: 0, resource: { buffer: uniformBuffer } },
+        { binding: 1, resource: { buffer: readBuf } },
+        { binding: 2, resource: { buffer: groundRead } },
+        { binding: 3, resource: { buffer: writeBuf } },
+      ],
+    });
+    const encoder = device.createCommandEncoder();
+    const passEnc = encoder.beginComputePass();
+    passEnc.setPipeline(pipelines.resolveOrigin.pipeline);
+    passEnc.setBindGroup(0, bind);
+    passEnc.dispatchWorkgroups(wgX, wgY);
+    passEnc.end();
+    device.queue.submit([encoder.finish()]);
+    [readBuf, writeBuf] = [writeBuf, readBuf];
+  }
+
+  return readBuf;
 }
 
 function packParams(
@@ -804,6 +939,13 @@ export class GlideConeEngine {
         "read-only-storage",
         "read-only-storage",
         "storage",
+        "read-only-storage",
+      ]),
+      resolveOrigin: await createPipeline(this.device, RESOLVE_ORIGIN_SHADER, [
+        "uniform",
+        "read-only-storage",
+        "read-only-storage",
+        "storage",
       ]),
     };
   }
@@ -905,6 +1047,20 @@ export class GlideConeEngine {
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
 
+    const seedPaletteBuffer = sectors
+      ? createBuffer(
+          device,
+          new Uint8Array(buildSeedPaletteGrid(width, height, seeds).buffer),
+          storageUsage
+        )
+      : null;
+    const resolveOriginRead = sectors
+      ? device.createBuffer({ size: pairBytes, usage: storageUsage })
+      : null;
+    const resolveOriginWrite = sectors
+      ? device.createBuffer({ size: pairBytes, usage: storageUsage })
+      : null;
+
     const wgX = Math.ceil(width / 8);
     const wgY = Math.ceil(height / 8);
     const t0 = performance.now();
@@ -923,6 +1079,7 @@ export class GlideConeEngine {
     });
     const livePreview =
       needsRaster &&
+      !sectors &&
       !imageOnly &&
       onProgress &&
       Number.isFinite(updateMapMs) &&
@@ -930,7 +1087,6 @@ export class GlideConeEngine {
     let lastMapUpdate = 0;
 
     const frameArgs = {
-      pipelines,
       colorPipeline,
       colorLayout,
       colorUniform,
@@ -939,11 +1095,33 @@ export class GlideConeEngine {
       groundRead,
       rgbaBuffer,
       readBuffer,
+      seedPaletteBuffer,
       wgX,
       wgY,
       width,
       height,
       count,
+    };
+
+    const renderRasterFrame = () => {
+      let colorOriginRead = originRead;
+      if (sectors) {
+        colorOriginRead = resolveDeepOriginsGpu(device, pipelines, {
+          uniformBuffer,
+          originRead,
+          groundRead,
+          resolveRead: resolveOriginRead,
+          resolveWrite: resolveOriginWrite,
+          pairBytes,
+          wgX,
+          wgY,
+        });
+      }
+      return renderColorFrame(
+        device,
+        { ...frameArgs, originRead: colorOriginRead },
+        { sectors }
+      );
     };
 
     const maybeEmitProgress = async (force = false) => {
@@ -955,7 +1133,7 @@ export class GlideConeEngine {
         return;
       }
       lastMapUpdate = now;
-      const imageData = await renderColorFrame(device, frameArgs);
+      const imageData = await renderRasterFrame();
       onProgress({
         imageData,
         iteration: actualIterations,
@@ -1079,7 +1257,7 @@ export class GlideConeEngine {
 
     let imageData = null;
     if (needsRaster) {
-      imageData = await renderColorFrame(device, frameArgs);
+      imageData = await renderRasterFrame();
     }
 
     const baseResult = {

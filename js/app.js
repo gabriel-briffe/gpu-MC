@@ -553,7 +553,7 @@ const PARAM_HELP = {
   "los-run":
     "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate, but slower.\n\nANYTHING ELSE THAN N=0 IS EXPERIMENTAL, MIGHT INTRODUCE MISTAKES, BUGS, PATH ENDING TOO EARLY.. DON'T USE IF YOU DON'T UNDERSTAND THE CODE BEHIND\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source. Faster, and often accurate enough.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule). Fast, but usually not accurate enough.",
   "viz-mode":
-    "Path only — glide paths on hover/tap, no overlay. Sectors — solid glide cone fill; ground transparent. Contours — 100 m isolines with labels; exportable as GeoJSON. Stripes and raw raster (debug) — alternating 100 m bands or per-cell colors.",
+    "Path only — glide paths on hover/tap, no overlay. Sectors — per-airport colors from lat/lon hash; ground transparent. Contours — 100 m isolines with labels; exportable as GeoJSON. Stripes and raw raster (debug) — alternating 100 m bands or per-cell colors.",
   preview:
     "How often the map refreshes during GPU compute (sectors, stripes, and raw raster). 0 = update once at the end.",
   "compare-los":
@@ -562,7 +562,7 @@ const PARAM_HELP = {
 
 const VIZ_HINTS = {
   "path-only": "No overlay — hover or tap the map to inspect glide paths.",
-  sectors: "Solid glide cone fill; ground cells stay transparent.",
+  sectors: "Per-airport colors (lat/lon hash); ground transparent.",
   stripes: "100 m bands relative to airport altitude.",
   raw: "Per-cell altitude colors.",
   contours: "100 m isolines with labels; GeoJSON export after run.",
