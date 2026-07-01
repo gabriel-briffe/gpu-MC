@@ -909,6 +909,11 @@
           width: 100%;
         }
 
+        .param-resolution-hint {
+          flex: 0 0 auto;
+          padding-bottom: 0;
+        }
+
         #params .param-stepper input[type="number"] {
           -moz-appearance: textfield;
           appearance: textfield;
