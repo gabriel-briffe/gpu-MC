@@ -26,6 +26,7 @@ import { loadOpenAipConfig, openAipConfigured } from "./openaip-client.js";
 import {
   registerTerrainTileProtocol,
   TERRAIN_TILE_URL_TEMPLATE,
+  BASE_MAP_TERRAIN_MAX_ZOOM,
 } from "./terrain-tiles.js";
 import {
   buildCacheBundle,
@@ -849,17 +850,15 @@ function updateTerrainResolutionHint() {
   terrainResolutionHintEl.textContent = `Resolution: ~${Math.round(cellSizeM)} m`;
 }
 
-function syncTerrainTileMaxZoom() {
+function syncBaseMapTerrainMaxZoom() {
   if (!map?.getStyle?.()?.sources?.hillshadeSource) {
     return;
   }
-  const zoom = clampTerrainZoom(Number.parseInt(terrainZoomInput?.value ?? "", 10));
-  setTerrainTileMaxZoom(zoom);
+  setTerrainTileMaxZoom(BASE_MAP_TERRAIN_MAX_ZOOM);
 }
 
 function onTerrainZoomChange() {
   updateTerrainResolutionHint();
-  syncTerrainTileMaxZoom();
   if (isAutoParamsMode()) {
     scheduleAutoCompute({ debounce: true });
   }
@@ -1028,7 +1027,7 @@ registerTerrainTileProtocol();
 map = new maplibregl.Map({
   container: "map",
   hash: "map",
-  zoom: INITIAL_TERRAIN_Z,
+  zoom: Math.min(INITIAL_TERRAIN_Z, MAP_MAX_ZOOM),
   maxZoom: MAP_MAX_ZOOM,
   center: [MAP_CENTER.lng, MAP_CENTER.lat],
   style: {
@@ -1040,7 +1039,7 @@ map = new maplibregl.Map({
         tiles: [TERRAIN_TILE_URL_TEMPLATE],
         encoding: "terrarium",
         tileSize: 512,
-        maxzoom: INITIAL_TERRAIN_Z,
+        maxzoom: BASE_MAP_TERRAIN_MAX_ZOOM,
         attribution: '<a href="https://mapterhorn.com" target="_blank" rel="noopener">Mapterhorn</a>',
       },
     },
@@ -3341,7 +3340,6 @@ function makeComputeProgressHandler(dem, glideParams) {
     if ((glideParams.raw || !glideParams.contours) && imageData) {
       updateOverlay(imageData, dem);
     }
-    setTerrainTileMaxZoom(dem.zoom);
     setStatus(`Computing… iter ${iteration}, ${elapsedMs.toFixed(0)} ms GPU`);
   };
 }
@@ -3355,7 +3353,7 @@ async function ensureEngine() {
 }
 
 map.on("load", async () => {
-  syncTerrainTileMaxZoom();
+  syncBaseMapTerrainMaxZoom();
   ensurePathLayer();
   map.on("moveend", () => {
     updateTerrainResolutionHint();
@@ -3668,7 +3666,6 @@ async function runComputation(seedsOverride = null, { gridBounds = null } = {}) 
     const result = await gpu.compute(dem, glideParams, makeComputeOptions(dem, glideParams));
 
     setConeState(dem, result, glideParams);
-    setTerrainTileMaxZoom(dem.zoom);
     updateConeVisualization(result, dem, glideParams);
     ensurePathLayer();
     syncCompareLosButton();

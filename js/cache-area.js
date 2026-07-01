@@ -5,7 +5,7 @@ import { dedupeAirports, fetchAirportsInBbox } from "./openaip-airports.js";
 import { openAipConfigured } from "./openaip-client.js";
 
 export const CACHE_TERRAIN_Z_MIN = 3;
-export const CACHE_TERRAIN_Z_MAX = 7;
+export const CACHE_TERRAIN_Z_MAX = 8;
 export const CACHE_CELL_TTL_MS = 24 * 60 * 60 * 1000;
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
 const CELL_CACHE_STORAGE_KEY = "gpu-mc-cell-cache-v1";

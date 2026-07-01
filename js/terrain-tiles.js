@@ -3,6 +3,8 @@ import { TILE_SIZE, terrariumElevation } from "./geo.js";
 export const MAPTERHORN_TILE_BASE = "https://tiles.mapterhorn.com";
 export const TERRAIN_TILE_CACHE_NAME = "gpu-mc-terrain-v1";
 export const TERRAIN_TILE_URL_TEMPLATE = "terrain-cache://{z}/{x}/{y}.webp";
+/** Hillshade fetches native tiles up to this zoom; higher map zooms overzoom these tiles. */
+export const BASE_MAP_TERRAIN_MAX_ZOOM = 9;
 
 const decodedMemory = new Map();
 const inflightBlobs = new Map();
