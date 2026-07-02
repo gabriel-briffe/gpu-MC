@@ -242,7 +242,47 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let myOy = curO.y;
 
   if (isGroundCell(curFlags)) {
-    passthrough(i, curO, curAlt, curFlags);
+    if (!hasActiveNeighbor(x, y, myOx, myOy)) {
+      passthrough(i, curO, curAlt, curFlags);
+      flagsOut[i] = FLAG_GROUND;
+      return;
+    }
+
+    var currentReq = params.maxAlt;
+    if (hasStoredOrigin(myOx, myOy)) {
+      currentReq = coneAlt(myOx, myOy, x, y);
+    }
+
+    var bestReq = currentReq;
+    var bestOx = myOx;
+    var bestOy = myOy;
+
+    for (var k = 0; k < 8; k = k + 1) {
+      let off = NEIGHBOR_OFFSETS[k];
+      let pick = tryModifiedNeighbor(
+        x + off.x,
+        y + off.y,
+        x,
+        y,
+        myOx,
+        myOy,
+        bestReq,
+        bestOx,
+        bestOy
+      );
+      bestReq = pick.x;
+      bestOx = i32(pick.y);
+      bestOy = i32(pick.z);
+    }
+
+    if (bestReq >= currentReq || bestReq >= params.maxAlt) {
+      passthrough(i, curO, curAlt, curFlags);
+      flagsOut[i] = FLAG_GROUND;
+      return;
+    }
+
+    altOut[i] = curAlt;
+    originOut[i] = vec2<i32>(bestOx, bestOy);
     flagsOut[i] = FLAG_GROUND;
     return;
   }
@@ -774,220 +814,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let req = altIn[oi] + sqrt(dx * dx + dy * dy) * params.cellSizeM / params.glideRatio;
   let v = max(elev[i], req);
   altOut[i] = select(v, params.maxAlt, v >= params.maxAlt);
-}
-`;
-
-export const GROUND_ORIGIN_SHADER = /* wgsl */ `
-struct Params {
-  width: u32,
-  height: u32,
-  maxAlt: f32,
-  seedCount: u32,
-};
-
-const FLAG_GROUND: u32 = 1u;
-
-@group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> alt: array<f32>;
-@group(0) @binding(2) var<storage, read> flags: array<u32>;
-@group(0) @binding(3) var<storage, read_write> origin: array<vec2<i32>>;
-@group(0) @binding(4) var<storage, read> seeds: array<vec2<i32>>;
-
-fn idx(x: i32, y: i32) -> u32 {
-  return u32(y) * params.width + u32(x);
-}
-
-fn inBounds(x: i32, y: i32) -> bool {
-  return x >= 0 && y >= 0 && x < i32(params.width) && y < i32(params.height);
-}
-
-fn isGround(i: u32) -> bool {
-  return (flags[i] & FLAG_GROUND) != 0u;
-}
-
-fn isSeedCell(x: i32, y: i32) -> bool {
-  for (var s = 0u; s < params.seedCount; s = s + 1u) {
-    let p = seeds[s];
-    if (p.x == x && p.y == y) {
-      return true;
-    }
-  }
-  return false;
-}
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let x = i32(gid.x);
-  let y = i32(gid.y);
-  if (!inBounds(x, y)) {
-    return;
-  }
-  if (isSeedCell(x, y)) {
-    return;
-  }
-
-  let i = idx(x, y);
-  if (!isGround(i)) {
-    return;
-  }
-
-  var bestAlt = params.maxAlt;
-  var bestOx = x;
-  var bestOy = y;
-
-  let offsets = array<vec2<i32>, 8>(
-    vec2<i32>(-1, -1), vec2<i32>(0, -1), vec2<i32>(1, -1),
-    vec2<i32>(-1, 0), vec2<i32>(1, 0),
-    vec2<i32>(-1, 1), vec2<i32>(0, 1), vec2<i32>(1, 1)
-  );
-
-  for (var k = 0; k < 8; k = k + 1) {
-    let nx = x + offsets[k].x;
-    let ny = y + offsets[k].y;
-    if (!inBounds(nx, ny)) {
-      continue;
-    }
-    let na = alt[idx(nx, ny)];
-    if (na < bestAlt) {
-      bestAlt = na;
-      bestOx = nx;
-      bestOy = ny;
-    }
-  }
-
-  origin[i] = vec2<i32>(bestOx, bestOy);
-}
-`;
-
-export const GROUND_ORIGIN_LD_SHADER = /* wgsl */ `
-struct Params {
-  width: u32,
-  height: u32,
-  maxAlt: f32,
-  seedCount: u32,
-  cellSizeM: f32,
-};
-
-struct Counters {
-  checked: atomic<u32>,
-  maxSegmentLdBits: atomic<u32>,
-  maxLdCellX: atomic<i32>,
-  maxLdCellY: atomic<i32>,
-};
-
-const FLAG_GROUND: u32 = 1u;
-
-@group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> alt: array<f32>;
-@group(0) @binding(2) var<storage, read> flags: array<u32>;
-@group(0) @binding(3) var<storage, read> seeds: array<vec2<i32>>;
-@group(0) @binding(4) var<storage, read_write> counters: Counters;
-
-fn idx(x: i32, y: i32) -> u32 {
-  return u32(y) * params.width + u32(x);
-}
-
-fn inBounds(x: i32, y: i32) -> bool {
-  return x >= 0 && y >= 0 && x < i32(params.width) && y < i32(params.height);
-}
-
-fn isGround(i: u32) -> bool {
-  return (flags[i] & FLAG_GROUND) != 0u;
-}
-
-fn isSeedCell(x: i32, y: i32) -> bool {
-  for (var s = 0u; s < params.seedCount; s = s + 1u) {
-    let p = seeds[s];
-    if (p.x == x && p.y == y) {
-      return true;
-    }
-  }
-  return false;
-}
-
-fn atomicMaxSegmentLd(cellX: i32, cellY: i32, value: f32) {
-  if (value <= 0.0) {
-    return;
-  }
-  var oldBits = atomicLoad(&counters.maxSegmentLdBits);
-  loop {
-    let old = bitcast<f32>(oldBits);
-    if (value <= old) {
-      return;
-    }
-    let exchange = atomicCompareExchangeWeak(&counters.maxSegmentLdBits, oldBits, bitcast<u32>(value));
-    if (exchange.exchanged) {
-      atomicStore(&counters.maxLdCellX, cellX);
-      atomicStore(&counters.maxLdCellY, cellY);
-      return;
-    }
-    oldBits = exchange.old_value;
-  }
-}
-
-fn lowestAltNeighbor(x: i32, y: i32) -> vec2<i32> {
-  var bestAlt = params.maxAlt;
-  var bestOx = x;
-  var bestOy = y;
-  let offsets = array<vec2<i32>, 8>(
-    vec2<i32>(-1, -1), vec2<i32>(0, -1), vec2<i32>(1, -1),
-    vec2<i32>(-1, 0), vec2<i32>(1, 0),
-    vec2<i32>(-1, 1), vec2<i32>(0, 1), vec2<i32>(1, 1)
-  );
-  for (var k = 0; k < 8; k = k + 1) {
-    let nx = x + offsets[k].x;
-    let ny = y + offsets[k].y;
-    if (!inBounds(nx, ny)) {
-      continue;
-    }
-    let na = alt[idx(nx, ny)];
-    if (na < bestAlt) {
-      bestAlt = na;
-      bestOx = nx;
-      bestOy = ny;
-    }
-  }
-  return vec2<i32>(bestOx, bestOy);
-}
-
-fn segmentLd(altA: f32, altB: f32, di: i32, dj: i32) -> f32 {
-  let horiz = params.cellSizeM * sqrt(f32(di * di + dj * dj));
-  let vertDrop = altA - altB;
-  if (vertDrop > 0.0) {
-    return horiz / vertDrop;
-  }
-  return -99.0;
-}
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let x = i32(gid.x);
-  let y = i32(gid.y);
-  if (!inBounds(x, y)) {
-    return;
-  }
-  if (isSeedCell(x, y)) {
-    return;
-  }
-
-  let i = idx(x, y);
-  if (!isGround(i)) {
-    return;
-  }
-
-  atomicAdd(&counters.checked, 1u);
-
-  let neighbor = lowestAltNeighbor(x, y);
-  if (neighbor.x == x && neighbor.y == y) {
-    return;
-  }
-
-  let altA = alt[i];
-  let altB = alt[idx(neighbor.x, neighbor.y)];
-  let di = neighbor.x - x;
-  let dj = neighbor.y - y;
-  let segLd = segmentLd(altA, altB, di, dj);
-  atomicMaxSegmentLd(x, y, segLd);
 }
 `;
 

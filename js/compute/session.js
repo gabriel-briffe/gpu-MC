@@ -4,7 +4,6 @@ import { formatComputeDone } from "./format.js";
 import { getGlideParams } from "./params.js";
 import { updateConeVisualization, updateOverlay } from "./visualization.js";
 import { logOriginPathValidation } from "../debug/origin-path-validate.js";
-import { logGroundOriginLdValidation } from "../debug/ground-origin-ld-validate.js";
 
 let hooks;
 
@@ -152,7 +151,6 @@ export async function runComputation(seedsOverride = null, { gridBounds = null }
     hooks.setConeState(dem, result, glideParams);
     updateConeVisualization(result, dem, glideParams);
     logOriginPathValidation(result);
-    logGroundOriginLdValidation(result);
     hooks.ensurePathLayer();
     hooks.syncCompareLosButton();
     hooks.setDownloadContoursVisible(glideParams.contours);

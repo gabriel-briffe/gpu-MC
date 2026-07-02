@@ -38,7 +38,6 @@ function collectFormState(dom) {
     vizMode: readInput(dom.vizModeSelect),
     sectorsOpacity: readInput(dom.sectorsOpacityInput),
     debugMode: readCheckbox(dom.debugModeInput),
-    disableGroundOrigin: readCheckbox(dom.disableGroundOriginInput),
   };
 }
 
@@ -59,7 +58,6 @@ function applyFormState(dom, form) {
   writeInput(dom.vizModeSelect, form.vizMode);
   writeInput(dom.sectorsOpacityInput, form.sectorsOpacity);
   writeCheckbox(dom.debugModeInput, form.debugMode);
-  writeCheckbox(dom.disableGroundOriginInput, form.disableGroundOrigin);
 }
 
 export function loadParamsState() {

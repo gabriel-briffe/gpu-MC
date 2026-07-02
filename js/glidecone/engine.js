@@ -3,8 +3,6 @@ import {
   CHANGED_SUM_SHADER,
   MODIFIED_CELLS_SHADER,
   ORIGIN_PATH_VALIDATE_SHADER,
-  GROUND_ORIGIN_SHADER,
-  GROUND_ORIGIN_LD_SHADER,
   FLAG_CHANGED,
   COLOR_SHADER,
   COLOR_SHADER_RAW,
@@ -24,19 +22,12 @@ import {
   createPipeline,
   packSeedPairs,
   renderModifiedCellsFrame,
-  packGroundOriginParams,
-  runGroundOriginPass,
 } from "./render.js";
 import {
   packOriginPathValidateParams,
   runOriginPathValidation,
   emptyCountersBuffer,
 } from "../debug/origin-path-validate.js";
-import {
-  packGroundOriginLdParams,
-  runGroundOriginLdValidation,
-  emptyGroundOriginLdCountersBuffer,
-} from "../debug/ground-origin-ld-validate.js";
 
 export class GlideConeEngine {
   constructor() {
@@ -80,20 +71,6 @@ export class GlideConeEngine {
         "read-only-storage",
         "read-only-storage",
         "storage",
-        "storage",
-      ]),
-      groundOrigin: await createPipeline(this.device, GROUND_ORIGIN_SHADER, [
-        "uniform",
-        "read-only-storage",
-        "read-only-storage",
-        "storage",
-        "read-only-storage",
-      ]),
-      groundOriginLdValidate: await createPipeline(this.device, GROUND_ORIGIN_LD_SHADER, [
-        "uniform",
-        "read-only-storage",
-        "read-only-storage",
-        "read-only-storage",
         "storage",
       ]),
       color: await createPipeline(this.device, COLOR_SHADER, [
@@ -158,8 +135,6 @@ export class GlideConeEngine {
       sectors: sectorsParam = false,
       showModifiedCells = false,
       validateOriginPaths = false,
-      validateGroundOriginLd = false,
-      disableGroundOrigin = false,
       updateMapMs = 100,
     } = params;
     const raw = rawOverride !== undefined ? rawOverride : rawParam;
@@ -274,30 +249,6 @@ export class GlideConeEngine {
     const countersReadBuffer = validateOriginPaths
       ? device.createBuffer({
           size: 28,
-          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-        })
-      : null;
-
-    const groundOriginUniformBuffer = createBuffer(
-      device,
-      new Uint8Array(packGroundOriginParams(width, height, maxAltitude, seeds.length)),
-      uniformUsage
-    );
-    const groundOriginLdUniformBuffer = validateGroundOriginLd
-      ? createBuffer(
-          device,
-          new Uint8Array(
-            packGroundOriginLdParams(width, height, maxAltitude, seeds.length, cellSizeM)
-          ),
-          uniformUsage
-        )
-      : null;
-    const groundOriginLdCountersBuffer = validateGroundOriginLd
-      ? createBuffer(device, new Uint8Array(emptyGroundOriginLdCountersBuffer()), storageUsage)
-      : null;
-    const groundOriginLdCountersReadBuffer = validateGroundOriginLd
-      ? device.createBuffer({
-          size: 16,
           usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })
       : null;
@@ -475,38 +426,6 @@ export class GlideConeEngine {
       await maybeEmitProgress();
     }
 
-    const runGroundOrigin = !disableGroundOrigin;
-    if (runGroundOrigin) {
-      runGroundOriginPass(device, pipelines.groundOrigin, {
-        groundOriginUniformBuffer,
-        altRead,
-        flagsRead: flagsPrev,
-        originRead,
-        seedBuffer,
-        wgX,
-        wgY,
-      });
-      frameArgs.originRead = originRead;
-    }
-
-    let groundOriginLdValidation = null;
-    if (runGroundOrigin && validateGroundOriginLd) {
-      groundOriginLdValidation = await runGroundOriginLdValidation(
-        device,
-        pipelines.groundOriginLdValidate,
-        {
-          uniformBuffer: groundOriginLdUniformBuffer,
-          altRead,
-          flagsRead: flagsPrev,
-          seedBuffer,
-          countersBuffer: groundOriginLdCountersBuffer,
-          countersReadBuffer: groundOriginLdCountersReadBuffer,
-          wgX,
-          wgY,
-        }
-      );
-    }
-
     let originPathValidation = null;
     if (validateOriginPaths) {
       originPathValidation = await runOriginPathValidation(device, pipelines.originPathValidate, {
@@ -539,7 +458,6 @@ export class GlideConeEngine {
       stopped: stopReason === "stopped" || stopReason === "max_iterations",
       elapsedMs: performance.now() - t0,
       originPathValidation,
-      groundOriginLdValidation,
     };
 
     if (imageOnly) {

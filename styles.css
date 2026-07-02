@@ -371,7 +371,6 @@
         width: 100%;
       }
 
-      #disable-ground-origin-field .param-check,
       #debug-tools-field > .param-check {
         justify-content: center;
       }

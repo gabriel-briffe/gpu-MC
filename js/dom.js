@@ -38,7 +38,6 @@ export const dom = {
   manualAirportNameInput: document.getElementById("manual-airport-name"),
   manualAirportListEl: document.getElementById("manual-airport-list"),
   debugModeInput: document.getElementById("debug-mode"),
-  disableGroundOriginInput: document.getElementById("disable-ground-origin"),
   losRunInput: document.getElementById("los-run"),
   computeContextBarEl: document.getElementById("compute-context-bar"),
   computeContextGeoStatsEl: document.getElementById("compute-context-geo-stats"),
