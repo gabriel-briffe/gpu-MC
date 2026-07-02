@@ -272,6 +272,7 @@ export function bindUiEvents(app, hooks) {
       coneState.sectorBorderGeojson = null;
       hooks.setDownloadContoursVisible(false);
     } else if (!mode.sectors && coneState && !hooks.isComputing()) {
+      clearRasterOverlay();
       clearSectorBorderOverlay();
       coneState.sectorBorderGeojson = null;
     } else if (mode.sectors) {

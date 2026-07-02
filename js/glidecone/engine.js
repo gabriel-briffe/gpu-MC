@@ -2,6 +2,7 @@ import {
   PROPAGATE_SHADER,
   CHANGED_SUM_SHADER,
   MODIFIED_CELLS_SHADER,
+  ORIGIN_PATH_VALIDATE_SHADER,
   FLAG_CHANGED,
   COLOR_SHADER,
   COLOR_SHADER_RAW,
@@ -19,8 +20,13 @@ import {
   packXY,
   unpackXY,
   createPipeline,
+  packSeedPairs,
   renderModifiedCellsFrame,
 } from "./render.js";
+import {
+  packOriginPathValidateParams,
+  runOriginPathValidation,
+} from "../debug/origin-path-validate.js";
 
 export class GlideConeEngine {
   constructor() {
@@ -56,6 +62,14 @@ export class GlideConeEngine {
       modifiedCells: await createPipeline(this.device, MODIFIED_CELLS_SHADER, [
         "uniform",
         "read-only-storage",
+        "storage",
+      ]),
+      originPathValidate: await createPipeline(this.device, ORIGIN_PATH_VALIDATE_SHADER, [
+        "uniform",
+        "read-only-storage",
+        "read-only-storage",
+        "read-only-storage",
+        "storage",
         "storage",
       ]),
       color: await createPipeline(this.device, COLOR_SHADER, [
@@ -119,6 +133,7 @@ export class GlideConeEngine {
       pathOnly: pathOnlyParam = false,
       sectors: sectorsParam = false,
       showModifiedCells = false,
+      validateOriginPaths = false,
       updateMapMs = 100,
     } = params;
     const raw = rawOverride !== undefined ? rawOverride : rawParam;
@@ -153,6 +168,9 @@ export class GlideConeEngine {
 
     const uniformUsage = GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST;
     const storageUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
+
+    const seedPairs = packSeedPairs(seeds);
+    const seedBuffer = createBuffer(device, new Uint8Array(seedPairs.buffer), storageUsage);
 
     const uniformParams = packParams(
       width,
@@ -203,6 +221,35 @@ export class GlideConeEngine {
       : null;
     const resolveOriginWrite = sectors
       ? device.createBuffer({ size: pairBytes, usage: storageUsage })
+      : null;
+
+    const validateUniformBuffer = validateOriginPaths
+      ? createBuffer(
+          device,
+          new Uint8Array(
+            packOriginPathValidateParams(
+              width,
+              height,
+              maxAltitude,
+              seeds.length,
+              (width + height) * 2,
+              cellSizeM
+            )
+          ),
+          uniformUsage
+        )
+      : null;
+    const countersBuffer = validateOriginPaths
+      ? createBuffer(device, new Uint32Array([0, 0, 0, 0, 0]), storageUsage)
+      : null;
+    const pathMaxLdBuffer = validateOriginPaths
+      ? createBuffer(device, new Float32Array(count), storageUsage)
+      : null;
+    const countersReadBuffer = validateOriginPaths
+      ? device.createBuffer({
+          size: 20,
+          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        })
       : null;
 
     const wgX = Math.ceil(width / 8);
@@ -378,6 +425,21 @@ export class GlideConeEngine {
       await maybeEmitProgress();
     }
 
+    let originPathValidation = null;
+    if (validateOriginPaths) {
+      originPathValidation = await runOriginPathValidation(device, pipelines.originPathValidate, {
+        validateUniformBuffer,
+        altRead,
+        originRead,
+        seedBuffer,
+        countersBuffer,
+        pathMaxLdBuffer,
+        countersReadBuffer,
+        wgX,
+        wgY,
+      });
+    }
+
     let imageData = null;
     if (showModifiedCells) {
       imageData = await renderModifiedFrame();
@@ -394,6 +456,7 @@ export class GlideConeEngine {
       stopReason,
       stopped: stopReason === "stopped" || stopReason === "max_iterations",
       elapsedMs: performance.now() - t0,
+      originPathValidation,
     };
 
     if (imageOnly) {

@@ -1,7 +1,5 @@
-import { dom } from "../dom.js";
 import { sampleDemCell } from "../inspect/cell.js";
-import { isDebugMode, isSingleParamsMode, syncPeekLosUi } from "../params/panel.js";
-import { buildPeekLosGeoAnchor, setPeekLosGeoAnchor } from "./peek-los.js";
+import { isDebugMode, isSingleParamsMode } from "../params/panel.js";
 
 const LONG_PRESS_MS = 600;
 const MOVE_CANCEL_PX = 12;
@@ -44,34 +42,6 @@ function markDebugLongPressHandled(app) {
   }, 400);
 }
 
-function autofillPeekLosFromCell(cell) {
-  if (dom.peekLosInput) {
-    dom.peekLosInput.checked = true;
-  }
-  if (dom.peekLosIInput) {
-    dom.peekLosIInput.value = String(cell.gi);
-  }
-  if (dom.peekLosJInput) {
-    dom.peekLosJInput.value = String(cell.gj);
-  }
-  if (cell.originGi != null && cell.originGj != null) {
-    if (dom.peekLosOiInput) {
-      dom.peekLosOiInput.value = String(cell.originGi);
-    }
-    if (dom.peekLosOjInput) {
-      dom.peekLosOjInput.value = String(cell.originGj);
-    }
-  } else {
-    if (dom.peekLosOiInput) {
-      dom.peekLosOiInput.value = "";
-    }
-    if (dom.peekLosOjInput) {
-      dom.peekLosOjInput.value = "";
-    }
-  }
-  syncPeekLosUi();
-}
-
 function fireDebugLongPress(app, hooks, lng, lat) {
   if (!canDebugLongPress(hooks)) {
     return;
@@ -85,15 +55,11 @@ function fireDebugLongPress(app, hooks, lng, lat) {
 
   const cell = sampleDemCell(lng, lat);
   if (cell) {
-    autofillPeekLosFromCell(cell);
-    const dem = hooks.getConeState?.()?.dem;
-    setPeekLosGeoAnchor(buildPeekLosGeoAnchor(cell, dem));
-    hooks.schedulePersistParamsState?.();
-    const originText =
+    const cellText =
       cell.originGi != null && cell.originGj != null
         ? ` (${cell.gi},${cell.gj})→(${cell.originGi},${cell.originGj})`
         : ` (${cell.gi},${cell.gj})`;
-    hooks.setStatus(`Peek LOS${originText} — recomputing ${pick.label ?? "airport"}…`);
+    hooks.setStatus(`Recomputing ${pick.label ?? "airport"} at${cellText}…`);
   } else {
     hooks.setStatus(`Recomputing ${pick.label ?? "airport"}…`);
   }

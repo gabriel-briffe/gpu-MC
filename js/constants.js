@@ -78,7 +78,7 @@ export const PARAM_HELP = {
   "los-run":
     "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate.\n\nANYTHING ELSE THAN N=0 IS EXPERIMENTAL, MIGHT INTRODUCE MISTAKES, BUGS, PATH ENDING TOO EARLY.. DON'T USE IF YOU DON'T UNDERSTAND THE CODE BEHIND\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule).",
   "viz-mode":
-    "Path only — glide paths on hover/tap, no overlay. \n\nSectors — per-airport colors with grey borders. \n\nContours — 100 m isolines with labels. \n\nStripes, raw raster, and modified cells (debug) — alternating 100 m bands, per-cell colors, or last-iteration dirty flags.",
+    "Path only — glide paths on hover/tap, no overlay. \n\nSectors — per-airport colors with grey borders. \n\nContours — 100 m isolines with labels. \n\nContours + sectors — sector fill and borders with contour lines on top. \n\nStripes, raw raster, and modified cells (debug) — alternating 100 m bands, per-cell colors, or last-iteration dirty flags.",
   preview:
     "How often the map refreshes during GPU compute (sectors, stripes, and raw raster). 0 = update once at the end.",
   "compare-los":
@@ -88,6 +88,8 @@ export const PARAM_HELP = {
 export const VIZ_HINTS = {
   "path-only": "No overlay — hover or tap the map to inspect glide paths.",
   sectors: "Per-airport fill colors (lat/lon hash); grey borders as map lines between sectors.",
+  "contours-sectors":
+    "Sector fill and borders with 100 m contour lines on top; GeoJSON export after run.",
   stripes: "100 m bands relative to airport altitude.",
   raw: "Per-cell altitude colors.",
   "modified-cells": "Black = cells modified on the last GPU iteration; transparent elsewhere.",

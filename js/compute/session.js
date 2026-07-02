@@ -3,6 +3,7 @@ import { MIN_SEEDS, COMPUTE_DONE_STATUS_CLEAR_MS } from "../constants.js";
 import { formatComputeDone } from "./format.js";
 import { getGlideParams } from "./params.js";
 import { updateConeVisualization, updateOverlay } from "./visualization.js";
+import { logOriginPathValidation } from "../debug/origin-path-validate.js";
 
 let hooks;
 
@@ -62,7 +63,7 @@ function makeComputeProgressHandler(dem, glideParams) {
   return ({ imageData, iteration, elapsedMs }) => {
     if (
       !glideParams.pathOnly &&
-      (glideParams.raw || !glideParams.contours) &&
+      (glideParams.raw || glideParams.sectors || !glideParams.contours) &&
       imageData
     ) {
       updateOverlay(imageData, dem);
@@ -149,6 +150,7 @@ export async function runComputation(seedsOverride = null, { gridBounds = null }
 
     hooks.setConeState(dem, result, glideParams);
     updateConeVisualization(result, dem, glideParams);
+    logOriginPathValidation(result);
     hooks.ensurePathLayer();
     hooks.syncCompareLosButton();
     hooks.setDownloadContoursVisible(glideParams.contours);

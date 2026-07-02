@@ -365,8 +365,143 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+export const ORIGIN_PATH_VALIDATE_SHADER = /* wgsl */ `
+struct Params {
+  width: u32,
+  height: u32,
+  maxAlt: f32,
+  seedCount: u32,
+  maxSteps: u32,
+  cellSizeM: f32,
+};
+
+struct Counters {
+  checked: atomic<u32>,
+  valid: atomic<u32>,
+  invalid: atomic<u32>,
+  stoppedAtMaxSteps: atomic<u32>,
+  maxSegmentLdBits: atomic<u32>,
+};
+
+struct PathAnalysis {
+  result: u32,
+  pathMaxLd: f32,
+};
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> altIn: array<f32>;
+@group(0) @binding(2) var<storage, read> originIn: array<vec2<i32>>;
+@group(0) @binding(3) var<storage, read> seeds: array<vec2<i32>>;
+@group(0) @binding(4) var<storage, read_write> counters: Counters;
+@group(0) @binding(5) var<storage, read_write> pathMaxLdOut: array<f32>;
+
+fn idx(x: i32, y: i32) -> u32 {
+  return u32(y) * params.width + u32(x);
+}
+
+fn inBounds(x: i32, y: i32) -> bool {
+  return x >= 0 && y >= 0 && x < i32(params.width) && y < i32(params.height);
+}
+
+fn originValid(ox: i32, oy: i32) -> bool {
+  return inBounds(ox, oy) && !(ox == -1 && oy == -1);
+}
+
+fn isSeedCell(x: i32, y: i32) -> bool {
+  for (var s = 0u; s < params.seedCount; s = s + 1u) {
+    let p = seeds[s];
+    if (p.x == x && p.y == y) {
+      return true;
+    }
+  }
+  return false;
+}
+
+fn hasValidComputedAlt(i: u32) -> bool {
+  if (altIn[i] >= params.maxAlt) {
+    return false;
+  }
+  let o = originIn[i];
+  return originValid(o.x, o.y);
+}
+
+fn atomicMaxF32(ptr: ptr<storage, atomic<u32>, read_write>, value: f32) {
+  if (value <= 0.0) {
+    return;
+  }
+  var oldBits = atomicLoad(ptr);
+  loop {
+    let old = bitcast<f32>(oldBits);
+    if (value <= old) {
+      return;
+    }
+    let exchange = atomicCompareExchangeWeak(ptr, oldBits, bitcast<u32>(value));
+    if (exchange.exchanged) {
+      return;
+    }
+    oldBits = exchange.old_value;
+  }
+}
+
+fn analyzePath(startX: i32, startY: i32) -> PathAnalysis {
+  var cx = startX;
+  var cy = startY;
+  var pathMaxLd = 0.0;
+  for (var step = 0u; step < params.maxSteps; step = step + 1u) {
+    if (isSeedCell(cx, cy)) {
+      return PathAnalysis(0u, pathMaxLd);
+    }
+    let ci = idx(cx, cy);
+    let o = originIn[ci];
+    if (!originValid(o.x, o.y) || (o.x == cx && o.y == cy)) {
+      return PathAnalysis(1u, pathMaxLd);
+    }
+    let altA = altIn[ci];
+    let parentIdx = idx(o.x, o.y);
+    let altB = altIn[parentIdx];
+    let di = o.x - cx;
+    let dj = o.y - cy;
+    let horiz = params.cellSizeM * sqrt(f32(di * di + dj * dj));
+    let vertDrop = altA - altB;
+    var segLd = 99.0;
+    if (vertDrop > 0.0) {
+      segLd = horiz / vertDrop;
+    }
+    pathMaxLd = max(pathMaxLd, segLd);
+    cx = o.x;
+    cy = o.y;
+  }
+  return PathAnalysis(2u, pathMaxLd);
+}
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let x = i32(gid.x);
+  let y = i32(gid.y);
+  if (!inBounds(x, y)) {
+    return;
+  }
+
+  let i = idx(x, y);
+  if (!hasValidComputedAlt(i)) {
+    return;
+  }
+
+  atomicAdd(&counters.checked, 1u);
+  let analysis = analyzePath(x, y);
+  pathMaxLdOut[i] = analysis.pathMaxLd;
+  atomicMaxF32(&counters.maxSegmentLdBits, analysis.pathMaxLd);
+  if (analysis.result == 0u) {
+    atomicAdd(&counters.valid, 1u);
+  } else if (analysis.result == 2u) {
+    atomicAdd(&counters.stoppedAtMaxSteps, 1u);
+  } else {
+    atomicAdd(&counters.invalid, 1u);
+  }
+}
+`;
+
 // Legacy full-grid shaders kept for reference; no longer used by the main compute loop.
-export const MAX_PEEK_LOS_ENTRIES_WGSL = 1024;
 export const ORIGIN_SHADER = /* wgsl */ `
 struct Params {
   width: u32,
@@ -383,30 +518,6 @@ struct Params {
   _pad2: u32,
 };
 
-struct PeekParams {
-  enabled: u32,
-  peekX: i32,
-  peekY: i32,
-  peekOx: i32,
-  peekOy: i32,
-  groundClearance: f32,
-  _pad: f32,
-};
-
-struct PeekEntry {
-  x: i32,
-  y: i32,
-  ground: u32,
-  _pad: u32,
-  alt: f32,
-  groundElev: f32,
-};
-
-struct PeekLog {
-  count: atomic<u32>,
-  entries: array<PeekEntry, ${MAX_PEEK_LOS_ENTRIES_WGSL}>,
-};
-
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> elev: array<f32>;
 @group(0) @binding(2) var<storage, read> altIn: array<f32>;
@@ -414,8 +525,6 @@ struct PeekLog {
 @group(0) @binding(4) var<storage, read> groundIn: array<u32>;
 @group(0) @binding(5) var<storage, read_write> originOut: array<vec2<i32>>;
 @group(0) @binding(6) var<storage, read_write> groundOut: array<u32>;
-@group(0) @binding(7) var<uniform> peekParams: PeekParams;
-@group(0) @binding(8) var<storage, read_write> peekLog: PeekLog;
 
 struct Pick {
   req: f32,
@@ -462,32 +571,8 @@ fn sameOriginRunIsClear(run: u32) -> bool {
   return params.losShortcut != 0u && run >= params.originRunN;
 }
 
-fn recordPeekVisit(x: i32, y: i32) {
-  if (peekParams.enabled == 0u || !inBounds(x, y)) {
-    return;
-  }
-  let slot = atomicAdd(&peekLog.count, 1u);
-  if (slot >= ${MAX_PEEK_LOS_ENTRIES_WGSL}u) {
-    return;
-  }
-  let i = idx(x, y);
-  peekLog.entries[slot].x = x;
-  peekLog.entries[slot].y = y;
-  peekLog.entries[slot].ground = groundIn[i];
-  peekLog.entries[slot].alt = altIn[i];
-  peekLog.entries[slot].groundElev = elev[i] - peekParams.groundClearance;
-}
-
 // Bresenham toward origin cell; stop early on ground (blocked) or N-cell same-origin run (clear).
 fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
-  let tracing = peekParams.enabled != 0u
-    && x0 == peekParams.peekX
-    && y0 == peekParams.peekY
-    && targetOx == peekParams.peekOx
-    && targetOy == peekParams.peekOy;
-  if (tracing) {
-    recordPeekVisit(x0, y0);
-  }
   if (targetOx < 0 || targetOy < 0 || !inBounds(targetOx, targetOy)) {
     return false;
   }
@@ -497,9 +582,6 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
   let adx = abs(targetOx - x0);
   let ady = abs(targetOy - y0);
   if ((adx == 1 && ady == 0) || (adx == 0 && ady == 1)) {
-    if (tracing) {
-      recordPeekVisit(targetOx, targetOy);
-    }
     return true;
   }
 
@@ -533,13 +615,7 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
         }
       }
       if (!(x1 == targetOx && y1 == targetOy) && isGround(x1, y1)) {
-        if (tracing) {
-          recordPeekVisit(x1, y1);
-        }
         return false;
-      }
-      if (tracing) {
-        recordPeekVisit(x1, y1);
       }
       sameOriginRun = bumpSameOriginRun(x1, y1, targetOx, targetOy, sameOriginRun);
       if (sameOriginRunIsClear(sameOriginRun)) {
@@ -565,13 +641,7 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
         }
       }
       if (!(x1 == targetOx && y1 == targetOy) && isGround(x1, y1)) {
-        if (tracing) {
-          recordPeekVisit(x1, y1);
-        }
         return false;
-      }
-      if (tracing) {
-        recordPeekVisit(x1, y1);
       }
       sameOriginRun = bumpSameOriginRun(x1, y1, targetOx, targetOy, sameOriginRun);
       if (sameOriginRunIsClear(sameOriginRun)) {
@@ -630,10 +700,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   let i = idx(x, y);
-
-  if (peekParams.enabled != 0u && x == peekParams.peekX && y == peekParams.peekY) {
-    let _probe = isInViewToOrigin(x, y, peekParams.peekOx, peekParams.peekOy);
-  }
 
   if (groundIn[i] == 1u) {
     originOut[i] = originIn[i];

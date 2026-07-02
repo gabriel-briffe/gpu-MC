@@ -6,9 +6,9 @@ export function parseVizMode(vizModeValue, debugMode) {
   return {
     mode,
     pathOnly: mode === "path-only",
-    sectors: mode === "sectors",
+    sectors: mode === "sectors" || mode === "contours-sectors",
     raw: mode === "raw",
-    contours: mode === "contours",
+    contours: mode === "contours" || mode === "contours-sectors",
     showModifiedCells: mode === "modified-cells",
   };
 }

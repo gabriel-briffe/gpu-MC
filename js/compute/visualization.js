@@ -182,9 +182,6 @@ export function updateConeVisualization(result, dem, glideParams) {
   }
 
   if (glideParams.contours) {
-    coneState.sectorBorderGeojson = null;
-    clearSectorBorderOverlay();
-    clearRasterOverlay();
     const geojson = buildAltitudeContours(
       dem,
       result.altitudes,
@@ -195,13 +192,13 @@ export function updateConeVisualization(result, dem, glideParams) {
     coneState.contourGeojson = geojson;
     updateContourOverlay(geojson);
     hooks.setDownloadContoursVisible(true);
-    return;
+  } else {
+    coneState.contourGeojson = null;
+    clearContourOverlay();
+    hooks.setDownloadContoursVisible(false);
   }
 
   if (glideParams.sectors) {
-    coneState.contourGeojson = null;
-    hooks.setDownloadContoursVisible(false);
-    clearContourOverlay();
     if (result.imageData) {
       updateOverlay(result.imageData, dem);
     }
@@ -215,15 +212,13 @@ export function updateConeVisualization(result, dem, glideParams) {
     );
     coneState.sectorBorderGeojson = borderGeojson;
     updateSectorBorderOverlay(borderGeojson);
-    return;
-  }
-
-  coneState.contourGeojson = null;
-  coneState.sectorBorderGeojson = null;
-  hooks.setDownloadContoursVisible(false);
-  clearContourOverlay();
-  clearSectorBorderOverlay();
-  if (result.imageData) {
-    updateOverlay(result.imageData, dem);
+  } else {
+    coneState.sectorBorderGeojson = null;
+    clearSectorBorderOverlay();
+    if (!glideParams.contours && result.imageData) {
+      updateOverlay(result.imageData, dem);
+    } else {
+      clearRasterOverlay();
+    }
   }
 }

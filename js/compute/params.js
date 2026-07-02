@@ -38,6 +38,7 @@ export function getGlideParams() {
     pathOnly,
     sectors,
     showModifiedCells,
+    validateOriginPaths: isDebugMode(),
     updateMapMs:
       Number.isFinite(updateMapMs) && updateMapMs >= 0 ? updateMapMs : 100,
   };
