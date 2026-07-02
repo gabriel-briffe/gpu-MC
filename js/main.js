@@ -993,7 +993,9 @@ app.map.on("load", async () => {
   initFakeGeo(app, sharedHooks);
   app.map.on("moveend", () => {
     updateTerrainResolutionHint();
-    onAutoModeMapMoveEnd();
+    if (isAutoParamsMode()) {
+      onAutoModeMapMoveEnd();
+    }
     refreshCacheGridForViewport();
     refreshCachedAirportMapLayer();
     if (isIncludeAirspaceEnabled() && !getCacheSelectMode()) {
