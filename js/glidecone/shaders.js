@@ -1,4 +1,5 @@
 export const SECTOR_ORIGIN_RESOLVE_PASSES = 16;
+export const MAX_PEEK_LOS_ENTRIES_WGSL = 1024;
 export const ORIGIN_SHADER = /* wgsl */ `
 struct Params {
   width: u32,
@@ -15,6 +16,30 @@ struct Params {
   _pad2: u32,
 };
 
+struct PeekParams {
+  enabled: u32,
+  peekX: i32,
+  peekY: i32,
+  peekOx: i32,
+  peekOy: i32,
+  groundClearance: f32,
+  _pad: f32,
+};
+
+struct PeekEntry {
+  x: i32,
+  y: i32,
+  ground: u32,
+  _pad: u32,
+  alt: f32,
+  groundElev: f32,
+};
+
+struct PeekLog {
+  count: atomic<u32>,
+  entries: array<PeekEntry, ${MAX_PEEK_LOS_ENTRIES_WGSL}>,
+};
+
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> elev: array<f32>;
 @group(0) @binding(2) var<storage, read> altIn: array<f32>;
@@ -22,6 +47,8 @@ struct Params {
 @group(0) @binding(4) var<storage, read> groundIn: array<u32>;
 @group(0) @binding(5) var<storage, read_write> originOut: array<vec2<i32>>;
 @group(0) @binding(6) var<storage, read_write> groundOut: array<u32>;
+@group(0) @binding(7) var<uniform> peekParams: PeekParams;
+@group(0) @binding(8) var<storage, read_write> peekLog: PeekLog;
 
 struct Pick {
   req: f32,
@@ -68,8 +95,32 @@ fn sameOriginRunIsClear(run: u32) -> bool {
   return params.losShortcut != 0u && run >= params.originRunN;
 }
 
+fn recordPeekVisit(x: i32, y: i32) {
+  if (peekParams.enabled == 0u || !inBounds(x, y)) {
+    return;
+  }
+  let slot = atomicAdd(&peekLog.count, 1u);
+  if (slot >= ${MAX_PEEK_LOS_ENTRIES_WGSL}u) {
+    return;
+  }
+  let i = idx(x, y);
+  peekLog.entries[slot].x = x;
+  peekLog.entries[slot].y = y;
+  peekLog.entries[slot].ground = groundIn[i];
+  peekLog.entries[slot].alt = altIn[i];
+  peekLog.entries[slot].groundElev = elev[i] - peekParams.groundClearance;
+}
+
 // Bresenham toward origin cell; stop early on ground (blocked) or N-cell same-origin run (clear).
 fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
+  let tracing = peekParams.enabled != 0u
+    && x0 == peekParams.peekX
+    && y0 == peekParams.peekY
+    && targetOx == peekParams.peekOx
+    && targetOy == peekParams.peekOy;
+  if (tracing) {
+    recordPeekVisit(x0, y0);
+  }
   if (targetOx < 0 || targetOy < 0 || !inBounds(targetOx, targetOy)) {
     return false;
   }
@@ -79,6 +130,9 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
   let adx = abs(targetOx - x0);
   let ady = abs(targetOy - y0);
   if ((adx == 1 && ady == 0) || (adx == 0 && ady == 1)) {
+    if (tracing) {
+      recordPeekVisit(targetOx, targetOy);
+    }
     return true;
   }
 
@@ -112,7 +166,13 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
         }
       }
       if (!(x1 == targetOx && y1 == targetOy) && isGround(x1, y1)) {
+        if (tracing) {
+          recordPeekVisit(x1, y1);
+        }
         return false;
+      }
+      if (tracing) {
+        recordPeekVisit(x1, y1);
       }
       sameOriginRun = bumpSameOriginRun(x1, y1, targetOx, targetOy, sameOriginRun);
       if (sameOriginRunIsClear(sameOriginRun)) {
@@ -138,7 +198,13 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
         }
       }
       if (!(x1 == targetOx && y1 == targetOy) && isGround(x1, y1)) {
+        if (tracing) {
+          recordPeekVisit(x1, y1);
+        }
         return false;
+      }
+      if (tracing) {
+        recordPeekVisit(x1, y1);
       }
       sameOriginRun = bumpSameOriginRun(x1, y1, targetOx, targetOy, sameOriginRun);
       if (sameOriginRunIsClear(sameOriginRun)) {
@@ -197,6 +263,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   let i = idx(x, y);
+
+  if (peekParams.enabled != 0u && x == peekParams.peekX && y == peekParams.peekY) {
+    let _probe = isInViewToOrigin(x, y, peekParams.peekOx, peekParams.peekOy);
+  }
 
   if (groundIn[i] == 1u) {
     originOut[i] = originIn[i];

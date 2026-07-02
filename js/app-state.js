@@ -55,6 +55,9 @@ export function createApp() {
     manualInspectTimeout: null,
     touchHandledRecently: false,
     manualTouchStart: null,
+    debugLongPressTimer: null,
+    debugLongPressPoint: null,
+    debugLongPressHandledRecently: false,
     selectedCacheCells: new Set(),
     interaction: {
       hoverPath: false,

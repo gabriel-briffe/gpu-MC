@@ -481,6 +481,7 @@ app.hooks = {
   clearSingleComputeScheduling,
   flushSingleAirportCompute,
   getSingleComputePending,
+  getSingleLastPick: () => app.singleLastPick,
   exitManualAirportSelectMode,
   exitAirportAreaSelectMode,
   scheduleAutoCompute,
@@ -517,6 +518,7 @@ app.hooks = {
   scheduleSingleAirportCompute,
 };
 initParamsPanel(app, dom);
+sharedHooks.schedulePersistParamsState = () => app.hooks.schedulePersistParamsState?.();
 
 registerTerrainTileProtocol();
 
@@ -714,6 +716,7 @@ function setConeState(dem, result, glideParams) {
     groundClearance: glideParams?.groundClearance ?? 100,
     contourGeojson: null,
     sectorBorderGeojson: null,
+    peekLosTrace: result?.peekLosTrace ?? null,
   };
   syncComputeContextBar();
   syncExtractMatrixButton();

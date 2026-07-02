@@ -5,6 +5,7 @@ import {
   loadParamsState,
   restoreParamsState,
 } from "./persist.js";
+import { clearPeekLosGeoAnchor } from "../debug/peek-los.js";
 import { initParamSteppers } from "./steppers.js";
 
 let app;
@@ -170,6 +171,25 @@ export function setParamsMode(mode, { initial = false } = {}) {
   app.hooks.updateParamsFooter?.();
 }
 
+export function syncPeekLosUi() {
+  const enabled = isDebugMode() && (dom.peekLosInput?.checked ?? false);
+  if (dom.peekLosCoordsEl) {
+    dom.peekLosCoordsEl.toggleAttribute("disabled", !enabled);
+  }
+  if (dom.peekLosIInput) {
+    dom.peekLosIInput.disabled = !enabled;
+  }
+  if (dom.peekLosJInput) {
+    dom.peekLosJInput.disabled = !enabled;
+  }
+  if (dom.peekLosOiInput) {
+    dom.peekLosOiInput.disabled = !enabled;
+  }
+  if (dom.peekLosOjInput) {
+    dom.peekLosOjInput.disabled = !enabled;
+  }
+}
+
 export function syncDebugUi() {
   const debug = isDebugMode();
   dom.paramsShell?.classList.toggle("debug-mode", debug);
@@ -189,6 +209,7 @@ export function syncDebugUi() {
   app.hooks.syncExtractMatrixButton();
   app.hooks.syncDownloadContoursButton();
   app.hooks.syncBaseMapTerrainMaxZoom?.();
+  syncPeekLosUi();
   if (!debug) {
     app.hooks.exitMatrixExtractMode?.();
   }
@@ -329,11 +350,23 @@ export function initParamsPanel(appState, domRefs) {
   });
 
   document.getElementById("los-run")?.addEventListener("input", app.hooks.syncCompareLosButton);
+  dom.peekLosInput?.addEventListener("change", syncPeekLosUi);
+  for (const input of [
+    dom.peekLosIInput,
+    dom.peekLosJInput,
+    dom.peekLosOiInput,
+    dom.peekLosOjInput,
+  ]) {
+    input?.addEventListener("input", () => {
+      clearPeekLosGeoAnchor();
+    });
+  }
   app.hooks.detectInteractionMode();
   for (const query of ["(pointer: coarse)", "(pointer: fine)", "(hover: hover)"]) {
     window.matchMedia(query).addEventListener("change", app.hooks.detectInteractionMode);
   }
   app.hooks.syncCompareLosButton();
+  syncPeekLosUi();
   syncDebugUi();
   app.hooks.updateParamsFooter();
 

@@ -153,6 +153,10 @@
         display: none !important;
       }
 
+      #params-shell:not(.params-mode-single):not(.params-mode-manual) .params-single-manual-only {
+        display: none !important;
+      }
+
       .params-auto-only {
         display: none !important;
       }
@@ -370,6 +374,31 @@
       #disable-ground-origin-field .param-check,
       #debug-tools-field > .param-check {
         justify-content: center;
+      }
+
+      .peek-los-coords {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 0.55rem;
+      }
+
+      .peek-los-coords[disabled] {
+        opacity: 0.45;
+        pointer-events: none;
+      }
+
+      .peek-los-coord {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.82rem;
+        color: #c8d0dc;
+      }
+
+      .peek-los-coord input {
+        width: 4.5rem;
       }
 
       .params-section-actions {

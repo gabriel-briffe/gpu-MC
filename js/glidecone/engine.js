@@ -21,6 +21,18 @@ import {
   unpackXY,
   createPipeline,
 } from "./render.js";
+import {
+  packPeekParams,
+  peekLogBufferSize,
+  formatPeekLosTrace,
+  resolvePeekLosIndices,
+  isPeekLosInBounds,
+  capturePeekLosIteration,
+  createPeekCellReaders,
+  peekCellGridIndex,
+  diffPeekCellState,
+  readPeekCellStateOnly,
+} from "../debug/peek-los.js";
 export class GlideConeEngine {
   constructor() {
     this.device = null;
@@ -44,6 +56,8 @@ export class GlideConeEngine {
         "read-only-storage",
         "read-only-storage",
         "storage",
+        "storage",
+        "uniform",
         "storage",
       ]),
       alt: await createPipeline(this.device, ALT_SHADER, [
@@ -133,6 +147,7 @@ export class GlideConeEngine {
       pathOnly: pathOnlyParam = false,
       sectors: sectorsParam = false,
       disableGroundOrigin: disableGroundOriginParam = false,
+      peekLos = false,
       updateMapMs = 100,
     } = params;
     const raw = rawOverride !== undefined ? rawOverride : rawParam;
@@ -140,6 +155,9 @@ export class GlideConeEngine {
     const pathOnly = pathOnlyParam;
     const sectors = sectorsParam;
     const disableGroundOrigin = disableGroundOriginParam;
+    const peekIndices = resolvePeekLosIndices(params, dem);
+    const { peekLosI, peekLosJ, peekLosOi, peekLosOj } = peekIndices;
+    const peekLosEnabled = peekLos && isPeekLosInBounds(peekIndices, dem);
     const needsRaster = imageOnly || raw || sectors || (!contours && !pathOnly);
     const useFullBresenham = fullBresenham || originRunN === 0;
     const losShortcut = useFullBresenham ? 0 : 1;
@@ -208,6 +226,31 @@ export class GlideConeEngine {
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
 
+    const peekLogBytes = peekLogBufferSize();
+    const peekParamsBuffer = createBuffer(
+      device,
+      new Uint8Array(
+        packPeekParams({
+          enabled: peekLosEnabled,
+          peekI: peekLosEnabled ? Math.floor(peekLosI) : -1,
+          peekJ: peekLosEnabled ? Math.floor(peekLosJ) : -1,
+          peekOi: peekLosEnabled ? Math.floor(peekLosOi) : -1,
+          peekOj: peekLosEnabled ? Math.floor(peekLosOj) : -1,
+          groundClearance,
+        })
+      ),
+      uniformUsage
+    );
+    const peekLogBuffer = createBuffer(
+      device,
+      new Uint8Array(peekLogBytes),
+      storageUsage
+    );
+    const peekLogReadBuffer = device.createBuffer({
+      size: peekLogBytes,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+
     const seedPaletteBuffer = sectors
       ? createBuffer(
           device,
@@ -246,6 +289,20 @@ export class GlideConeEngine {
       Number.isFinite(updateMapMs) &&
       updateMapMs > 0;
     let lastMapUpdate = 0;
+    const peekLosIterations = [];
+    const peekCellChanges = [];
+    const peekCellReaders = peekLosEnabled ? createPeekCellReaders(device) : null;
+    const peekCellIdx = peekLosEnabled ? peekCellGridIndex(peekLosI, peekLosJ, width) : -1;
+    let prevPeekCellState = null;
+    if (peekLosEnabled) {
+      prevPeekCellState = await readPeekCellStateOnly(
+        device,
+        originRead,
+        altRead,
+        peekCellIdx,
+        peekCellReaders
+      );
+    }
 
     const frameArgs = {
       colorPipeline,
@@ -310,6 +367,9 @@ export class GlideConeEngine {
       }
 
       actualIterations += 1;
+      if (peekLosEnabled) {
+        device.queue.writeBuffer(peekLogBuffer, 0, new Uint8Array(peekLogBytes));
+      }
       const encoder = device.createCommandEncoder();
 
       encoder.copyBufferToBuffer(originRead, 0, originSnap, 0, pairBytes);
@@ -326,6 +386,8 @@ export class GlideConeEngine {
           { binding: 4, resource: { buffer: groundRead } },
           { binding: 5, resource: { buffer: originWrite } },
           { binding: 6, resource: { buffer: groundWrite } },
+          { binding: 7, resource: { buffer: peekParamsBuffer } },
+          { binding: 8, resource: { buffer: peekLogBuffer } },
         ],
       });
       const passOrigin = encoder.beginComputePass();
@@ -384,6 +446,24 @@ export class GlideConeEngine {
       const changes = new Uint32Array(changeReadBuffer.getMappedRange().slice(0))[0];
       changeReadBuffer.unmap();
 
+      if (peekLosEnabled) {
+        const snap = await capturePeekLosIteration(device, actualIterations, {
+          peekLogBuffer,
+          peekLogReadBuffer,
+          peekLogBytes,
+          originRead,
+          altRead,
+          cellIdx: peekCellIdx,
+          cellReaders: peekCellReaders,
+          prevCellState: prevPeekCellState,
+          i: Math.floor(peekLosI),
+          j: Math.floor(peekLosJ),
+        });
+        peekCellChanges.push(...snap.cellChanges);
+        prevPeekCellState = snap.cellState;
+        peekLosIterations.push(snap);
+      }
+
       if (changes === 0) {
         break;
       }
@@ -414,6 +494,25 @@ export class GlideConeEngine {
       passGroundOrigin.dispatchWorkgroups(wgX, wgY);
       passGroundOrigin.end();
       device.queue.submit([groundOriginEncoder.finish()]);
+
+      if (peekLosEnabled) {
+        const cellState = await readPeekCellStateOnly(
+          device,
+          originRead,
+          altRead,
+          peekCellIdx,
+          peekCellReaders
+        );
+        const groundChanges = diffPeekCellState(
+          actualIterations,
+          Math.floor(peekLosI),
+          Math.floor(peekLosJ),
+          prevPeekCellState,
+          cellState
+        ).map((change) => ({ ...change, phase: "ground_origin" }));
+        peekCellChanges.push(...groundChanges);
+        prevPeekCellState = cellState;
+      }
     }
 
     let imageData = null;
@@ -470,12 +569,25 @@ export class GlideConeEngine {
     const groundOut = new Uint32Array(groundReadBuffer.getMappedRange().slice(0));
     groundReadBuffer.unmap();
 
+    let peekLosTrace = null;
+    if (peekLosEnabled) {
+      const lastCells = peekLosIterations.at(-1)?.cells ?? [];
+      peekLosTrace = formatPeekLosTrace({
+        from: { i: Math.floor(peekLosI), j: Math.floor(peekLosJ) },
+        to: { oi: Math.floor(peekLosOi), oj: Math.floor(peekLosOj) },
+        cells: lastCells,
+        iterations: peekLosIterations,
+        cellChanges: peekCellChanges,
+      });
+    }
+
     return {
       ...baseResult,
       altitudes,
       originX: originXOut,
       originY: originYOut,
       ground: groundOut,
+      peekLosTrace,
     };
   }
 }

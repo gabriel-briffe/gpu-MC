@@ -10,6 +10,7 @@ import {
   requestStopCompute,
   runComputation,
 } from "../compute/session.js";
+import { bindDebugMapLongPress, wasDebugLongPressHandled } from "../debug/map-long-press.js";
 
 function markTouchHandled(app) {
   app.touchHandledRecently = true;
@@ -216,6 +217,7 @@ export function bindMapEvents(app, hooks) {
 
     if (
       app.touchHandledRecently ||
+      wasDebugLongPressHandled(app) ||
       hooks.getMatrixExtractMode?.() ||
       hooks.hasMatrixExtractInteraction?.() ||
       hooks.getAirportAreaSelectMode() ||
@@ -249,6 +251,8 @@ export function bindMapEvents(app, hooks) {
 
     hooks.onMapClickInspect(event);
   });
+
+  bindDebugMapLongPress(app, hooks);
 }
 
 export function bindUiEvents(app, hooks) {

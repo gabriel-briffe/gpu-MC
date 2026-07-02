@@ -307,7 +307,7 @@
             </div>
           </div>
 
-          <div class="params-section params-manual-only">
+          <div class="params-section params-single-manual-only">
             <div class="params-fields">
               <div class="param-field param-field-full" id="debug-mode-field">
                 <label class="param-check" for="debug-mode">
@@ -329,6 +329,28 @@
                   <input id="disable-ground-origin" type="checkbox" />
                   <span>Disable ground_origin shader</span>
                 </label>
+                <label class="param-check" for="peek-los">
+                  <input id="peek-los" type="checkbox" />
+                  <span>Peek LOS</span>
+                </label>
+                <div class="peek-los-coords" id="peek-los-coords">
+                  <label class="peek-los-coord" for="peek-los-i">
+                    <span>i</span>
+                    <input id="peek-los-i" type="number" step="1" />
+                  </label>
+                  <label class="peek-los-coord" for="peek-los-j">
+                    <span>j</span>
+                    <input id="peek-los-j" type="number" step="1" />
+                  </label>
+                  <label class="peek-los-coord" for="peek-los-oi">
+                    <span>oi</span>
+                    <input id="peek-los-oi" type="number" step="1" />
+                  </label>
+                  <label class="peek-los-coord" for="peek-los-oj">
+                    <span>oj</span>
+                    <input id="peek-los-oj" type="number" step="1" />
+                  </label>
+                </div>
               </div>
             </div>
           </div>

@@ -53,11 +53,11 @@ export function formatHoverTip(cell, { groundClearance, debugMode, metrics }) {
     text +=
       `\n\ncell i, j: ${cellIj}\n` +
       `origin i, j: ${originIj}\n` +
-      `\n<span class="path-info-heading">comparison with measured path length (haversine):</span>\n` +
+      // `\n<span class="path-info-heading">comparison with measured path length (haversine):</span>\n` +
       `path length: ${pathLengthLine}\n` +
       `required alt: ${requiredLine}\n` +
-      `delta: ${deltaLine}\n` +
-      `<span class="path-info-note">delta heavily positive might mean path went over a saddle, or starts from a mountain well above glide, no issue in that case. use this on flatland at your latitude to check for unacceptable errors</span>`;
+      `delta: ${deltaLine}\n` ;
+      // `<span class="path-info-note">delta heavily positive might mean path went over a saddle, or starts from a mountain well above glide, no issue in that case. use this on flatland at your latitude to check for unacceptable errors</span>`;
   }
 
   return text;

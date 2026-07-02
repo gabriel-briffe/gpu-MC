@@ -39,6 +39,11 @@ function collectFormState(dom) {
     sectorsOpacity: readInput(dom.sectorsOpacityInput),
     debugMode: readCheckbox(dom.debugModeInput),
     disableGroundOrigin: readCheckbox(dom.disableGroundOriginInput),
+    peekLos: readCheckbox(dom.peekLosInput),
+    peekLosI: readInput(dom.peekLosIInput),
+    peekLosJ: readInput(dom.peekLosJInput),
+    peekLosOi: readInput(dom.peekLosOiInput),
+    peekLosOj: readInput(dom.peekLosOjInput),
   };
 }
 
@@ -60,6 +65,11 @@ function applyFormState(dom, form) {
   writeInput(dom.sectorsOpacityInput, form.sectorsOpacity);
   writeCheckbox(dom.debugModeInput, form.debugMode);
   writeCheckbox(dom.disableGroundOriginInput, form.disableGroundOrigin);
+  writeCheckbox(dom.peekLosInput, form.peekLos);
+  writeInput(dom.peekLosIInput, form.peekLosI);
+  writeInput(dom.peekLosJInput, form.peekLosJ);
+  writeInput(dom.peekLosOiInput, form.peekLosOi);
+  writeInput(dom.peekLosOjInput, form.peekLosOj);
 }
 
 export function loadParamsState() {
