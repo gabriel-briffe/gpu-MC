@@ -83,9 +83,6 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
   }
   let adx = abs(targetOx - x0);
   let ady = abs(targetOy - y0);
-  if ((adx == 1 && ady == 0) || (adx == 0 && ady == 1)) {
-    return true;
-  }
 
   var x1 = x0;
   var y1 = y0;
@@ -588,9 +585,6 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
   }
   let adx = abs(targetOx - x0);
   let ady = abs(targetOy - y0);
-  if ((adx == 1 && ady == 0) || (adx == 0 && ady == 1)) {
-    return true;
-  }
 
   var x1 = x0;
   var y1 = y0;
