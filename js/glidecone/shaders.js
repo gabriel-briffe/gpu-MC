@@ -155,6 +155,9 @@ fn coneAlt(ox: i32, oy: i32, x: i32, y: i32) -> f32 {
 }
 
 fn electedFromNeighbor(x: i32, y: i32, px: i32, py: i32) -> vec2<i32> {
+  if (isGroundAt(px, py)) {
+    return vec2<i32>(px, py);
+  }
   let parentOrigin = originIn[idx(px, py)];
   if (isInViewToOrigin(x, y, parentOrigin.x, parentOrigin.y)) {
     return vec2<i32>(parentOrigin.x, parentOrigin.y);
@@ -381,6 +384,8 @@ struct Counters {
   invalid: atomic<u32>,
   stoppedAtMaxSteps: atomic<u32>,
   maxSegmentLdBits: atomic<u32>,
+  maxLdCellX: atomic<i32>,
+  maxLdCellY: atomic<i32>,
 };
 
 struct PathAnalysis {
@@ -425,18 +430,20 @@ fn hasValidComputedAlt(i: u32) -> bool {
   return originValid(o.x, o.y);
 }
 
-fn atomicMaxF32(ptr: ptr<storage, atomic<u32>, read_write>, value: f32) {
+fn atomicMaxPathLd(cellX: i32, cellY: i32, value: f32) {
   if (value <= 0.0) {
     return;
   }
-  var oldBits = atomicLoad(ptr);
+  var oldBits = atomicLoad(&counters.maxSegmentLdBits);
   loop {
     let old = bitcast<f32>(oldBits);
     if (value <= old) {
       return;
     }
-    let exchange = atomicCompareExchangeWeak(ptr, oldBits, bitcast<u32>(value));
+    let exchange = atomicCompareExchangeWeak(&counters.maxSegmentLdBits, oldBits, bitcast<u32>(value));
     if (exchange.exchanged) {
+      atomicStore(&counters.maxLdCellX, cellX);
+      atomicStore(&counters.maxLdCellY, cellY);
       return;
     }
     oldBits = exchange.old_value;
@@ -463,7 +470,7 @@ fn analyzePath(startX: i32, startY: i32) -> PathAnalysis {
     let dj = o.y - cy;
     let horiz = params.cellSizeM * sqrt(f32(di * di + dj * dj));
     let vertDrop = altA - altB;
-    var segLd = 99.0;
+    var segLd = -99.0;
     if (vertDrop > 0.0) {
       segLd = horiz / vertDrop;
     }
@@ -490,7 +497,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   atomicAdd(&counters.checked, 1u);
   let analysis = analyzePath(x, y);
   pathMaxLdOut[i] = analysis.pathMaxLd;
-  atomicMaxF32(&counters.maxSegmentLdBits, analysis.pathMaxLd);
+  atomicMaxPathLd(x, y, analysis.pathMaxLd);
   if (analysis.result == 0u) {
     atomicAdd(&counters.valid, 1u);
   } else if (analysis.result == 2u) {
@@ -780,21 +787,15 @@ export const GROUND_ORIGIN_SHADER = /* wgsl */ `
 struct Params {
   width: u32,
   height: u32,
-  homeX: i32,
-  homeY: i32,
-  cellSizeM: f32,
-  glideRatio: f32,
   maxAlt: f32,
-  homeAlt: f32,
-  losShortcut: u32,
-  originRunN: u32,
   seedCount: u32,
-  _pad: u32,
 };
+
+const FLAG_GROUND: u32 = 1u;
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> alt: array<f32>;
-@group(0) @binding(2) var<storage, read> ground: array<u32>;
+@group(0) @binding(2) var<storage, read> flags: array<u32>;
 @group(0) @binding(3) var<storage, read_write> origin: array<vec2<i32>>;
 @group(0) @binding(4) var<storage, read> seeds: array<vec2<i32>>;
 
@@ -804,6 +805,10 @@ fn idx(x: i32, y: i32) -> u32 {
 
 fn inBounds(x: i32, y: i32) -> bool {
   return x >= 0 && y >= 0 && x < i32(params.width) && y < i32(params.height);
+}
+
+fn isGround(i: u32) -> bool {
+  return (flags[i] & FLAG_GROUND) != 0u;
 }
 
 fn isSeedCell(x: i32, y: i32) -> bool {
@@ -828,7 +833,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   let i = idx(x, y);
-  if (ground[i] != 1u) {
+  if (!isGround(i)) {
     return;
   }
 

@@ -153,6 +153,41 @@ export function resolveDeepOriginsGpu(
   return readBuf;
 }
 
+export function packGroundOriginParams(width, height, maxAlt, seedCount) {
+  const buf = new ArrayBuffer(16);
+  const view = new DataView(buf);
+  view.setUint32(0, width, true);
+  view.setUint32(4, height, true);
+  view.setFloat32(8, maxAlt, true);
+  view.setUint32(12, seedCount, true);
+  return buf;
+}
+
+export function runGroundOriginPass(
+  device,
+  { pipeline, layout },
+  { groundOriginUniformBuffer, altRead, flagsRead, originRead, seedBuffer, wgX, wgY }
+) {
+  const bind = device.createBindGroup({
+    layout,
+    entries: [
+      { binding: 0, resource: { buffer: groundOriginUniformBuffer } },
+      { binding: 1, resource: { buffer: altRead } },
+      { binding: 2, resource: { buffer: flagsRead } },
+      { binding: 3, resource: { buffer: originRead } },
+      { binding: 4, resource: { buffer: seedBuffer } },
+    ],
+  });
+
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bind);
+  pass.dispatchWorkgroups(wgX, wgY);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+}
+
 export function packParams(
   width,
   height,

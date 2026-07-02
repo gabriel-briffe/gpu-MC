@@ -39,6 +39,7 @@ export function getGlideParams() {
     sectors,
     showModifiedCells,
     validateOriginPaths: isDebugMode(),
+    disableGroundOrigin: isDebugMode() && (dom.disableGroundOriginInput?.checked ?? false),
     updateMapMs:
       Number.isFinite(updateMapMs) && updateMapMs >= 0 ? updateMapMs : 100,
   };

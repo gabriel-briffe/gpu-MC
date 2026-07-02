@@ -169,6 +169,7 @@ function formatHoverTip(cell) {
     groundClearance: coneState?.groundClearance ?? 100,
     debugMode: isDebugMode(),
     metrics: seedPathMetrics(cell),
+    glideRatio: coneState?.glideRatio ?? 20,
   });
 }
 

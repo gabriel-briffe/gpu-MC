@@ -137,6 +137,53 @@ export function traceOriginRelayPath(x, y, dem, originX, originY) {
   return { distanceM: totalDistM, seedX: cx, seedY: cy, complete: false };
 }
 
+export function pathMaxSegmentLd(gi, gj) {
+  const coneState = hooks.getConeState();
+  if (!coneState) {
+    return null;
+  }
+  const { dem, originX, originY, altitudes, maxAltitude } = coneState;
+  const startIdx = cellIndex(gi, gj, dem);
+  const startAlt = altitudes[startIdx];
+  if (!Number.isFinite(startAlt) || startAlt >= maxAltitude) {
+    return null;
+  }
+  const startOx = originX[startIdx];
+  const startOy = originY[startIdx];
+  if (startOx < 0 || startOy < 0) {
+    return null;
+  }
+
+  let cx = gi;
+  let cy = gj;
+  let pathMaxLd = Number.NEGATIVE_INFINITY;
+  const maxSteps = (dem.width + dem.height) * 2;
+
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (isSeedCell(cx, cy, dem)) {
+      return pathMaxLd === Number.NEGATIVE_INFINITY ? 0 : pathMaxLd;
+    }
+    const ci = cellIndex(cx, cy, dem);
+    const nx = originX[ci];
+    const ny = originY[ci];
+    if (nx < 0 || ny < 0 || (nx === cx && ny === cy)) {
+      return pathMaxLd === Number.NEGATIVE_INFINITY ? 0 : pathMaxLd;
+    }
+    const altA = altitudes[ci];
+    const altB = altitudes[cellIndex(nx, ny, dem)];
+    const di = nx - cx;
+    const dj = ny - cy;
+    const horiz = dem.cellSizeM * Math.hypot(di, dj);
+    const vertDrop = altA - altB;
+    const segLd = vertDrop > 0 ? horiz / vertDrop : -99;
+    pathMaxLd = Math.max(pathMaxLd, segLd);
+    cx = nx;
+    cy = ny;
+  }
+
+  return pathMaxLd === Number.NEGATIVE_INFINITY ? 0 : pathMaxLd;
+}
+
 function seedAltitudeAt(dem, seedIdx, circuitHeight) {
   const terrain = dem.terrainMsl
     ? dem.terrainMsl[seedIdx]
@@ -165,6 +212,7 @@ export function seedPathMetrics(cell) {
     seedAlt,
     isGroundSeed: ground[seedIdx] === 1,
     complete: path.complete,
+    maxSegmentLd: pathMaxSegmentLd(cell.gi, cell.gj),
   };
 }
 

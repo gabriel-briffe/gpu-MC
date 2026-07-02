@@ -3,6 +3,7 @@ import {
   CHANGED_SUM_SHADER,
   MODIFIED_CELLS_SHADER,
   ORIGIN_PATH_VALIDATE_SHADER,
+  GROUND_ORIGIN_SHADER,
   FLAG_CHANGED,
   COLOR_SHADER,
   COLOR_SHADER_RAW,
@@ -22,10 +23,13 @@ import {
   createPipeline,
   packSeedPairs,
   renderModifiedCellsFrame,
+  packGroundOriginParams,
+  runGroundOriginPass,
 } from "./render.js";
 import {
   packOriginPathValidateParams,
   runOriginPathValidation,
+  emptyCountersBuffer,
 } from "../debug/origin-path-validate.js";
 
 export class GlideConeEngine {
@@ -71,6 +75,13 @@ export class GlideConeEngine {
         "read-only-storage",
         "storage",
         "storage",
+      ]),
+      groundOrigin: await createPipeline(this.device, GROUND_ORIGIN_SHADER, [
+        "uniform",
+        "read-only-storage",
+        "read-only-storage",
+        "storage",
+        "read-only-storage",
       ]),
       color: await createPipeline(this.device, COLOR_SHADER, [
         "uniform",
@@ -134,6 +145,7 @@ export class GlideConeEngine {
       sectors: sectorsParam = false,
       showModifiedCells = false,
       validateOriginPaths = false,
+      disableGroundOrigin = false,
       updateMapMs = 100,
     } = params;
     const raw = rawOverride !== undefined ? rawOverride : rawParam;
@@ -240,17 +252,23 @@ export class GlideConeEngine {
         )
       : null;
     const countersBuffer = validateOriginPaths
-      ? createBuffer(device, new Uint32Array([0, 0, 0, 0, 0]), storageUsage)
+      ? createBuffer(device, new Uint8Array(emptyCountersBuffer()), storageUsage)
       : null;
     const pathMaxLdBuffer = validateOriginPaths
       ? createBuffer(device, new Float32Array(count), storageUsage)
       : null;
     const countersReadBuffer = validateOriginPaths
       ? device.createBuffer({
-          size: 20,
+          size: 28,
           usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         })
       : null;
+
+    const groundOriginUniformBuffer = createBuffer(
+      device,
+      new Uint8Array(packGroundOriginParams(width, height, maxAltitude, seeds.length)),
+      uniformUsage
+    );
 
     const wgX = Math.ceil(width / 8);
     const wgY = Math.ceil(height / 8);
@@ -423,6 +441,20 @@ export class GlideConeEngine {
       frameArgs.originRead = originRead;
       frameArgs.groundRead = flagsPrev;
       await maybeEmitProgress();
+    }
+
+    const runGroundOrigin = !disableGroundOrigin;
+    if (runGroundOrigin) {
+      runGroundOriginPass(device, pipelines.groundOrigin, {
+        groundOriginUniformBuffer,
+        altRead,
+        flagsRead: flagsPrev,
+        originRead,
+        seedBuffer,
+        wgX,
+        wgY,
+      });
+      frameArgs.originRead = originRead;
     }
 
     let originPathValidation = null;

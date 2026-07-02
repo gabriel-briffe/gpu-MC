@@ -331,6 +331,9 @@ export function initParamsPanel(appState, domRefs) {
   });
 
   document.getElementById("los-run")?.addEventListener("input", app.hooks.syncCompareLosButton);
+  dom.disableGroundOriginInput?.addEventListener("change", () => {
+    scheduleParamsRecompute({ debounce: false });
+  });
   app.hooks.detectInteractionMode();
   for (const query of ["(pointer: coarse)", "(pointer: fine)", "(hover: hover)"]) {
     window.matchMedia(query).addEventListener("change", app.hooks.detectInteractionMode);

@@ -1,3 +1,13 @@
+const COUNTERS_BYTE_LENGTH = 28;
+
+export function emptyCountersBuffer() {
+  const buf = new ArrayBuffer(COUNTERS_BYTE_LENGTH);
+  const view = new DataView(buf);
+  view.setInt32(20, -1, true);
+  view.setInt32(24, -1, true);
+  return buf;
+}
+
 export function packOriginPathValidateParams(
   width,
   height,
@@ -17,11 +27,17 @@ export function packOriginPathValidateParams(
   return buf;
 }
 
-function formatMaxSegmentLd(maxSegmentLd) {
+function formatMaxSegmentLd(maxSegmentLd, maxLdCellI, maxLdCellJ) {
   if (!Number.isFinite(maxSegmentLd) || maxSegmentLd <= 0) {
     return "no descending path segments";
   }
-  return `max segment L/D: ${maxSegmentLd.toFixed(2)}`;
+  const hasCell =
+    Number.isInteger(maxLdCellI) &&
+    Number.isInteger(maxLdCellJ) &&
+    maxLdCellI >= 0 &&
+    maxLdCellJ >= 0;
+  const cellNote = hasCell ? ` at i=${maxLdCellI}, j=${maxLdCellJ}` : "";
+  return `max segment L/D: ${maxSegmentLd.toFixed(2)}${cellNote}`;
 }
 
 export function logOriginPathValidation(result) {
@@ -29,7 +45,7 @@ export function logOriginPathValidation(result) {
   if (!stats) {
     return;
   }
-  const ldNote = formatMaxSegmentLd(stats.maxSegmentLd);
+  const ldNote = formatMaxSegmentLd(stats.maxSegmentLd, stats.maxLdCellI, stats.maxLdCellJ);
   const failed = stats.invalid + stats.stoppedAtMaxSteps;
   if (failed === 0) {
     console.info(`all path lead back to an airport (${ldNote})`);
@@ -65,7 +81,7 @@ export async function runOriginPathValidation(
     wgY,
   }
 ) {
-  device.queue.writeBuffer(countersBuffer, 0, new Uint32Array([0, 0, 0, 0, 0]));
+  device.queue.writeBuffer(countersBuffer, 0, emptyCountersBuffer());
 
   const bind = device.createBindGroup({
     layout,
@@ -85,7 +101,7 @@ export async function runOriginPathValidation(
   pass.setBindGroup(0, bind);
   pass.dispatchWorkgroups(wgX, wgY);
   pass.end();
-  encoder.copyBufferToBuffer(countersBuffer, 0, countersReadBuffer, 0, 20);
+  encoder.copyBufferToBuffer(countersBuffer, 0, countersReadBuffer, 0, COUNTERS_BYTE_LENGTH);
   device.queue.submit([encoder.finish()]);
 
   await countersReadBuffer.mapAsync(GPUMapMode.READ);
@@ -99,5 +115,7 @@ export async function runOriginPathValidation(
     invalid: view.getUint32(8, true),
     stoppedAtMaxSteps: view.getUint32(12, true),
     maxSegmentLd: view.getFloat32(16, true),
+    maxLdCellI: view.getInt32(20, true),
+    maxLdCellJ: view.getInt32(24, true),
   };
 }

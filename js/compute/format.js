@@ -18,7 +18,7 @@ export function tooltipNum(value, { warn = false, unit = "m" } = {}) {
   return `<span class="${classes}">${value}${unit ? ` ${unit}` : ""}</span>`;
 }
 
-export function formatHoverTip(cell, { groundClearance, debugMode, metrics }) {
+export function formatHoverTip(cell, { groundClearance, debugMode, metrics, glideRatio = 20 }) {
   const minAltVal = cell.alt;
   const minAlt = minAltVal !== null ? tooltipNum(Math.round(minAltVal)) : "—";
   const groundElev = tooltipNum(Math.round(cell.groundElev));
@@ -43,6 +43,21 @@ export function formatHoverTip(cell, { groundClearance, debugMode, metrics }) {
     deltaLine = `<span class="${cls} tooltip-num">${sign}${delta} m</span>`;
   }
 
+  const maxSegmentLdVal = metrics?.maxSegmentLd;
+  const maxSegmentLdLine =
+    maxSegmentLdVal != null && (maxSegmentLdVal > 0 || maxSegmentLdVal === -99)
+      ? (() => {
+          const flooredLd =
+            maxSegmentLdVal === -99
+              ? -99
+              : Math.floor(maxSegmentLdVal * 10) / 10;
+          const warn = flooredLd === -99 || flooredLd > glideRatio;
+          const cls = warn ? "delta-neg tooltip-num" : "tooltip-num";
+          const text = flooredLd === -99 ? "-99" : flooredLd.toFixed(1);
+          return `<span class="${cls}">${text}</span>`;
+        })()
+      : "—";
+
   let text =
     `minimum alt: ${minAlt}\n` +
     `ground elevation: ${groundElev}\n` +
@@ -61,7 +76,8 @@ export function formatHoverTip(cell, { groundClearance, debugMode, metrics }) {
       // `\n<span class="path-info-heading">comparison with measured path length (haversine):</span>\n` +
       `path length: ${pathLengthLine}\n` +
       `required alt: ${requiredLine}\n` +
-      `delta: ${deltaLine}\n` ;
+      `delta: ${deltaLine}\n` +
+      `max segment L/D: ${maxSegmentLdLine}\n` ;
       // `<span class="path-info-note">delta heavily positive might mean path went over a saddle, or starts from a mountain well above glide, no issue in that case. use this on flatland at your latitude to check for unacceptable errors</span>`;
   }
 
