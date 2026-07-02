@@ -3,9 +3,6 @@ import { MIN_SEEDS, COMPUTE_DONE_STATUS_CLEAR_MS } from "../constants.js";
 import { formatComputeDone } from "./format.js";
 import { getGlideParams } from "./params.js";
 import { updateConeVisualization, updateOverlay } from "./visualization.js";
-import { formatPeekLosSummary, logPeekLosTrace, syncPeekLosFormFields } from "../debug/peek-los.js";
-import { dom } from "../dom.js";
-import { syncPeekLosUi } from "../params/panel.js";
 
 let hooks;
 
@@ -51,14 +48,6 @@ export function requestStopCompute() {
   hooks.setComputeShouldStop(true);
   hooks.stopComputeBtn.disabled = true;
   hooks.setStatus("Stopping after current GPU step…");
-}
-
-function reportPeekLosResult(result) {
-  if (!result?.peekLosTrace) {
-    return "";
-  }
-  logPeekLosTrace(result.peekLosTrace);
-  return ` — ${formatPeekLosSummary(result.peekLosTrace)}`;
 }
 
 function makeComputeOptions(dem, glideParams) {
@@ -159,19 +148,6 @@ export async function runComputation(seedsOverride = null, { gridBounds = null }
 
     hooks.setConeState(dem, result, glideParams);
     updateConeVisualization(result, dem, glideParams);
-    if (result.peekLosTrace) {
-      syncPeekLosFormFields(
-        {
-          peekLosI: result.peekLosTrace.from.i,
-          peekLosJ: result.peekLosTrace.from.j,
-          peekLosOi: result.peekLosTrace.to.oi,
-          peekLosOj: result.peekLosTrace.to.oj,
-        },
-        dom
-      );
-      syncPeekLosUi();
-      hooks.schedulePersistParamsState?.();
-    }
     hooks.ensurePathLayer();
     hooks.syncCompareLosButton();
     hooks.setDownloadContoursVisible(glideParams.contours);
@@ -179,7 +155,7 @@ export async function runComputation(seedsOverride = null, { gridBounds = null }
     hooks.setStatus(
       formatComputeDone(
         result,
-        ` — z${dem.zoom}, ${dem.width}×${dem.height}, ${seeds.length} airports${reportPeekLosResult(result)}`
+        ` — z${dem.zoom}, ${dem.width}×${dem.height}, ${seeds.length} airports`
       ),
       { clearAfterMs: COMPUTE_DONE_STATUS_CLEAR_MS }
     );

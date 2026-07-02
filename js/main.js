@@ -716,7 +716,6 @@ function setConeState(dem, result, glideParams) {
     groundClearance: glideParams?.groundClearance ?? 100,
     contourGeojson: null,
     sectorBorderGeojson: null,
-    peekLosTrace: result?.peekLosTrace ?? null,
   };
   syncComputeContextBar();
   syncExtractMatrixButton();

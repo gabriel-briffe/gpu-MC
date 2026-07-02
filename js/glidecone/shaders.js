@@ -1,4 +1,333 @@
 export const SECTOR_ORIGIN_RESOLVE_PASSES = 16;
+export const PROPAGATE_ALT_EPSILON = 0.001;
+export const FLAG_GROUND = 1;
+export const FLAG_CHANGED = 2;
+
+export const PROPAGATE_SHADER = /* wgsl */ `
+struct Params {
+  width: u32,
+  height: u32,
+  homeX: i32,
+  homeY: i32,
+  cellSizeM: f32,
+  glideRatio: f32,
+  maxAlt: f32,
+  homeAlt: f32,
+  _pad1: u32,
+  _pad2: u32,
+  _pad3: u32,
+  _pad4: u32,
+};
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> elev: array<f32>;
+@group(0) @binding(2) var<storage, read> altIn: array<f32>;
+@group(0) @binding(3) var<storage, read_write> altOut: array<f32>;
+@group(0) @binding(4) var<storage, read> originIn: array<vec2<i32>>;
+@group(0) @binding(5) var<storage, read_write> originOut: array<vec2<i32>>;
+@group(0) @binding(6) var<storage, read> flagsIn: array<u32>;
+@group(0) @binding(7) var<storage, read_write> flagsOut: array<u32>;
+
+const FLAG_GROUND: u32 = 1u;
+const FLAG_CHANGED: u32 = 2u;
+
+fn idx(x: i32, y: i32) -> u32 {
+  return u32(y) * params.width + u32(x);
+}
+
+fn inBounds(x: i32, y: i32) -> bool {
+  return x >= 0 && y >= 0 && x < i32(params.width) && y < i32(params.height);
+}
+
+fn originValid(ox: i32, oy: i32) -> bool {
+  return inBounds(ox, oy);
+}
+
+fn hasStoredOrigin(ox: i32, oy: i32) -> bool {
+  return originValid(ox, oy) && !(ox == -1 && oy == -1);
+}
+
+fn isGroundAt(x: i32, y: i32) -> bool {
+  if (!inBounds(x, y)) {
+    return false;
+  }
+  return (flagsIn[idx(x, y)] & FLAG_GROUND) != 0u;
+}
+
+fn isGroundCell(flags: u32) -> bool {
+  return (flags & FLAG_GROUND) != 0u;
+}
+
+fn wasModified(flags: u32) -> bool {
+  return (flags & FLAG_CHANGED) != 0u;
+}
+
+fn packFlags(ground: bool, changed: bool) -> u32 {
+  var f = 0u;
+  if (ground) {
+    f = f | FLAG_GROUND;
+  }
+  if (changed) {
+    f = f | FLAG_CHANGED;
+  }
+  return f;
+}
+
+// Full Bresenham LOS (C++ Cell::isInView).
+fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
+  if (!originValid(targetOx, targetOy)) {
+    return false;
+  }
+  if (x0 == targetOx && y0 == targetOy) {
+    return true;
+  }
+  let adx = abs(targetOx - x0);
+  let ady = abs(targetOy - y0);
+  if ((adx == 1 && ady == 0) || (adx == 0 && ady == 1)) {
+    return true;
+  }
+
+  var x1 = x0;
+  var y1 = y0;
+  let xstep = select(-1, 1, targetOx > x1);
+  let ystep = select(-1, 1, targetOy > y1);
+  let dx = adx;
+  let dy = ady;
+  let ddy = dy * 2;
+  let ddx = dx * 2;
+  var error = dx;
+  var errorprev = error;
+
+  if (dx >= dy) {
+    for (var step = 0; step < dx; step = step + 1) {
+      x1 = x1 + xstep;
+      error = error + ddy;
+      if (error > ddx) {
+        y1 = y1 + ystep;
+        error = error - ddx;
+        if (error + errorprev < ddx) {
+          if (isGroundAt(x1, y1 - ystep)) {
+            return false;
+          }
+        } else if (error + errorprev > ddx) {
+          if (isGroundAt(x1 - xstep, y1)) {
+            return false;
+          }
+        }
+      }
+      if (!(x1 == targetOx && y1 == targetOy) && isGroundAt(x1, y1)) {
+        return false;
+      }
+      errorprev = error;
+    }
+  } else {
+    for (var step = 0; step < dy; step = step + 1) {
+      y1 = y1 + ystep;
+      error = error + ddx;
+      if (error > ddy) {
+        x1 = x1 + xstep;
+        error = error - ddy;
+        if (error + errorprev < ddy) {
+          if (isGroundAt(x1 - xstep, y1)) {
+            return false;
+          }
+        } else if (error + errorprev > ddy) {
+          if (isGroundAt(x1, y1 - ystep)) {
+            return false;
+          }
+        }
+      }
+      if (!(x1 == targetOx && y1 == targetOy) && isGroundAt(x1, y1)) {
+        return false;
+      }
+      errorprev = error;
+    }
+  }
+
+  return true;
+}
+
+fn coneAlt(ox: i32, oy: i32, x: i32, y: i32) -> f32 {
+  let oi = idx(ox, oy);
+  let dx = f32(x - ox);
+  let dy = f32(y - oy);
+  return altIn[oi] + sqrt(dx * dx + dy * dy) * params.cellSizeM / params.glideRatio;
+}
+
+fn electedFromNeighbor(x: i32, y: i32, px: i32, py: i32) -> vec2<i32> {
+  let parentOrigin = originIn[idx(px, py)];
+  if (isInViewToOrigin(x, y, parentOrigin.x, parentOrigin.y)) {
+    return vec2<i32>(parentOrigin.x, parentOrigin.y);
+  }
+  return vec2<i32>(px, py);
+}
+
+fn neighborIsModifiedAndDifferentOrigin(
+  nx: i32,
+  ny: i32,
+  myOx: i32,
+  myOy: i32
+) -> bool {
+  if (!inBounds(nx, ny)) {
+    return false;
+  }
+  let ni = idx(nx, ny);
+  if (!wasModified(flagsIn[ni])) {
+    return false;
+  }
+  let norigin = originIn[ni];
+  return norigin.x != myOx || norigin.y != myOy;
+}
+
+fn hasActiveNeighbor(x: i32, y: i32, myOx: i32, myOy: i32) -> bool {
+  return neighborIsModifiedAndDifferentOrigin(x, y - 1, myOx, myOy)
+    || neighborIsModifiedAndDifferentOrigin(x, y + 1, myOx, myOy)
+    || neighborIsModifiedAndDifferentOrigin(x - 1, y, myOx, myOy)
+    || neighborIsModifiedAndDifferentOrigin(x + 1, y, myOx, myOy);
+}
+
+fn tryModifiedNeighbor(
+  nx: i32,
+  ny: i32,
+  x: i32,
+  y: i32,
+  myOx: i32,
+  myOy: i32,
+  bestReq: f32,
+  bestOx: i32,
+  bestOy: i32
+) -> vec3<f32> {
+  if (!neighborIsModifiedAndDifferentOrigin(nx, ny, myOx, myOy)) {
+    return vec3<f32>(bestReq, f32(bestOx), f32(bestOy));
+  }
+  let elected = electedFromNeighbor(x, y, nx, ny);
+  if (!originValid(elected.x, elected.y)) {
+    return vec3<f32>(bestReq, f32(bestOx), f32(bestOy));
+  }
+  let req = coneAlt(elected.x, elected.y, x, y);
+  if (req < bestReq) {
+    return vec3<f32>(req, f32(elected.x), f32(elected.y));
+  }
+  return vec3<f32>(bestReq, f32(bestOx), f32(bestOy));
+}
+
+fn passthrough(i: u32, curO: vec2<i32>, curAlt: f32, curFlags: u32) {
+  altOut[i] = curAlt;
+  originOut[i] = curO;
+  flagsOut[i] = curFlags & FLAG_GROUND;
+}
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let x = i32(gid.x);
+  let y = i32(gid.y);
+  if (!inBounds(x, y)) {
+    return;
+  }
+
+  let i = idx(x, y);
+  let curO = originIn[i];
+  let curAlt = altIn[i];
+  let curFlags = flagsIn[i];
+  let myOx = curO.x;
+  let myOy = curO.y;
+
+  if (isGroundCell(curFlags)) {
+    passthrough(i, curO, curAlt, curFlags);
+    flagsOut[i] = FLAG_GROUND;
+    return;
+  }
+
+  if (!hasActiveNeighbor(x, y, myOx, myOy)) {
+    passthrough(i, curO, curAlt, curFlags);
+    return;
+  }
+
+  var bestReq = curAlt;
+  var bestOx = myOx;
+  var bestOy = myOy;
+
+  var pick = tryModifiedNeighbor(x, y - 1, x, y, myOx, myOy, bestReq, bestOx, bestOy);
+  bestReq = pick.x;
+  bestOx = i32(pick.y);
+  bestOy = i32(pick.z);
+  pick = tryModifiedNeighbor(x, y + 1, x, y, myOx, myOy, bestReq, bestOx, bestOy);
+  bestReq = pick.x;
+  bestOx = i32(pick.y);
+  bestOy = i32(pick.z);
+  pick = tryModifiedNeighbor(x - 1, y, x, y, myOx, myOy, bestReq, bestOx, bestOy);
+  bestReq = pick.x;
+  bestOx = i32(pick.y);
+  bestOy = i32(pick.z);
+  pick = tryModifiedNeighbor(x + 1, y, x, y, myOx, myOy, bestReq, bestOx, bestOy);
+  bestReq = pick.x;
+  bestOx = i32(pick.y);
+  bestOy = i32(pick.z);
+
+  if (hasStoredOrigin(myOx, myOy) && bestReq >= curAlt) {
+    passthrough(i, curO, curAlt, curFlags);
+    return;
+  }
+
+  if (bestReq >= params.maxAlt) {
+    passthrough(i, curO, curAlt, curFlags);
+    return;
+  }
+
+  var newAlt = curAlt;
+  var newOx = myOx;
+  var newOy = myOy;
+  var newGround = isGroundCell(curFlags);
+
+  if (bestReq <= elev[i]) {
+    newAlt = elev[i];
+    newOx = x;
+    newOy = y;
+    newGround = true;
+  } else {
+    newAlt = bestReq;
+    newOx = bestOx;
+    newOy = bestOy;
+  }
+
+  altOut[i] = newAlt;
+  originOut[i] = vec2<i32>(newOx, newOy);
+
+  let changed = newOx != myOx
+    || newOy != myOy
+    || abs(newAlt - curAlt) > ${PROPAGATE_ALT_EPSILON}
+    || newGround != isGroundCell(curFlags);
+  flagsOut[i] = packFlags(newGround, changed);
+}
+`;
+
+export const CHANGED_SUM_SHADER = /* wgsl */ `
+struct Params {
+  width: u32,
+  height: u32,
+};
+
+const FLAG_CHANGED: u32 = 2u;
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> flags: array<u32>;
+@group(0) @binding(2) var<storage, read_write> changeCount: array<atomic<u32>>;
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let x = i32(gid.x);
+  let y = i32(gid.y);
+  if (x >= i32(params.width) || y >= i32(params.height)) {
+    return;
+  }
+  let i = u32(y) * params.width + u32(x);
+  if ((flags[i] & FLAG_CHANGED) != 0u) {
+    atomicAdd(&changeCount[0], 1u);
+  }
+}
+`;
+
+// Legacy full-grid shaders kept for reference; no longer used by the main compute loop.
 export const MAX_PEEK_LOS_ENTRIES_WGSL = 1024;
 export const ORIGIN_SHADER = /* wgsl */ `
 struct Params {
@@ -323,7 +652,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   let i = u32(y) * params.width + u32(x);
-  if (ground[i] == 1u) {
+  if ((ground[i] & 1u) != 0u) {
     altOut[i] = elev[i];
     return;
   }
@@ -543,7 +872,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let o = origin[i];
   let a = alt[i];
 
-  if (ground[i] == 1u) {
+  if ((ground[i] & 1u) != 0u) {
     if (o.x == x && o.y == y) {
       let r = 255u;
       let g = 48u;
@@ -609,7 +938,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = idx(x, y);
   let o = originIn[i];
 
-  if (ground[i] == 1u || o.x < 0 || o.y < 0) {
+  if ((ground[i] & 1u) != 0u || o.x < 0 || o.y < 0) {
     originOut[i] = o;
     return;
   }
@@ -672,7 +1001,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let o = origin[i];
   let a = alt[i];
 
-  if (ground[i] == 1u) {
+  if ((ground[i] & 1u) != 0u) {
     if (o.x == x && o.y == y) {
       rgba[i] = packRgba(255u, 48u, 48u, 220u);
     } else {

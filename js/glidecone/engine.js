@@ -1,8 +1,7 @@
 import {
-  ORIGIN_SHADER,
-  ALT_SHADER,
-  GROUND_ORIGIN_SHADER,
-  CHANGE_SHADER,
+  PROPAGATE_SHADER,
+  CHANGED_SUM_SHADER,
+  FLAG_CHANGED,
   COLOR_SHADER,
   COLOR_SHADER_RAW,
   COLOR_SHADER_RED,
@@ -15,24 +14,12 @@ import {
   renderColorFrame,
   resolveDeepOriginsGpu,
   packParams,
-  packSeedPairs,
   createBuffer,
   packXY,
   unpackXY,
   createPipeline,
 } from "./render.js";
-import {
-  packPeekParams,
-  peekLogBufferSize,
-  formatPeekLosTrace,
-  resolvePeekLosIndices,
-  isPeekLosInBounds,
-  capturePeekLosIteration,
-  createPeekCellReaders,
-  peekCellGridIndex,
-  diffPeekCellState,
-  readPeekCellStateOnly,
-} from "../debug/peek-los.js";
+
 export class GlideConeEngine {
   constructor() {
     this.device = null;
@@ -49,39 +36,18 @@ export class GlideConeEngine {
     }
     this.device = await adapter.requestDevice();
     this.pipelines = {
-      origin: await createPipeline(this.device, ORIGIN_SHADER, [
+      propagate: await createPipeline(this.device, PROPAGATE_SHADER, [
         "uniform",
         "read-only-storage",
         "read-only-storage",
-        "read-only-storage",
+        "storage",
         "read-only-storage",
         "storage",
-        "storage",
-        "uniform",
-        "storage",
-      ]),
-      alt: await createPipeline(this.device, ALT_SHADER, [
-        "uniform",
-        "read-only-storage",
-        "read-only-storage",
-        "read-only-storage",
         "read-only-storage",
         "storage",
       ]),
-      groundOrigin: await createPipeline(this.device, GROUND_ORIGIN_SHADER, [
+      changedSum: await createPipeline(this.device, CHANGED_SUM_SHADER, [
         "uniform",
-        "read-only-storage",
-        "read-only-storage",
-        "storage",
-        "read-only-storage",
-      ]),
-      change: await createPipeline(this.device, CHANGE_SHADER, [
-        "uniform",
-        "read-only-storage",
-        "read-only-storage",
-        "read-only-storage",
-        "read-only-storage",
-        "read-only-storage",
         "read-only-storage",
         "storage",
       ]),
@@ -125,7 +91,6 @@ export class GlideConeEngine {
 
   async compute(dem, params, options = {}) {
     const {
-      fullBresenham = false,
       overlayColor = "blue",
       imageOnly = false,
       raw: rawOverride,
@@ -141,33 +106,23 @@ export class GlideConeEngine {
       glideRatio,
       maxAltitude,
       circuitHeight,
-      originRunN = 0,
       raw: rawParam = true,
       contours: contoursParam = false,
       pathOnly: pathOnlyParam = false,
       sectors: sectorsParam = false,
-      disableGroundOrigin: disableGroundOriginParam = false,
-      peekLos = false,
       updateMapMs = 100,
     } = params;
     const raw = rawOverride !== undefined ? rawOverride : rawParam;
     const contours = contoursParam;
     const pathOnly = pathOnlyParam;
     const sectors = sectorsParam;
-    const disableGroundOrigin = disableGroundOriginParam;
-    const peekIndices = resolvePeekLosIndices(params, dem);
-    const { peekLosI, peekLosJ, peekLosOi, peekLosOj } = peekIndices;
-    const peekLosEnabled = peekLos && isPeekLosInBounds(peekIndices, dem);
     const needsRaster = imageOnly || raw || sectors || (!contours && !pathOnly);
-    const useFullBresenham = fullBresenham || originRunN === 0;
-    const losShortcut = useFullBresenham ? 0 : 1;
-    const shaderOriginRunN = originRunN === 0 ? 1 : originRunN;
     const count = width * height;
 
     const alt = new Float32Array(count).fill(maxAltitude);
     const originX = new Int32Array(count).fill(-1);
     const originY = new Int32Array(count).fill(-1);
-    const ground = new Uint32Array(count);
+    const flagsInit = new Uint32Array(count);
 
     let homeAlt = maxAltitude;
     for (const seed of seeds) {
@@ -179,13 +134,13 @@ export class GlideConeEngine {
       alt[seedIdx] = seedAlt;
       originX[seedIdx] = seed.x;
       originY[seedIdx] = seed.y;
+      flagsInit[seedIdx] = FLAG_CHANGED;
       if (homeAlt === maxAltitude || seedAlt < homeAlt) {
         homeAlt = seedAlt;
       }
     }
 
     const originPairs = packXY(originX, originY);
-    const seedPairs = packSeedPairs(seeds);
 
     const uniformUsage = GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST;
     const storageUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
@@ -198,56 +153,32 @@ export class GlideConeEngine {
       cellSizeM,
       glideRatio,
       maxAltitude,
-      homeAlt,
-      losShortcut,
-      shaderOriginRunN,
-      seeds.length
+      homeAlt
     );
+    const sumUniformParams = (() => {
+      const buf = new ArrayBuffer(8);
+      const view = new DataView(buf);
+      view.setUint32(0, width, true);
+      view.setUint32(4, height, true);
+      return buf;
+    })();
 
     const uniformBuffer = createBuffer(device, new Uint8Array(uniformParams), uniformUsage);
+    const sumUniformBuffer = createBuffer(device, new Uint8Array(sumUniformParams), uniformUsage);
     const elevBuffer = createBuffer(device, new Uint8Array(elevation.buffer), storageUsage);
-    const seedBuffer = createBuffer(device, new Uint8Array(seedPairs.buffer), storageUsage);
 
     let altRead = createBuffer(device, new Uint8Array(alt.buffer), storageUsage);
     let altWrite = createBuffer(device, new Uint8Array(alt.buffer), storageUsage);
     let originRead = createBuffer(device, new Uint8Array(originPairs.buffer), storageUsage);
     let originWrite = createBuffer(device, new Uint8Array(originPairs.buffer), storageUsage);
-    let groundRead = createBuffer(device, new Uint8Array(ground.buffer), storageUsage);
-    let groundWrite = createBuffer(device, new Uint8Array(ground.buffer), storageUsage);
+    let flagsPrev = createBuffer(device, new Uint8Array(flagsInit.buffer), storageUsage);
+    let flagsCurr = createBuffer(device, new Uint8Array(count * 4), storageUsage);
     const rgbaBuffer = createBuffer(device, new Uint8Array(count * 4), storageUsage);
 
     const pairBytes = count * 8;
-    const originSnap = createBuffer(device, new Uint8Array(pairBytes), storageUsage);
-    const groundSnap = createBuffer(device, new Uint8Array(count * 4), storageUsage);
-    const altSnap = createBuffer(device, new Uint8Array(count * 4), storageUsage);
     const changeCountBuffer = createBuffer(device, new Uint32Array([0]), storageUsage);
     const changeReadBuffer = device.createBuffer({
       size: 4,
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-    });
-
-    const peekLogBytes = peekLogBufferSize();
-    const peekParamsBuffer = createBuffer(
-      device,
-      new Uint8Array(
-        packPeekParams({
-          enabled: peekLosEnabled,
-          peekI: peekLosEnabled ? Math.floor(peekLosI) : -1,
-          peekJ: peekLosEnabled ? Math.floor(peekLosJ) : -1,
-          peekOi: peekLosEnabled ? Math.floor(peekLosOi) : -1,
-          peekOj: peekLosEnabled ? Math.floor(peekLosOj) : -1,
-          groundClearance,
-        })
-      ),
-      uniformUsage
-    );
-    const peekLogBuffer = createBuffer(
-      device,
-      new Uint8Array(peekLogBytes),
-      storageUsage
-    );
-    const peekLogReadBuffer = device.createBuffer({
-      size: peekLogBytes,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
 
@@ -289,20 +220,6 @@ export class GlideConeEngine {
       Number.isFinite(updateMapMs) &&
       updateMapMs > 0;
     let lastMapUpdate = 0;
-    const peekLosIterations = [];
-    const peekCellChanges = [];
-    const peekCellReaders = peekLosEnabled ? createPeekCellReaders(device) : null;
-    const peekCellIdx = peekLosEnabled ? peekCellGridIndex(peekLosI, peekLosJ, width) : -1;
-    let prevPeekCellState = null;
-    if (peekLosEnabled) {
-      prevPeekCellState = await readPeekCellStateOnly(
-        device,
-        originRead,
-        altRead,
-        peekCellIdx,
-        peekCellReaders
-      );
-    }
 
     const frameArgs = {
       colorPipeline,
@@ -310,7 +227,7 @@ export class GlideConeEngine {
       colorUniform,
       altRead,
       originRead,
-      groundRead,
+      groundRead: flagsPrev,
       rgbaBuffer,
       readBuffer,
       seedPaletteBuffer,
@@ -323,11 +240,12 @@ export class GlideConeEngine {
 
     const renderRasterFrame = () => {
       let colorOriginRead = originRead;
+      let colorFlagsRead = flagsPrev;
       if (sectors) {
         colorOriginRead = resolveDeepOriginsGpu(device, pipelines, {
           uniformBuffer,
           originRead,
-          groundRead,
+          groundRead: flagsPrev,
           resolveRead: resolveOriginRead,
           resolveWrite: resolveOriginWrite,
           pairBytes,
@@ -337,7 +255,7 @@ export class GlideConeEngine {
       }
       return renderColorFrame(
         device,
-        { ...frameArgs, originRead: colorOriginRead },
+        { ...frameArgs, originRead: colorOriginRead, groundRead: colorFlagsRead },
         { sectors }
       );
     };
@@ -367,77 +285,47 @@ export class GlideConeEngine {
       }
 
       actualIterations += 1;
-      if (peekLosEnabled) {
-        device.queue.writeBuffer(peekLogBuffer, 0, new Uint8Array(peekLogBytes));
-      }
+
       const encoder = device.createCommandEncoder();
 
-      encoder.copyBufferToBuffer(originRead, 0, originSnap, 0, pairBytes);
-      encoder.copyBufferToBuffer(groundRead, 0, groundSnap, 0, count * 4);
-      encoder.copyBufferToBuffer(altRead, 0, altSnap, 0, count * 4);
-
-      const originBind = device.createBindGroup({
-        layout: pipelines.origin.layout,
+      const propagateBind = device.createBindGroup({
+        layout: pipelines.propagate.layout,
         entries: [
           { binding: 0, resource: { buffer: uniformBuffer } },
           { binding: 1, resource: { buffer: elevBuffer } },
           { binding: 2, resource: { buffer: altRead } },
-          { binding: 3, resource: { buffer: originRead } },
-          { binding: 4, resource: { buffer: groundRead } },
+          { binding: 3, resource: { buffer: altWrite } },
+          { binding: 4, resource: { buffer: originRead } },
           { binding: 5, resource: { buffer: originWrite } },
-          { binding: 6, resource: { buffer: groundWrite } },
-          { binding: 7, resource: { buffer: peekParamsBuffer } },
-          { binding: 8, resource: { buffer: peekLogBuffer } },
+          { binding: 6, resource: { buffer: flagsPrev } },
+          { binding: 7, resource: { buffer: flagsCurr } },
         ],
       });
-      const passOrigin = encoder.beginComputePass();
-      passOrigin.setPipeline(pipelines.origin.pipeline);
-      passOrigin.setBindGroup(0, originBind);
-      passOrigin.dispatchWorkgroups(wgX, wgY);
-      passOrigin.end();
-
-      [originRead, originWrite] = [originWrite, originRead];
-      [groundRead, groundWrite] = [groundWrite, groundRead];
-
-      const altBind = device.createBindGroup({
-        layout: pipelines.alt.layout,
-        entries: [
-          { binding: 0, resource: { buffer: uniformBuffer } },
-          { binding: 1, resource: { buffer: elevBuffer } },
-          { binding: 2, resource: { buffer: originRead } },
-          { binding: 3, resource: { buffer: altRead } },
-          { binding: 4, resource: { buffer: groundRead } },
-          { binding: 5, resource: { buffer: altWrite } },
-        ],
-      });
-      const passAlt = encoder.beginComputePass();
-      passAlt.setPipeline(pipelines.alt.pipeline);
-      passAlt.setBindGroup(0, altBind);
-      passAlt.dispatchWorkgroups(wgX, wgY);
-      passAlt.end();
+      const passPropagate = encoder.beginComputePass();
+      passPropagate.setPipeline(pipelines.propagate.pipeline);
+      passPropagate.setBindGroup(0, propagateBind);
+      passPropagate.dispatchWorkgroups(wgX, wgY);
+      passPropagate.end();
 
       [altRead, altWrite] = [altWrite, altRead];
+      [originRead, originWrite] = [originWrite, originRead];
+      [flagsPrev, flagsCurr] = [flagsCurr, flagsPrev];
 
       device.queue.writeBuffer(changeCountBuffer, 0, new Uint32Array([0]));
 
-      const changeBind = device.createBindGroup({
-        layout: pipelines.change.layout,
+      const sumBind = device.createBindGroup({
+        layout: pipelines.changedSum.layout,
         entries: [
-          { binding: 0, resource: { buffer: uniformBuffer } },
-          { binding: 1, resource: { buffer: originRead } },
-          { binding: 2, resource: { buffer: originSnap } },
-          { binding: 3, resource: { buffer: groundRead } },
-          { binding: 4, resource: { buffer: groundSnap } },
-          { binding: 5, resource: { buffer: altRead } },
-          { binding: 6, resource: { buffer: altSnap } },
-          { binding: 7, resource: { buffer: changeCountBuffer } },
+          { binding: 0, resource: { buffer: sumUniformBuffer } },
+          { binding: 1, resource: { buffer: flagsPrev } },
+          { binding: 2, resource: { buffer: changeCountBuffer } },
         ],
       });
-      const passChange = encoder.beginComputePass();
-      passChange.setPipeline(pipelines.change.pipeline);
-      passChange.setBindGroup(0, changeBind);
-      passChange.dispatchWorkgroups(wgX, wgY);
-      passChange.end();
+      const passSum = encoder.beginComputePass();
+      passSum.setPipeline(pipelines.changedSum.pipeline);
+      passSum.setBindGroup(0, sumBind);
+      passSum.dispatchWorkgroups(wgX, wgY);
+      passSum.end();
 
       encoder.copyBufferToBuffer(changeCountBuffer, 0, changeReadBuffer, 0, 4);
       device.queue.submit([encoder.finish()]);
@@ -445,24 +333,6 @@ export class GlideConeEngine {
       await changeReadBuffer.mapAsync(GPUMapMode.READ);
       const changes = new Uint32Array(changeReadBuffer.getMappedRange().slice(0))[0];
       changeReadBuffer.unmap();
-
-      if (peekLosEnabled) {
-        const snap = await capturePeekLosIteration(device, actualIterations, {
-          peekLogBuffer,
-          peekLogReadBuffer,
-          peekLogBytes,
-          originRead,
-          altRead,
-          cellIdx: peekCellIdx,
-          cellReaders: peekCellReaders,
-          prevCellState: prevPeekCellState,
-          i: Math.floor(peekLosI),
-          j: Math.floor(peekLosJ),
-        });
-        peekCellChanges.push(...snap.cellChanges);
-        prevPeekCellState = snap.cellState;
-        peekLosIterations.push(snap);
-      }
 
       if (changes === 0) {
         break;
@@ -473,46 +343,10 @@ export class GlideConeEngine {
         break;
       }
 
+      frameArgs.altRead = altRead;
+      frameArgs.originRead = originRead;
+      frameArgs.groundRead = flagsPrev;
       await maybeEmitProgress();
-    }
-
-    if (!raw && !disableGroundOrigin) {
-      const groundOriginBind = device.createBindGroup({
-        layout: pipelines.groundOrigin.layout,
-        entries: [
-          { binding: 0, resource: { buffer: uniformBuffer } },
-          { binding: 1, resource: { buffer: altRead } },
-          { binding: 2, resource: { buffer: groundRead } },
-          { binding: 3, resource: { buffer: originRead } },
-          { binding: 4, resource: { buffer: seedBuffer } },
-        ],
-      });
-      const groundOriginEncoder = device.createCommandEncoder();
-      const passGroundOrigin = groundOriginEncoder.beginComputePass();
-      passGroundOrigin.setPipeline(pipelines.groundOrigin.pipeline);
-      passGroundOrigin.setBindGroup(0, groundOriginBind);
-      passGroundOrigin.dispatchWorkgroups(wgX, wgY);
-      passGroundOrigin.end();
-      device.queue.submit([groundOriginEncoder.finish()]);
-
-      if (peekLosEnabled) {
-        const cellState = await readPeekCellStateOnly(
-          device,
-          originRead,
-          altRead,
-          peekCellIdx,
-          peekCellReaders
-        );
-        const groundChanges = diffPeekCellState(
-          actualIterations,
-          Math.floor(peekLosI),
-          Math.floor(peekLosJ),
-          prevPeekCellState,
-          cellState
-        ).map((change) => ({ ...change, phase: "ground_origin" }));
-        peekCellChanges.push(...groundChanges);
-        prevPeekCellState = cellState;
-      }
     }
 
     let imageData = null;
@@ -558,27 +392,19 @@ export class GlideConeEngine {
     originBuffer.unmap();
     const { xArr: originXOut, yArr: originYOut } = unpackXY(originPairsOut);
 
-    const groundReadBuffer = device.createBuffer({
+    const flagsReadBuffer = device.createBuffer({
       size: count * 4,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
-    const groundCopyEncoder = device.createCommandEncoder();
-    groundCopyEncoder.copyBufferToBuffer(groundRead, 0, groundReadBuffer, 0, count * 4);
-    device.queue.submit([groundCopyEncoder.finish()]);
-    await groundReadBuffer.mapAsync(GPUMapMode.READ);
-    const groundOut = new Uint32Array(groundReadBuffer.getMappedRange().slice(0));
-    groundReadBuffer.unmap();
-
-    let peekLosTrace = null;
-    if (peekLosEnabled) {
-      const lastCells = peekLosIterations.at(-1)?.cells ?? [];
-      peekLosTrace = formatPeekLosTrace({
-        from: { i: Math.floor(peekLosI), j: Math.floor(peekLosJ) },
-        to: { oi: Math.floor(peekLosOi), oj: Math.floor(peekLosOj) },
-        cells: lastCells,
-        iterations: peekLosIterations,
-        cellChanges: peekCellChanges,
-      });
+    const flagsCopyEncoder = device.createCommandEncoder();
+    flagsCopyEncoder.copyBufferToBuffer(flagsPrev, 0, flagsReadBuffer, 0, count * 4);
+    device.queue.submit([flagsCopyEncoder.finish()]);
+    await flagsReadBuffer.mapAsync(GPUMapMode.READ);
+    const flagsPacked = new Uint32Array(flagsReadBuffer.getMappedRange().slice(0));
+    flagsReadBuffer.unmap();
+    const groundOut = new Uint32Array(count);
+    for (let i = 0; i < count; i += 1) {
+      groundOut[i] = flagsPacked[i] & 1;
     }
 
     return {
@@ -587,7 +413,6 @@ export class GlideConeEngine {
       originX: originXOut,
       originY: originYOut,
       ground: groundOut,
-      peekLosTrace,
     };
   }
 }
