@@ -179,11 +179,20 @@ fn neighborIsModifiedAndDifferentOrigin(
   return norigin.x != myOx || norigin.y != myOy;
 }
 
+const NEIGHBOR_OFFSETS = array<vec2<i32>, 8>(
+  vec2<i32>(-1, -1), vec2<i32>(0, -1), vec2<i32>(1, -1),
+  vec2<i32>(-1, 0), vec2<i32>(1, 0),
+  vec2<i32>(-1, 1), vec2<i32>(0, 1), vec2<i32>(1, 1)
+);
+
 fn hasActiveNeighbor(x: i32, y: i32, myOx: i32, myOy: i32) -> bool {
-  return neighborIsModifiedAndDifferentOrigin(x, y - 1, myOx, myOy)
-    || neighborIsModifiedAndDifferentOrigin(x, y + 1, myOx, myOy)
-    || neighborIsModifiedAndDifferentOrigin(x - 1, y, myOx, myOy)
-    || neighborIsModifiedAndDifferentOrigin(x + 1, y, myOx, myOy);
+  for (var k = 0; k < 8; k = k + 1) {
+    let off = NEIGHBOR_OFFSETS[k];
+    if (neighborIsModifiedAndDifferentOrigin(x + off.x, y + off.y, myOx, myOy)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 fn tryModifiedNeighbor(
@@ -247,22 +256,23 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   var bestOx = myOx;
   var bestOy = myOy;
 
-  var pick = tryModifiedNeighbor(x, y - 1, x, y, myOx, myOy, bestReq, bestOx, bestOy);
-  bestReq = pick.x;
-  bestOx = i32(pick.y);
-  bestOy = i32(pick.z);
-  pick = tryModifiedNeighbor(x, y + 1, x, y, myOx, myOy, bestReq, bestOx, bestOy);
-  bestReq = pick.x;
-  bestOx = i32(pick.y);
-  bestOy = i32(pick.z);
-  pick = tryModifiedNeighbor(x - 1, y, x, y, myOx, myOy, bestReq, bestOx, bestOy);
-  bestReq = pick.x;
-  bestOx = i32(pick.y);
-  bestOy = i32(pick.z);
-  pick = tryModifiedNeighbor(x + 1, y, x, y, myOx, myOy, bestReq, bestOx, bestOy);
-  bestReq = pick.x;
-  bestOx = i32(pick.y);
-  bestOy = i32(pick.z);
+  for (var k = 0; k < 8; k = k + 1) {
+    let off = NEIGHBOR_OFFSETS[k];
+    let pick = tryModifiedNeighbor(
+      x + off.x,
+      y + off.y,
+      x,
+      y,
+      myOx,
+      myOy,
+      bestReq,
+      bestOx,
+      bestOy
+    );
+    bestReq = pick.x;
+    bestOx = i32(pick.y);
+    bestOy = i32(pick.z);
+  }
 
   if (hasStoredOrigin(myOx, myOy) && bestReq >= curAlt) {
     passthrough(i, curO, curAlt, curFlags);
@@ -281,8 +291,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   if (bestReq <= elev[i]) {
     newAlt = elev[i];
-    newOx = x;
-    newOy = y;
+    newOx = bestOx;
+    newOy = bestOy;
     newGround = true;
   } else {
     newAlt = bestReq;
@@ -323,6 +333,34 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = u32(y) * params.width + u32(x);
   if ((flags[i] & FLAG_CHANGED) != 0u) {
     atomicAdd(&changeCount[0], 1u);
+  }
+}
+`;
+
+export const MODIFIED_CELLS_SHADER = /* wgsl */ `
+struct Params {
+  width: u32,
+  height: u32,
+};
+
+const FLAG_CHANGED: u32 = 2u;
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> flags: array<u32>;
+@group(0) @binding(2) var<storage, read_write> rgba: array<u32>;
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let x = i32(gid.x);
+  let y = i32(gid.y);
+  if (x >= i32(params.width) || y >= i32(params.height)) {
+    return;
+  }
+  let i = u32(y) * params.width + u32(x);
+  if ((flags[i] & FLAG_CHANGED) != 0u) {
+    rgba[i] = 255u << 24u;
+  } else {
+    rgba[i] = 0u;
   }
 }
 `;

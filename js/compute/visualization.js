@@ -149,6 +149,16 @@ export function updateConeVisualization(result, dem, glideParams) {
     return;
   }
 
+  if (glideParams.showModifiedCells && result.imageData) {
+    coneState.contourGeojson = null;
+    coneState.sectorBorderGeojson = null;
+    hooks.setDownloadContoursVisible(false);
+    clearContourOverlay();
+    clearSectorBorderOverlay();
+    updateOverlay(result.imageData, dem);
+    return;
+  }
+
   if (glideParams.pathOnly) {
     coneState.contourGeojson = null;
     coneState.sectorBorderGeojson = null;

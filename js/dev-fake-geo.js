@@ -89,12 +89,37 @@ export function initFakeGeo(app, hooks) {
       <span>Altitude (m)</span>
       <input id="fake-geo-altitude" type="number" step="10" />
     </label>
+    <label class="fake-geo-max-iter fake-geo-debug-only" for="fake-geo-max-iter" hidden>
+      <span>Stop at iter</span>
+      <input id="fake-geo-max-iter" type="number" min="1" step="1" placeholder="∞" />
+    </label>
     <p class="fake-geo-hint">Uses map centre as fake position.</p>
   `;
   document.body.appendChild(panel);
 
   const enableInput = panel.querySelector("#fake-geo-enable");
   const altitudeInput = panel.querySelector("#fake-geo-altitude");
+  const maxIterInput = panel.querySelector("#fake-geo-max-iter");
+  const maxIterField = panel.querySelector(".fake-geo-debug-only");
+
+  function isDebugMode() {
+    return document.getElementById("debug-mode")?.checked ?? false;
+  }
+
+  function syncFakeGeoDebugFields() {
+    const debug = isDebugMode();
+    if (maxIterField) {
+      maxIterField.hidden = !debug;
+    }
+  }
+
+  function readMaxComputeIterations() {
+    if (!isDebugMode()) {
+      return null;
+    }
+    const value = Number.parseInt(maxIterInput?.value ?? "", 10);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
 
   function applyFakeGeo(lng, lat, altitude) {
     app.lastGeoLngLat = { lng, lat };
@@ -144,6 +169,13 @@ export function initFakeGeo(app, hooks) {
     syncFakeGeoFromCamera();
   });
 
+  maxIterInput?.addEventListener("change", () => {
+    document.getElementById("params-mode-single")?.click();
+  });
+
   hooks.syncFakeGeoFromCamera = syncFakeGeoFromCamera;
   hooks.isFakeGeoActive = () => isFakeGeoActive(app);
+  hooks.getMaxComputeIterations = readMaxComputeIterations;
+  hooks.syncFakeGeoDebugFields = syncFakeGeoDebugFields;
+  syncFakeGeoDebugFields();
 }

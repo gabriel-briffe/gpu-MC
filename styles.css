@@ -891,8 +891,15 @@
         gap: 0.2rem;
       }
 
+      .fake-geo-max-iter {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+      }
+
       .fake-geo-alt input,
-      #fake-geo-altitude {
+      #fake-geo-altitude,
+      #fake-geo-max-iter {
         width: 100%;
         box-sizing: border-box;
         padding: 0.25rem 0.4rem;

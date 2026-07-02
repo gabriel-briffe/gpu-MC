@@ -1,5 +1,10 @@
 export function formatComputeDone(result, extra = "") {
-  const suffix = result.stopped ? " (stopped)" : "";
+  let suffix = "";
+  if (result.stopReason === "max_iterations") {
+    suffix = ` (stopped at iter ${result.iterations})`;
+  } else if (result.stopped) {
+    suffix = " (stopped)";
+  }
   return `Done — ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms GPU${suffix}${extra}`;
 }
 

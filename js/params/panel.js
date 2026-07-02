@@ -69,7 +69,8 @@ export { getSectorsOverlayOpacity };
 export function syncParamVisibility() {
   const { mode } = parseVizMode();
   if (dom.previewFieldEl) {
-    dom.previewFieldEl.hidden = mode === "contours" || mode === "path-only";
+    dom.previewFieldEl.hidden =
+      mode === "contours" || mode === "path-only" || mode === "modified-cells";
   }
   if (dom.vizHintEl) {
     dom.vizHintEl.textContent = VIZ_HINTS[mode] ?? "";
@@ -112,7 +113,7 @@ export function syncVizModeDebugOptions() {
     option.disabled = !debug;
   }
   const mode = dom.vizModeSelect.value;
-  if (!debug && (mode === "stripes" || mode === "raw")) {
+  if (!debug && (mode === "stripes" || mode === "raw" || mode === "modified-cells")) {
     dom.vizModeSelect.value = "contours";
     syncParamVisibility();
     if (app.hooks.getConeState() && !app.hooks.isComputing()) {
@@ -210,6 +211,7 @@ export function syncDebugUi() {
   app.hooks.syncDownloadContoursButton();
   app.hooks.syncBaseMapTerrainMaxZoom?.();
   syncPeekLosUi();
+  app.hooks.syncFakeGeoDebugFields?.();
   if (!debug) {
     app.hooks.exitMatrixExtractMode?.();
   }

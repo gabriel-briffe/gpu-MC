@@ -79,6 +79,36 @@ export async function renderColorFrame(
   return packedRgbaToImageData(packed, width, height);
 }
 
+export async function renderModifiedCellsFrame(
+  device,
+  { modifiedPipeline, modifiedLayout, sumUniformBuffer, flagsRead, rgbaBuffer, readBuffer, wgX, wgY, width, height, count }
+) {
+  const bind = device.createBindGroup({
+    layout: modifiedLayout,
+    entries: [
+      { binding: 0, resource: { buffer: sumUniformBuffer } },
+      { binding: 1, resource: { buffer: flagsRead } },
+      { binding: 2, resource: { buffer: rgbaBuffer } },
+    ],
+  });
+
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(modifiedPipeline);
+  pass.setBindGroup(0, bind);
+  pass.dispatchWorkgroups(wgX, wgY);
+  pass.end();
+
+  const copyEncoder = device.createCommandEncoder();
+  copyEncoder.copyBufferToBuffer(rgbaBuffer, 0, readBuffer, 0, count * 4);
+  device.queue.submit([encoder.finish(), copyEncoder.finish()]);
+
+  await readBuffer.mapAsync(GPUMapMode.READ);
+  const packed = new Uint32Array(readBuffer.getMappedRange().slice(0));
+  readBuffer.unmap();
+  return packedRgbaToImageData(packed, width, height);
+}
+
 export function resolveDeepOriginsGpu(
   device,
   pipelines,

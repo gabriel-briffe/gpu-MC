@@ -54,6 +54,7 @@ function makeComputeOptions(dem, glideParams) {
   return {
     onProgress: makeComputeProgressHandler(dem, glideParams),
     shouldStop: () => hooks.getComputeShouldStop(),
+    maxIterations: hooks.getMaxComputeIterations?.() ?? null,
   };
 }
 

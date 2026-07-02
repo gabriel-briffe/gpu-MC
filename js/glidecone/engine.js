@@ -1,6 +1,7 @@
 import {
   PROPAGATE_SHADER,
   CHANGED_SUM_SHADER,
+  MODIFIED_CELLS_SHADER,
   FLAG_CHANGED,
   COLOR_SHADER,
   COLOR_SHADER_RAW,
@@ -18,6 +19,7 @@ import {
   packXY,
   unpackXY,
   createPipeline,
+  renderModifiedCellsFrame,
 } from "./render.js";
 
 export class GlideConeEngine {
@@ -47,6 +49,11 @@ export class GlideConeEngine {
         "storage",
       ]),
       changedSum: await createPipeline(this.device, CHANGED_SUM_SHADER, [
+        "uniform",
+        "read-only-storage",
+        "storage",
+      ]),
+      modifiedCells: await createPipeline(this.device, MODIFIED_CELLS_SHADER, [
         "uniform",
         "read-only-storage",
         "storage",
@@ -96,6 +103,7 @@ export class GlideConeEngine {
       raw: rawOverride,
       onProgress = null,
       shouldStop = null,
+      maxIterations = null,
     } = options;
     const { device, pipelines } = this;
     const { width, height, homeX, homeY, cellSizeM, elevation, terrainMsl, groundClearance, seeds: demSeeds } =
@@ -110,6 +118,7 @@ export class GlideConeEngine {
       contours: contoursParam = false,
       pathOnly: pathOnlyParam = false,
       sectors: sectorsParam = false,
+      showModifiedCells = false,
       updateMapMs = 100,
     } = params;
     const raw = rawOverride !== undefined ? rawOverride : rawParam;
@@ -238,6 +247,21 @@ export class GlideConeEngine {
       count,
     };
 
+    const renderModifiedFrame = () =>
+      renderModifiedCellsFrame(device, {
+        modifiedPipeline: pipelines.modifiedCells.pipeline,
+        modifiedLayout: pipelines.modifiedCells.layout,
+        sumUniformBuffer,
+        flagsRead: flagsPrev,
+        rgbaBuffer,
+        readBuffer,
+        wgX,
+        wgY,
+        width,
+        height,
+        count,
+      });
+
     const renderRasterFrame = () => {
       let colorOriginRead = originRead;
       let colorFlagsRead = flagsPrev;
@@ -343,6 +367,11 @@ export class GlideConeEngine {
         break;
       }
 
+      if (Number.isFinite(maxIterations) && maxIterations > 0 && actualIterations >= maxIterations) {
+        stopReason = "max_iterations";
+        break;
+      }
+
       frameArgs.altRead = altRead;
       frameArgs.originRead = originRead;
       frameArgs.groundRead = flagsPrev;
@@ -350,7 +379,9 @@ export class GlideConeEngine {
     }
 
     let imageData = null;
-    if (needsRaster) {
+    if (showModifiedCells) {
+      imageData = await renderModifiedFrame();
+    } else if (needsRaster) {
       imageData = await renderRasterFrame();
     }
 
@@ -361,7 +392,7 @@ export class GlideConeEngine {
       homeAlt,
       iterations: actualIterations,
       stopReason,
-      stopped: stopReason === "stopped",
+      stopped: stopReason === "stopped" || stopReason === "max_iterations",
       elapsedMs: performance.now() - t0,
     };
 

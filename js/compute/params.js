@@ -16,7 +16,7 @@ export function getGlideParams() {
   );
   const includeAirspace = dom.includeAirspaceInput?.checked ?? false;
   const updateMapMs = Number.parseInt(document.getElementById("update-map").value, 10);
-  const { raw, contours, pathOnly, sectors } = parseVizMode();
+  const { raw, contours, pathOnly, sectors, showModifiedCells } = parseVizMode();
 
   return {
     glideRatio: Number.isFinite(glideRatio) && glideRatio > 0 ? glideRatio : 20,
@@ -37,6 +37,7 @@ export function getGlideParams() {
     contours,
     pathOnly,
     sectors,
+    showModifiedCells,
     updateMapMs:
       Number.isFinite(updateMapMs) && updateMapMs >= 0 ? updateMapMs : 100,
   };
