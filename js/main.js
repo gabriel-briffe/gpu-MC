@@ -1,5 +1,4 @@
 import {
-  gridBoundsLngLat,
   clampTerrainZoom,
   metersPerPixel,
 } from "./geo.js";
@@ -111,7 +110,6 @@ import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
 import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
-import { initMatrixExtract } from "./debug/matrix-extract.js";
 
 const app = createApp();
 
@@ -119,7 +117,6 @@ const {
   info,
   airspaceInfoEl,
   statusEl,
-  cellInfoEl,
   cellTooltipEl,
   paramsForm,
   vizModeSelect,
@@ -137,10 +134,6 @@ const {
   autoWindowGlideHintEl,
   includeAirspaceInput,
   paramHelpPopover,
-  compareLosBtn,
-  compareLosRow,
-  extractMatrixBtn,
-  extractMatrixRow,
   downloadContoursBtn,
   stopComputeBtn,
   runComputeBtn,
@@ -155,7 +148,6 @@ const {
   manualAirportNameInput,
   manualAirportListEl,
   debugModeInput,
-  losRunInput,
   computeContextBarEl,
   computeContextGeoStatsEl,
   computeContextMinAltReadingEl,
@@ -388,8 +380,6 @@ const sharedHooks = {
   setStatus,
   stopComputeBtn,
   runComputeBtn,
-  compareLosBtn,
-  extractMatrixBtn,
   downloadContoursBtn,
   clearOverlayBtn,
   vizModeSelect,
@@ -401,13 +391,8 @@ const sharedHooks = {
   computeContextBarEl,
   clearCellInspect,
   clearGlidePath,
-  clearCompareOverlay,
-  updateCompareOverlay,
-  setCompareButtonVisible,
   setDownloadContoursVisible,
   downloadContourGeojson,
-  syncCompareLosButton,
-  syncExtractMatrixButton,
   ensurePathLayer,
   raisePathLayer,
   syncAirspaceUi,
@@ -468,7 +453,6 @@ initGlidePath(sharedHooks);
 initCellInspect(sharedHooks);
 initComputeVisualization(sharedHooks);
 initComputeSession(sharedHooks);
-initMatrixExtract(sharedHooks);
 
 app.hooks = {
   getMap: () => app.map,
@@ -488,8 +472,6 @@ app.hooks = {
   scheduleSingleAirportCompute,
   getParamsMode,
   syncSeedLayerVisibility,
-  syncCompareLosButton,
-  syncExtractMatrixButton,
   syncDownloadContoursButton,
   showCellInspect,
   setStatus,
@@ -718,15 +700,12 @@ function setConeState(dem, result, glideParams) {
     sectorBorderGeojson: null,
   };
   syncComputeContextBar();
-  syncExtractMatrixButton();
   updateGeoLocationPath();
 }
 
 function clearConeState() {
   app.coneState = null;
-  sharedHooks.exitMatrixExtractMode?.();
   syncComputeContextBar();
-  syncExtractMatrixButton();
   updateGeoLocationPath();
 }
 
@@ -869,34 +848,6 @@ function syncComputeContextBar() {
   }
 }
 
-function syncCompareLosButton() {
-  const show = isDebugMode() && app.coneState && !app.computing;
-  if (compareLosRow) {
-    compareLosRow.hidden = !show;
-  }
-  if (compareLosBtn) {
-    compareLosBtn.disabled = !show;
-  }
-}
-
-function syncExtractMatrixButton() {
-  const show = isDebugMode() && app.coneState && !app.computing;
-  if (extractMatrixRow) {
-    extractMatrixRow.hidden = !show;
-  }
-  if (extractMatrixBtn) {
-    extractMatrixBtn.disabled = !show;
-    extractMatrixBtn.setAttribute("aria-pressed", String(Boolean(app.matrixExtractMode)));
-    extractMatrixBtn.textContent = app.matrixExtractMode
-      ? "Cancel extract"
-      : "Extract matrix";
-  }
-}
-
-function setCompareButtonVisible(_visible) {
-  syncCompareLosButton();
-}
-
 function syncDownloadContoursButton() {
   if (!downloadContoursBtn) {
     return;
@@ -926,58 +877,6 @@ function downloadContourGeojson() {
   link.click();
   URL.revokeObjectURL(url);
 }
-
-function clearCompareOverlay() {
-  if (app.map.getLayer("glide-cone-full")) {
-    app.map.removeLayer("glide-cone-full");
-  }
-  if (app.map.getSource("glide-cone-full")) {
-    app.map.removeSource("glide-cone-full");
-  }
-}
-
-function updateCompareOverlay(imageData, dem) {
-  if (!app.compareOverlayCanvas) {
-    app.compareOverlayCanvas = document.createElement("canvas");
-  }
-  app.compareOverlayCanvas.width = imageData.width;
-  app.compareOverlayCanvas.height = imageData.height;
-  app.compareOverlayCanvas.getContext("2d").putImageData(imageData, 0, 0);
-
-  const coords = gridBoundsLngLat(dem.gx0, dem.gy0, dem.width, dem.height, dem.zoom);
-  const coordinates = [
-    [coords[0].lng, coords[0].lat],
-    [coords[1].lng, coords[1].lat],
-    [coords[2].lng, coords[2].lat],
-    [coords[3].lng, coords[3].lat],
-  ];
-
-  if (app.map.getSource("glide-cone-full")) {
-    app.map.getSource("glide-cone-full").updateImage({
-      url: app.compareOverlayCanvas.toDataURL(),
-      coordinates,
-    });
-    raisePathLayer();
-    return;
-  }
-
-  app.map.addSource("glide-cone-full", {
-    type: "image",
-    url: app.compareOverlayCanvas.toDataURL(),
-    coordinates,
-  });
-
-  app.map.addLayer({
-    id: "glide-cone-full",
-    type: "raster",
-    source: "glide-cone-full",
-    paint: {
-      "raster-opacity": 1,
-    },
-  });
-  raisePathLayer();
-}
-
 
 async function ensureEngine() {
   if (!app.engine) {

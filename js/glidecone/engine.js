@@ -6,7 +6,6 @@ import {
   FLAG_CHANGED,
   COLOR_SHADER,
   COLOR_SHADER_RAW,
-  COLOR_SHADER_RED,
   COLOR_SHADER_SECTORS,
   RESOLVE_ORIGIN_SHADER,
 } from "./shaders.js";
@@ -87,13 +86,6 @@ export class GlideConeEngine {
         "read-only-storage",
         "storage",
       ]),
-      colorRed: await createPipeline(this.device, COLOR_SHADER_RED, [
-        "uniform",
-        "read-only-storage",
-        "read-only-storage",
-        "read-only-storage",
-        "storage",
-      ]),
       colorSectors: await createPipeline(this.device, COLOR_SHADER_SECTORS, [
         "uniform",
         "read-only-storage",
@@ -113,7 +105,6 @@ export class GlideConeEngine {
 
   async compute(dem, params, options = {}) {
     const {
-      overlayColor = "blue",
       imageOnly = false,
       raw: rawOverride,
       onProgress = null,
@@ -262,7 +253,6 @@ export class GlideConeEngine {
     const colorUniform = createBuffer(device, new Uint8Array(uniformParams), uniformUsage);
     const { pipeline: colorPipeline, layout: colorLayout } = pickColorPipeline(
       pipelines,
-      overlayColor,
       { raw, sectors }
     );
     const readBuffer = device.createBuffer({

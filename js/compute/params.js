@@ -8,9 +8,6 @@ export function getGlideParams() {
   const circuitHeight = Number.parseFloat(document.getElementById("circuit").value);
   const groundClearance = Number.parseFloat(document.getElementById("clearance").value);
   const maxAltitude = Number.parseFloat(document.getElementById("max-alt").value);
-  const originRunN = isDebugMode()
-    ? Number.parseInt(document.getElementById("los-run").value, 10)
-    : 0;
   const terrainZoom = clampTerrainZoom(
     Number.parseInt(document.getElementById("terrain-zoom")?.value ?? "", 10)
   );
@@ -27,12 +24,6 @@ export function getGlideParams() {
       Number.isFinite(maxAltitude) && maxAltitude > 0 ? maxAltitude : DEFAULT_MAX_ALTITUDE,
     terrainZoom,
     includeAirspace,
-    originRunN:
-      Number.isFinite(originRunN) && originRunN === 0
-        ? 0
-        : Number.isFinite(originRunN) && originRunN >= 1
-          ? originRunN
-          : 0,
     raw,
     contours,
     pathOnly,

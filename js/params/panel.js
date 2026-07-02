@@ -48,10 +48,6 @@ function getParamHelpText(key) {
   if (!text) {
     return null;
   }
-  if (key === "los-run" && isDebugMode()) {
-    text +=
-      "\n\nFull Bresenham comparison and path-length diagnostics are available in Debug mode.";
-  }
   return text;
 }
 
@@ -139,7 +135,7 @@ export function setParamsMode(mode, { initial = false } = {}) {
         app.hooks.exitAirportAreaSelectMode(true);
       }
       if (app.openParamHelpButton?.dataset.help) {
-        const manualOnlyHelp = new Set(["preview", "compare-los", "los-run"]);
+        const manualOnlyHelp = new Set(["preview"]);
         if (manualOnlyHelp.has(app.openParamHelpButton.dataset.help)) {
           closeParamHelp();
         }
@@ -174,26 +170,9 @@ export function setParamsMode(mode, { initial = false } = {}) {
 export function syncDebugUi() {
   const debug = isDebugMode();
   dom.paramsShell?.classList.toggle("debug-mode", debug);
-  if (!debug && dom.losRunInput) {
-    dom.losRunInput.value = "0";
-  }
-  if (!debug && app.openParamHelpButton?.dataset.help === "los-run") {
-    closeParamHelp();
-  }
-  if (app.openParamHelpButton?.dataset.help === "los-run" && dom.paramHelpPopover) {
-    const text = getParamHelpText("los-run");
-    if (text) {
-      dom.paramHelpPopover.textContent = text;
-    }
-  }
-  app.hooks.syncCompareLosButton();
-  app.hooks.syncExtractMatrixButton();
   app.hooks.syncDownloadContoursButton();
   app.hooks.syncBaseMapTerrainMaxZoom?.();
   app.hooks.syncFakeGeoDebugFields?.();
-  if (!debug) {
-    app.hooks.exitMatrixExtractMode?.();
-  }
   syncVizModeDebugOptions();
   app.hooks.syncAirspaceUi?.();
   const lastInspectCell = app.hooks.getLastInspectCell();
@@ -330,12 +309,10 @@ export function initParamsPanel(appState, domRefs) {
     applySectorsOverlayOpacity();
   });
 
-  document.getElementById("los-run")?.addEventListener("input", app.hooks.syncCompareLosButton);
   app.hooks.detectInteractionMode();
   for (const query of ["(pointer: coarse)", "(pointer: fine)", "(hover: hover)"]) {
     window.matchMedia(query).addEventListener("change", app.hooks.detectInteractionMode);
   }
-  app.hooks.syncCompareLosButton();
   syncDebugUi();
   app.hooks.updateParamsFooter();
 

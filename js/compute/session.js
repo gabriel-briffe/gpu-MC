@@ -25,9 +25,6 @@ export function startComputeSession() {
   if (hooks.getManualAirportSelectMode()) {
     hooks.exitManualAirportSelectMode(false);
   }
-  hooks.exitMatrixExtractMode?.();
-  hooks.syncCompareLosButton();
-  hooks.syncExtractMatrixButton?.();
 }
 
 export function endComputeSession() {
@@ -36,8 +33,6 @@ export function endComputeSession() {
   hooks.stopComputeBtn.hidden = true;
   hooks.stopComputeBtn.disabled = false;
   hooks.updateSeedMarkers();
-  hooks.syncCompareLosButton();
-  hooks.syncExtractMatrixButton?.();
   if (hooks.isAutoParamsMode() && hooks.getAutoComputePending()) {
     void hooks.flushAutoCompute();
   } else if (hooks.isSingleParamsMode?.() && hooks.getSingleComputePending?.()) {
@@ -72,36 +67,6 @@ function makeComputeProgressHandler(dem, glideParams) {
   };
 }
 
-export async function runFullBresenhamCompare() {
-  const coneState = hooks.getConeState();
-  if (!coneState || hooks.isComputing()) {
-    return;
-  }
-
-  startComputeSession();
-  hooks.compareLosBtn.disabled = true;
-  hooks.setStatus("Running full Bresenham on current grid…");
-
-  try {
-    const gpu = await hooks.ensureEngine();
-    const result = await gpu.compute(coneState.dem, getGlideParams(), {
-      fullBresenham: true,
-      overlayColor: "red",
-      imageOnly: true,
-      raw: false,
-      shouldStop: () => hooks.getComputeShouldStop(),
-    });
-    hooks.updateCompareOverlay(result.imageData, coneState.dem);
-    hooks.setStatus(formatComputeDone(result), { clearAfterMs: COMPUTE_DONE_STATUS_CLEAR_MS });
-  } catch (error) {
-    hooks.setStatus(`Error: ${error.message}`);
-    console.error(error);
-  } finally {
-    endComputeSession();
-    hooks.compareLosBtn.disabled = false;
-  }
-}
-
 export async function runComputation(seedsOverride = null, { gridBounds = null } = {}) {
   if (hooks.isComputing()) {
     return;
@@ -118,8 +83,6 @@ export async function runComputation(seedsOverride = null, { gridBounds = null }
   const glideParams = getGlideParams();
   hooks.clearCellInspect();
   hooks.clearGlidePath();
-  hooks.clearCompareOverlay();
-  hooks.setCompareButtonVisible(false);
   hooks.setDownloadContoursVisible(false);
 
   startComputeSession();
@@ -152,7 +115,6 @@ export async function runComputation(seedsOverride = null, { gridBounds = null }
     updateConeVisualization(result, dem, glideParams);
     logOriginPathValidation(result);
     hooks.ensurePathLayer();
-    hooks.syncCompareLosButton();
     hooks.setDownloadContoursVisible(glideParams.contours);
 
     hooks.setStatus(

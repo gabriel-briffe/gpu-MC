@@ -321,19 +321,6 @@ async function cacheAirportsForCells(cellKeys, config, onStatus) {
   return { airportFetches, cellsFetched, cellsSkipped };
 }
 
-/**
- * @deprecated OpenAIP REST data is only fetched via Cache mode ({@link buildCacheBundle}).
- */
-export async function ensureAirportCellsCachedForBbox(bbox, config, onStatus) {
-  const cellKeys = cellKeysInBbox(bbox.west, bbox.south, bbox.east, bbox.north);
-  if (cellKeys.length === 0) {
-    return { cellKeys, airportFetches: 0, cellsFetched: 0, cellsSkipped: 0 };
-  }
-
-  const stats = await cacheAirportsForCells(cellKeys, config, onStatus);
-  return { cellKeys, ...stats };
-}
-
 /** Merge cached per-cell airport lists for display (deduped at read time). */
 export function mergeCachedAirports(cellKeys = null) {
   const keys = cellKeys ?? getCachedCellKeys();

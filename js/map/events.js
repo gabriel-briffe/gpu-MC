@@ -5,11 +5,7 @@ import {
   clearSectorBorderOverlay,
   clearAllOverlays,
 } from "../compute/visualization.js";
-import {
-  runFullBresenhamCompare,
-  requestStopCompute,
-  runComputation,
-} from "../compute/session.js";
+import { requestStopCompute, runComputation } from "../compute/session.js";
 
 function markTouchHandled(app) {
   app.touchHandledRecently = true;
@@ -36,13 +32,6 @@ export function bindMapEvents(app, hooks) {
         hooks.updateAirportAreaInteraction(event.lngLat);
       } else {
         hooks.syncAreaSelectCursor(event.point);
-      }
-      return;
-    }
-
-    if (hooks.getMatrixExtractMode?.()) {
-      if (hooks.hasMatrixExtractInteraction?.()) {
-        hooks.updateMatrixExtractInteraction(event.lngLat);
       }
       return;
     }
@@ -86,10 +75,6 @@ export function bindMapEvents(app, hooks) {
     if (event.originalEvent.button !== 0) {
       return;
     }
-    if (hooks.getMatrixExtractMode?.()) {
-      hooks.beginMatrixExtractInteraction(event.lngLat);
-      return;
-    }
     if (!hooks.getAirportAreaSelectMode()) {
       return;
     }
@@ -97,18 +82,10 @@ export function bindMapEvents(app, hooks) {
   });
 
   map.on("mouseup", (event) => {
-    if (hooks.hasMatrixExtractInteraction?.()) {
-      hooks.finishMatrixExtractInteraction(event.lngLat);
-      return;
-    }
     hooks.finishAirportAreaInteraction(event.lngLat);
   });
 
   map.on("mouseleave", () => {
-    if (hooks.hasMatrixExtractInteraction?.()) {
-      hooks.cancelMatrixExtractInteraction();
-      return;
-    }
     if (hooks.hasAirportRectInteraction()) {
       hooks.cancelAirportRectInteraction();
       hooks.syncAirportAreaSelectUi();
@@ -120,10 +97,6 @@ export function bindMapEvents(app, hooks) {
   });
 
   map.on("touchstart", (event) => {
-    if (hooks.getMatrixExtractMode?.() && !hooks.isComputing() && event.points.length === 1) {
-      hooks.beginMatrixExtractInteraction(event.lngLat);
-      return;
-    }
     if (hooks.getAirportAreaSelectMode() && !hooks.isComputing() && event.points.length === 1) {
       hooks.beginAirportAreaInteraction(event.lngLat, event.point);
       return;
@@ -135,11 +108,6 @@ export function bindMapEvents(app, hooks) {
 
   map.on("touchmove", (event) => {
     maybeUpdateAirspaceInfo(hooks, event.lngLat.lng, event.lngLat.lat);
-
-    if (hooks.getMatrixExtractMode?.() && hooks.hasMatrixExtractInteraction?.()) {
-      hooks.updateMatrixExtractInteraction(event.lngLat);
-      return;
-    }
 
     if (hooks.getAirportAreaSelectMode() && hooks.hasAirportRectInteraction()) {
       hooks.updateAirportAreaInteraction(event.lngLat);
@@ -157,12 +125,6 @@ export function bindMapEvents(app, hooks) {
 
   map.on("touchend", (event) => {
     maybeUpdateAirspaceInfo(hooks, event.lngLat.lng, event.lngLat.lat);
-
-    if (hooks.getMatrixExtractMode?.() && hooks.hasMatrixExtractInteraction?.()) {
-      hooks.finishMatrixExtractInteraction(event.lngLat);
-      markTouchHandled(app);
-      return;
-    }
 
     if (hooks.getAirportAreaSelectMode() && hooks.hasAirportRectInteraction()) {
       hooks.finishAirportAreaInteraction(event.lngLat);
@@ -195,10 +157,6 @@ export function bindMapEvents(app, hooks) {
 
   map.on("touchcancel", () => {
     app.manualTouchStart = null;
-    if (hooks.hasMatrixExtractInteraction?.()) {
-      hooks.cancelMatrixExtractInteraction();
-      return;
-    }
     if (hooks.hasAirportRectInteraction()) {
       hooks.cancelAirportRectInteraction();
       hooks.syncAirportAreaSelectUi();
@@ -216,8 +174,6 @@ export function bindMapEvents(app, hooks) {
 
     if (
       app.touchHandledRecently ||
-      hooks.getMatrixExtractMode?.() ||
-      hooks.hasMatrixExtractInteraction?.() ||
       hooks.getAirportAreaSelectMode() ||
       hooks.hasAirportRectInteraction()
     ) {
@@ -293,10 +249,6 @@ export function bindUiEvents(app, hooks) {
     }
   });
 
-  hooks.compareLosBtn?.addEventListener("click", () => {
-    runFullBresenhamCompare();
-  });
-
   hooks.downloadContoursBtn?.addEventListener("click", () => {
     hooks.downloadContourGeojson();
   });
@@ -313,9 +265,6 @@ export function bindUiEvents(app, hooks) {
   });
 
   hooks.paramsPanel?.addEventListener("toggle", () => {
-    if (hooks.paramsPanel.open && hooks.getMatrixExtractMode?.()) {
-      hooks.exitMatrixExtractMode();
-    }
     if (hooks.paramsPanel.open && hooks.getAirportAreaSelectMode()) {
       hooks.exitAirportAreaSelectMode(false);
     }

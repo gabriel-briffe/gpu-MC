@@ -159,11 +159,6 @@ export function initOpenAipAirspaceTiles(map, config) {
   return true;
 }
 
-/** @deprecated Use initOpenAipAirspaceTiles */
-export function initOpenAipTiles(map, config) {
-  return initOpenAipAirspaceTiles(map, config);
-}
-
 let removeOpenAipVectorTilesFrame = null;
 
 export function removeOpenAipVectorTiles(map) {

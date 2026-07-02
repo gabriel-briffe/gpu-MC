@@ -352,29 +352,6 @@
         justify-content: center;
       }
 
-      #debug-tools-field {
-        display: none;
-        align-items: center;
-        gap: 0.55rem;
-      }
-
-      #params-shell.debug-mode #debug-tools-field {
-        display: flex;
-        flex-direction: column;
-      }
-
-      .debug-tools-actions {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.45rem;
-        width: 100%;
-      }
-
-      #debug-tools-field > .param-check {
-        justify-content: center;
-      }
-
       .params-section-actions {
         display: flex;
         flex-wrap: wrap;
@@ -387,21 +364,6 @@
       .params-section-actions-secondary {
         padding-top: 0.55rem;
         border-top: 1px solid rgba(255, 255, 255, 0.06);
-      }
-
-      .compare-los-row {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.2rem;
-      }
-
-      .compare-los-row[hidden] {
-        display: none;
-      }
-
-      #extract-matrix[aria-pressed="true"] {
-        background: rgba(230, 168, 23, 0.22);
-        border-color: rgba(230, 168, 23, 0.55);
       }
 
       #seed-list,
@@ -497,34 +459,8 @@
         color: #b8c5d6;
       }
 
-      #cell-info {
-        color: #e8f0ff;
-        white-space: pre-line;
-      }
-
-      #cell-info[hidden],
       #status[hidden] {
         display: none;
-      }
-
-      #cell-info .delta-pos {
-        color: #6dd96d;
-      }
-
-      #cell-info .delta-neg {
-        color: #f07070;
-      }
-
-      #cell-info .path-info-heading {
-        display: block;
-        font-weight: 700;
-        margin-bottom: 0.15rem;
-      }
-
-      #cell-info .path-info-note {
-        display: block;
-        margin-top: 0.2rem;
-        color: #9aa4b2;
       }
 
       #cell-tooltip {
@@ -691,14 +627,6 @@
 
       #preview-field[hidden] {
         display: none;
-      }
-
-      #los-run-field {
-        display: none;
-      }
-
-      #params-shell.debug-mode #los-run-field {
-        display: flex;
       }
 
       #params-shell button.action-btn {

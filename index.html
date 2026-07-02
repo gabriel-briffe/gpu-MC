@@ -219,13 +219,6 @@
                   </button>
                 </div>
               </div>
-              <div class="param-field params-manual-only" id="los-run-field">
-                <div class="param-label-row">
-                  <span class="param-label">LOS run N</span>
-                  <button type="button" class="param-help" data-help="los-run" aria-label="Help: LOS run N">ⓘ</button>
-                </div>
-                <input id="los-run" type="number" min="0" step="1" value="0" />
-              </div>
             </div>
           </div>
 
@@ -317,17 +310,6 @@
                   <span>Debug mode</span>
                 </label>
               </div>
-              <div class="param-field param-field-full" id="debug-tools-field">
-                <div class="debug-tools-actions">
-                  <div class="compare-los-row" id="compare-los-row" hidden>
-                    <button type="button" class="action-btn" id="compare-los">Full Bresenham (red)</button>
-                    <button type="button" class="param-help" data-help="compare-los" aria-label="Help: Full Bresenham">ⓘ</button>
-                  </div>
-                  <div class="compare-los-row" id="extract-matrix-row" hidden>
-                    <button type="button" class="action-btn" id="extract-matrix">Extract matrix</button>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -402,7 +384,6 @@
       </div>
       <div id="params-footer">
         <div id="params-footer-info">
-          <div id="cell-info" hidden aria-live="polite"></div>
           <div id="status">Loading WebGPU…</div>
         </div>
         <button type="button" id="stop-compute" hidden>Stop</button>

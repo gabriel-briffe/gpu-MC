@@ -23,7 +23,6 @@ export function initSeeds(h) {
   hooks.setPendingSeedsFromAirports = setPendingSeedsFromAirports;
   hooks.clearPendingSeeds = clearPendingSeeds;
   hooks.clearPendingSeedsSelection = clearPendingSeedsSelection;
-  hooks.seedKey = airportIdFromSeed;
   hooks.airportIdFromSeed = airportIdFromSeed;
   hooks.scrollToSeedsSection = scrollToSeedsSection;
   hooks.airportCountStatus = airportCountStatus;
@@ -42,11 +41,6 @@ export function initSeeds(h) {
 
 export function getPendingSeeds() {
   return app.pendingSeeds;
-}
-
-/** @deprecated Use airportIdFromSeed */
-export function seedKey(seed) {
-  return airportIdFromSeed(seed);
 }
 
 export function isAirportPickMode() {

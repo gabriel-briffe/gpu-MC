@@ -34,7 +34,6 @@ export const EMPTY_PATH = {
 
 export const CACHE_HIDDEN_LAYER_IDS = [
   "glide-cone",
-  "glide-cone-full",
   "glide-contours-line",
   "glide-contours-label",
   "glide-sectors-line",
@@ -75,14 +74,10 @@ export const PARAM_HELP = {
     "In auto mode, the computed window is following the position of the center of the screen. Bigger window, longer wait during updates. \n\nSets window half-width to 1.25 × max altitude (m) × L/D",
   "include-airspace":
     "Include prohibited/overflight-restriction airspace types from OpenAIP so that trajectories go above or around.",
-  "los-run":
-    "Line-of-sight check for distance calculation using the Bresenham algorithm.\n\nN = 0 — Raytrace all the way back to the source. Accurate.\n\nANYTHING ELSE THAN N=0 IS EXPERIMENTAL, MIGHT INTRODUCE MISTAKES, BUGS, PATH ENDING TOO EARLY.. DON'T USE IF YOU DON'T UNDERSTAND THE CODE BEHIND\n\nN = 10 — Raytrace back until the ray hits 10 consecutive pixels already validated as in line of sight of the source.\n\nN = 1 — Stop on the first pixel along the ray that was already validated in LOS (same 1-pixel match rule).",
   "viz-mode":
     "Path only — glide paths on hover/tap, no overlay. \n\nSectors — per-airport colors with grey borders. \n\nContours — 100 m isolines with labels. \n\nContours + sectors — sector fill and borders with contour lines on top. \n\nStripes, raw raster, and modified cells (debug) — alternating 100 m bands, per-cell colors, or last-iteration dirty flags.",
   preview:
     "How often the map refreshes during GPU compute (sectors, stripes, and raw raster). 0 = update once at the end.",
-  "compare-los":
-    "Runs a full Bresenham line-of-sight overlay in red on the current grid, without the LOS run N shortcut. Use this to check how accurate your shortcut is compared to the exact raytrace.",
 };
 
 export const VIZ_HINTS = {

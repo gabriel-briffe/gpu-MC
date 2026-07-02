@@ -33,7 +33,6 @@ function collectFormState(dom) {
     autoWindowFromGlide: readCheckbox(dom.autoWindowFromGlideInput),
     autoWindowSize: readInput(dom.autoWindowSizeInput),
     includeAirspace: readCheckbox(dom.includeAirspaceInput),
-    losRun: readInput(dom.losRunInput),
     updateMap: readInput(document.getElementById("update-map")),
     vizMode: readInput(dom.vizModeSelect),
     sectorsOpacity: readInput(dom.sectorsOpacityInput),
@@ -53,7 +52,6 @@ function applyFormState(dom, form) {
   writeCheckbox(dom.autoWindowFromGlideInput, form.autoWindowFromGlide);
   writeInput(dom.autoWindowSizeInput, form.autoWindowSize);
   writeCheckbox(dom.includeAirspaceInput, form.includeAirspace);
-  writeInput(dom.losRunInput, form.losRun);
   writeInput(document.getElementById("update-map"), form.updateMap);
   writeInput(dom.vizModeSelect, form.vizMode);
   writeInput(dom.sectorsOpacityInput, form.sectorsOpacity);

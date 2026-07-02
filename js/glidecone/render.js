@@ -1,9 +1,6 @@
 import { SECTOR_ORIGIN_RESOLVE_PASSES } from "./shaders.js";
 
-export function pickColorPipeline(pipelines, overlayColor, { raw = false, sectors = false } = {}) {
-  if (overlayColor === "red") {
-    return { pipeline: pipelines.colorRed.pipeline, layout: pipelines.colorRed.layout };
-  }
+export function pickColorPipeline(pipelines, { raw = false, sectors = false } = {}) {
   if (raw) {
     return { pipeline: pipelines.colorRaw.pipeline, layout: pipelines.colorRaw.layout };
   }
@@ -161,10 +158,7 @@ export function packParams(
   cellSizeM,
   glideRatio,
   maxAlt,
-  homeAlt = 0,
-  losShortcut = 1,
-  originRunN = 0,
-  seedCount = 1
+  homeAlt = 0
 ) {
   const buf = new ArrayBuffer(48);
   const view = new DataView(buf);
@@ -176,9 +170,6 @@ export function packParams(
   view.setFloat32(20, glideRatio, true);
   view.setFloat32(24, maxAlt, true);
   view.setFloat32(28, homeAlt, true);
-  view.setUint32(32, losShortcut, true);
-  view.setUint32(36, originRunN, true);
-  view.setUint32(40, seedCount, true);
   return buf;
 }
 

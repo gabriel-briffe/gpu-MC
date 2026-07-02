@@ -61,12 +61,9 @@ export function clearComputeResults() {
   clearRasterOverlay();
   clearContourOverlay();
   clearSectorBorderOverlay();
-  hooks.clearCompareOverlay();
   hooks.clearCellInspect();
   hooks.clearAllGlidePaths();
   hooks.setDownloadContoursVisible(false);
-  hooks.syncCompareLosButton();
-  hooks.syncExtractMatrixButton?.();
 }
 
 export function clearAllOverlays() {
