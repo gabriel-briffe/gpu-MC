@@ -7,6 +7,8 @@ import { airportPropertiesWithId } from "./airports/airport-id.js";
 
 export const CACHE_TERRAIN_Z_MIN = 3;
 export const CACHE_TERRAIN_Z_MAX = 9;
+/** Terrain tile failures at this zoom and above are silent (no infobox warning). */
+export const CACHE_TERRAIN_WARN_Z_MAX = 7;
 export const CACHE_CELL_TTL_MS = 24 * 60 * 60 * 1000;
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
 const CELL_CACHE_STORAGE_KEY = "gpu-mc-cell-cache-v1";
@@ -242,41 +244,53 @@ export function terrariumTileIndicesForBounds(west, south, east, north, z) {
   return tiles;
 }
 
-async function prefetchTerrariumTiles(bounds, onStatus) {
+async function prefetchTerrariumTiles(bounds, onStatus, onWarning) {
   const jobs = [];
   for (let z = CACHE_TERRAIN_Z_MIN; z <= CACHE_TERRAIN_Z_MAX; z += 1) {
     jobs.push(...terrariumTileIndicesForBounds(bounds.west, bounds.south, bounds.east, bounds.north, z));
   }
 
   if (jobs.length === 0) {
-    return { tileCount: 0, tileFetches: 0 };
+    return { tileCount: 0, tileFetches: 0, tileFailures: 0 };
   }
 
   let loaded = 0;
   let tileFetches = 0;
+  let tileFailures = 0;
   onStatus?.(`Caching terrarium tiles 0/${jobs.length} (z${CACHE_TERRAIN_Z_MIN}–${CACHE_TERRAIN_Z_MAX})…`);
 
   for (let index = 0; index < jobs.length; index += TERRAIN_PREFETCH_CONCURRENCY) {
     const batch = jobs.slice(index, index + TERRAIN_PREFETCH_CONCURRENCY);
     await Promise.all(
       batch.map(async ({ z, x, y }) => {
-        const { fromNetwork } = await fetchTerrainTileBlob(z, x, y);
-        if (fromNetwork) {
-          tileFetches += 1;
+        try {
+          const { fromNetwork } = await fetchTerrainTileBlob(z, x, y);
+          if (fromNetwork) {
+            tileFetches += 1;
+          }
+        } catch (error) {
+          tileFailures += 1;
+          if (z <= CACHE_TERRAIN_WARN_Z_MAX) {
+            onWarning?.(`Terrain z${z}/${x}/${y}: ${error.message}`);
+          }
+        } finally {
+          loaded += 1;
+          onStatus?.(
+            `Caching terrarium tiles ${loaded}/${jobs.length} (z${CACHE_TERRAIN_Z_MIN}–${CACHE_TERRAIN_Z_MAX})…`
+          );
         }
-        loaded += 1;
-        onStatus?.(`Caching terrarium tiles ${loaded}/${jobs.length} (z${CACHE_TERRAIN_Z_MIN}–${CACHE_TERRAIN_Z_MAX})…`);
       })
     );
   }
 
-  return { tileCount: jobs.length, tileFetches };
+  return { tileCount: jobs.length, tileFetches, tileFailures };
 }
 
-async function cacheAirportsForCells(cellKeys, config, onStatus) {
+async function cacheAirportsForCells(cellKeys, config, onStatus, onWarning) {
   let airportFetches = 0;
   let cellsFetched = 0;
   let cellsSkipped = 0;
+  let cellsFailed = 0;
 
   for (let index = 0; index < cellKeys.length; index += 1) {
     const cellKey = cellKeys[index];
@@ -291,34 +305,42 @@ async function cacheAirportsForCells(cellKeys, config, onStatus) {
 
     onStatus?.(`Fetching airports & airspace — cell ${index + 1}/${cellKeys.length} (${cellKey})…`);
     const bounds = cacheCellBounds(cellKey);
-    const [{ airports, fetchCount }, airspaces] = await Promise.all([
-      fetchAirportsInBbox(bounds, config),
-      fetchOverlayAirspaces(
-        {
-          minLng: bounds.west,
-          minLat: bounds.south,
-          maxLng: bounds.east,
-          maxLat: bounds.north,
-        },
-        config
-      ),
-    ]);
-    airportFetches += fetchCount;
-    cellsFetched += 1;
+    try {
+      const [{ airports, fetchCount }, airspaces] = await Promise.all([
+        fetchAirportsInBbox(bounds, config),
+        fetchOverlayAirspaces(
+          {
+            minLng: bounds.west,
+            minLat: bounds.south,
+            maxLng: bounds.east,
+            maxLat: bounds.north,
+          },
+          config
+        ),
+      ]);
+      airportFetches += fetchCount;
+      cellsFetched += 1;
 
-    cellCache.set(cellKey, {
-      cellKey,
-      bounds,
-      airports,
-      airspaces,
-      fetchedAt: Date.now(),
-      airportFetches: fetchCount,
-      airspaceFetches: 1,
-    });
+      cellCache.set(cellKey, {
+        cellKey,
+        bounds,
+        airports,
+        airspaces,
+        fetchedAt: Date.now(),
+        airportFetches: fetchCount,
+        airspaceFetches: 1,
+      });
+    } catch (error) {
+      cellsFailed += 1;
+      onWarning?.(`Cell ${cellKey}: ${error.message}`);
+      onStatus?.(
+        `Cell ${index + 1}/${cellKeys.length} (${cellKey}) failed — ${error.message}`
+      );
+    }
   }
 
   persistCellCache();
-  return { airportFetches, cellsFetched, cellsSkipped };
+  return { airportFetches, cellsFetched, cellsSkipped, cellsFailed };
 }
 
 /** Merge cached per-cell airport lists for display (deduped at read time). */
@@ -334,6 +356,11 @@ export function mergeCachedAirports(cellKeys = null) {
   }
 
   return dedupeAirports(all);
+}
+
+/** True when at least one airport is stored for the given cells (or any cached cell). */
+export function hasCachedAirports(cellKeys = null) {
+  return mergeCachedAirports(cellKeys).length > 0;
 }
 
 /** Merge cached per-cell REST airspace lists for display (deduped at read time). */
@@ -401,18 +428,23 @@ export function mergedCachedAirportsToGeoJsonFeatures(cellKeys = null) {
   }));
 }
 
-export async function buildCacheBundle(cellKeys, config, onStatus) {
+export async function buildCacheBundle(cellKeys, config, onStatus, onWarning) {
   if (!cellKeys.length) {
     throw new Error("Select at least one 1° cell to cache");
   }
 
   const bounds = unionCellBounds(cellKeys);
-  const { tileCount, tileFetches } = await prefetchTerrariumTiles(bounds, onStatus);
+  const { tileCount, tileFetches, tileFailures } = await prefetchTerrariumTiles(
+    bounds,
+    onStatus,
+    onWarning
+  );
   onStatus?.(`Fetching airports & airspace for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`);
-  const { airportFetches, cellsFetched, cellsSkipped } = await cacheAirportsForCells(
+  const { airportFetches, cellsFetched, cellsSkipped, cellsFailed } = await cacheAirportsForCells(
     cellKeys,
     config,
-    onStatus
+    onStatus,
+    onWarning
   );
   const networkFetches = tileFetches + airportFetches;
   const airportCount = mergeCachedAirports(cellKeys).length;
@@ -423,9 +455,17 @@ export async function buildCacheBundle(cellKeys, config, onStatus) {
     cellsSkipped > 0
       ? `, ${cellsSkipped} cell${cellsSkipped === 1 ? "" : "s"} kept`
       : "";
+  const failParts = [];
+  if (tileFailures > 0) {
+    failParts.push(`${tileFailures} terrain tile${tileFailures === 1 ? "" : "s"} failed`);
+  }
+  if (cellsFailed > 0) {
+    failParts.push(`${cellsFailed} cell${cellsFailed === 1 ? "" : "s"} failed`);
+  }
+  const failSuffix = failParts.length ? `, ${failParts.join(", ")}` : "";
 
   onStatus?.(
-    `Cache done — ${tileCount} terrarium tiles, ${airportCount} airports, ${airspaceCount} airspace volumes in ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${networkFetches} fetched${keptSuffix})`
+    `Cache done — ${tileCount} terrarium tiles, ${airportCount} airports, ${airspaceCount} airspace volumes in ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${networkFetches} fetched${keptSuffix}${failSuffix})`
   );
 
   return {
@@ -433,9 +473,11 @@ export async function buildCacheBundle(cellKeys, config, onStatus) {
     bounds,
     tileCount,
     tileFetches,
+    tileFailures,
     airportFetches,
     cellsFetched,
     cellsSkipped,
+    cellsFailed,
     airportCount,
     airspaceCount,
   };

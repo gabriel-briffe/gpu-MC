@@ -15,6 +15,28 @@
         inset: 0;
       }
 
+      #not-for-flying-banner {
+        position: fixed;
+        top: 0.75rem;
+        left: 0.75rem;
+        z-index: 3;
+        padding: 0.45rem 0.7rem;
+        border-radius: 0.4rem;
+        background: #ffffff;
+        color: #ff3333;
+        font-size: 1.05rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        line-height: 1.15;
+        text-align: center;
+        pointer-events: none;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+      }
+
+      #not-for-flying-banner span {
+        display: block;
+      }
+
       #params-shell {
         position: fixed;
         top: 0.75rem;
@@ -903,6 +925,12 @@
         overflow-y: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
+      }
+
+      #airspace-info .cache-data-warning {
+        color: #fb923c;
+        font-size: 0.74rem;
+        line-height: 1.4;
       }
 
       #airspace-info details {

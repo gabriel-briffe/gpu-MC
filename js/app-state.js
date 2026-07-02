@@ -52,6 +52,7 @@ export function createApp() {
     touchHandledRecently: false,
     manualTouchStart: null,
     selectedCacheCells: new Set(),
+    cacheDataWarnings: [],
     interaction: {
       hoverPath: false,
       tapPath: false,

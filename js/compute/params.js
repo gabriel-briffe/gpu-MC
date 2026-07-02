@@ -11,7 +11,7 @@ export function getGlideParams() {
   const terrainZoom = clampTerrainZoom(
     Number.parseInt(document.getElementById("terrain-zoom")?.value ?? "", 10)
   );
-  const includeAirspace = dom.includeAirspaceInput?.checked ?? false;
+  const includeAirspace = dom.includeAirspaceInput?.checked ?? true;
   const updateMapMs = Number.parseInt(document.getElementById("update-map").value, 10);
   const { raw, contours, pathOnly, sectors, showModifiedCells } = parseVizMode();
 

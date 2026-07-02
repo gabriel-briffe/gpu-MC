@@ -20,7 +20,7 @@ import { dom } from "./dom.js";
 import {
   DEFAULT_MAX_ALTITUDE,
   MAP_CENTER,
-  INITIAL_TERRAIN_Z,
+  MAP_INITIAL_ZOOM,
   MAP_MAX_ZOOM,
   CACHE_SELECT_FOOTER_HINT,
 } from "./constants.js";
@@ -268,7 +268,7 @@ function syncOpenAipVectorTiles() {
 }
 
 function isIncludeAirspaceEnabled() {
-  return includeAirspaceInput?.checked ?? false;
+  return includeAirspaceInput?.checked ?? true;
 }
 
 function syncAirspaceUi() {
@@ -396,6 +396,8 @@ const sharedHooks = {
   ensurePathLayer,
   raisePathLayer,
   syncAirspaceUi,
+  setCacheDataWarnings,
+  clearCacheDataWarnings,
   updateAirspaceInfo,
   isIncludeAirspaceEnabled,
   refreshCachedAirportMapLayer,
@@ -507,7 +509,7 @@ registerTerrainTileProtocol();
 app.map = new maplibregl.Map({
   container: "map",
   hash: "map",
-  zoom: Math.min(INITIAL_TERRAIN_Z, MAP_MAX_ZOOM),
+  zoom: MAP_INITIAL_ZOOM,
   maxZoom: MAP_MAX_ZOOM,
   center: [MAP_CENTER.lng, MAP_CENTER.lat],
   style: {
@@ -605,7 +607,52 @@ app.geolocateControl.on("trackuserlocationend", () => {
   }
 });
 
+function setCacheDataWarnings(messages) {
+  if (!airspaceInfoEl || !info) {
+    return;
+  }
+  app.cacheDataWarnings = [...messages];
+  if (!messages.length) {
+    airspaceInfoEl.textContent = "—";
+    if (!getCacheSelectMode()) {
+      syncAirspaceUi();
+    }
+    return;
+  }
+
+  info.classList.add("visible");
+  airspaceInfoEl.replaceChildren();
+  const maxShown = 12;
+  for (const message of messages.slice(0, maxShown)) {
+    const warning = document.createElement("div");
+    warning.className = "cache-data-warning";
+    warning.textContent = message;
+    airspaceInfoEl.append(warning);
+  }
+  if (messages.length > maxShown) {
+    const more = document.createElement("div");
+    more.className = "cache-data-warning";
+    more.textContent = `…and ${messages.length - maxShown} more`;
+    airspaceInfoEl.append(more);
+  }
+}
+
+function clearCacheDataWarnings() {
+  app.cacheDataWarnings = [];
+  if (!airspaceInfoEl) {
+    return;
+  }
+  airspaceInfoEl.replaceChildren();
+  airspaceInfoEl.textContent = "—";
+  if (!getCacheSelectMode()) {
+    syncAirspaceUi();
+  }
+}
+
 function updateAirspaceInfo(lng, lat) {
+  if (app.cacheDataWarnings.length || getCacheSelectMode()) {
+    return;
+  }
   if (!isIncludeAirspaceEnabled() || !isDebugMode() || !app.map?.getSource("openaip")) {
     return;
   }

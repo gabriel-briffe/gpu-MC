@@ -2,6 +2,7 @@ import {
   buildCacheBundle,
   cacheCellKey,
   getLastCachedCellKeysForSelection,
+  hasCachedAirports,
 } from "../cache-area.js";
 import { CACHE_SELECT_FOOTER_HINT } from "../constants.js";
 
@@ -34,6 +35,22 @@ export function initCacheUi(h) {
 
 export function getCacheSelectMode() {
   return app.cacheSelectMode;
+}
+
+function canFinishCacheSelect() {
+  if (!app.cacheSelectMode || app.cacheDownloadInProgress) {
+    return false;
+  }
+  const selected = [...hooks.getSelectedCacheCells()];
+  return selected.length > 0 && hasCachedAirports(selected);
+}
+
+function syncCacheSelectButtons() {
+  syncCacheDownloadButton();
+  if (!hooks.finishCacheSelectBtn) {
+    return;
+  }
+  hooks.finishCacheSelectBtn.disabled = !canFinishCacheSelect();
 }
 
 function syncCacheDownloadButton() {
@@ -76,7 +93,7 @@ export function enterCacheSelectMode() {
 
   hooks.setOverlaysHiddenForCacheSelect(true);
   hooks.refreshCacheSelectOverlays();
-  syncCacheDownloadButton();
+  syncCacheSelectButtons();
   const count = hooks.getSelectedCacheCells().size;
   hooks.setStatus(
     count === 0
@@ -86,7 +103,7 @@ export function enterCacheSelectMode() {
 }
 
 export function exitCacheSelectMode() {
-  if (!app.cacheSelectMode) {
+  if (!app.cacheSelectMode || !canFinishCacheSelect()) {
     return;
   }
 
@@ -107,7 +124,7 @@ export function exitCacheSelectMode() {
   hooks.updateSeedMarkers?.();
   hooks.setStatus("");
   hooks.syncComputeContextBar?.();
-  syncCacheDownloadButton();
+  syncCacheSelectButtons();
 }
 
 export function toggleCacheCellSelection(lng, lat) {
@@ -119,7 +136,7 @@ export function toggleCacheCellSelection(lng, lat) {
     selected.add(key);
   }
   hooks.updateCacheGridData();
-  syncCacheDownloadButton();
+  syncCacheSelectButtons();
   hooks.setStatus(
     selected.size === 0
       ? CACHE_SELECT_FOOTER_HINT
@@ -133,12 +150,18 @@ async function runCacheDownload() {
   }
 
   app.cacheDownloadInProgress = true;
-  syncCacheDownloadButton();
+  syncCacheSelectButtons();
+  const warnings = [];
+  hooks.clearCacheDataWarnings?.();
   try {
     await buildCacheBundle(
       [...hooks.getSelectedCacheCells()],
       hooks.getOpenAipConfig(),
-      hooks.setStatus
+      hooks.setStatus,
+      (message) => {
+        warnings.push(message);
+        hooks.setCacheDataWarnings?.(warnings);
+      }
     );
     hooks.refreshCacheSelectOverlays();
     hooks.refreshCachedAirportMapLayer?.();
@@ -148,6 +171,6 @@ async function runCacheDownload() {
     console.error(error);
   } finally {
     app.cacheDownloadInProgress = false;
-    syncCacheDownloadButton();
+    syncCacheSelectButtons();
   }
 }

@@ -11,6 +11,10 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <div id="not-for-flying-banner" aria-hidden="true">
+      <span>NOT FOR</span>
+      <span>FLYING</span>
+    </div>
     <div id="params-shell" class="params-mode-auto">
       <details id="params-panel">
         <summary id="params-panel-summary">Open settings</summary>
@@ -203,7 +207,7 @@
               <div class="param-field param-field-full">
                 <div class="param-label-row">
                   <label class="param-check" for="include-airspace">
-                    <input id="include-airspace" type="checkbox" />
+                    <input id="include-airspace" type="checkbox" checked />
                     <span>
                       Include prohibited airspace
                       <span class="param-check-detail">(prohibited, overflight restriction)</span>
@@ -377,7 +381,7 @@
           <button type="button" class="action-btn btn-green" id="run-cache-download" disabled>
             Cache
           </button>
-          <button type="button" class="action-btn btn-green" id="finish-cache-select">
+          <button type="button" class="action-btn btn-green" id="finish-cache-select" disabled>
             Done
           </button>
         </div>
