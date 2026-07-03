@@ -18,6 +18,7 @@ export const AIRPORT_HANDLE_CURSORS = {
 };
 export const MAP_CENTER = { lng: 10.13, lat: 45.77 };
 export const MAP_INITIAL_ZOOM = 5.69;
+export const CACHE_SELECT_ZOOM = 5;
 export const INITIAL_TERRAIN_Z = pickTerrainZoom(MAP_CENTER.lat);
 export const MAP_MAX_ZOOM = 22;
 

@@ -4,7 +4,7 @@ import {
   getLastCachedCellKeysForSelection,
   hasCachedAirports,
 } from "../cache-area.js";
-import { CACHE_SELECT_FOOTER_HINT } from "../constants.js";
+import { CACHE_SELECT_FOOTER_HINT, CACHE_SELECT_ZOOM } from "../constants.js";
 
 let hooks;
 let app;
@@ -21,7 +21,7 @@ export function initCacheUi(h) {
     if (hooks.isComputing()) {
       return;
     }
-    enterCacheSelectMode();
+    enterCacheSelectMode({ focusMap: true });
   });
 
   hooks.runCacheDownloadBtn?.addEventListener("click", () => {
@@ -63,7 +63,22 @@ function syncCacheDownloadButton() {
     app.cacheDownloadInProgress;
 }
 
-export function enterCacheSelectMode() {
+function focusMapForCacheSelect() {
+  const map = hooks.getMap?.();
+  if (!map) {
+    return;
+  }
+  map.once("moveend", () => {
+    hooks.refreshCacheSelectOverlays?.();
+  });
+  map.easeTo({
+    zoom: CACHE_SELECT_ZOOM,
+    center: map.getCenter(),
+    duration: 400,
+  });
+}
+
+export function enterCacheSelectMode({ focusMap = false } = {}) {
   if (app.cacheSelectMode || hooks.isComputing()) {
     return;
   }
@@ -100,6 +115,9 @@ export function enterCacheSelectMode() {
       ? CACHE_SELECT_FOOTER_HINT
       : `${count} cell${count === 1 ? "" : "s"} selected — click Cache to verify or add cells`
   );
+  if (focusMap) {
+    focusMapForCacheSelect();
+  }
 }
 
 export function exitCacheSelectMode() {
