@@ -249,6 +249,7 @@ export class GlideConeEngine {
     const t0 = performance.now();
     let actualIterations = 0;
     let stopReason = "converged";
+    const CONVERGENCE_CHECK_EVERY = 300;
 
     const colorUniform = createBuffer(device, new Uint8Array(uniformParams), uniformUsage);
     const { pipeline: colorPipeline, layout: colorLayout } = pickColorPipeline(
@@ -389,15 +390,22 @@ export class GlideConeEngine {
       passSum.dispatchWorkgroups(wgX, wgY);
       passSum.end();
 
-      encoder.copyBufferToBuffer(changeCountBuffer, 0, changeReadBuffer, 0, 4);
+      const checkConvergence = actualIterations % CONVERGENCE_CHECK_EVERY === 0;
+      if (checkConvergence) {
+        // Reading this buffer every iteration is expensive (GPU->CPU mapAsync).
+        // We only do it periodically for convergence detection.
+        encoder.copyBufferToBuffer(changeCountBuffer, 0, changeReadBuffer, 0, 4);
+      }
       device.queue.submit([encoder.finish()]);
 
-      await changeReadBuffer.mapAsync(GPUMapMode.READ);
-      const changes = new Uint32Array(changeReadBuffer.getMappedRange().slice(0))[0];
-      changeReadBuffer.unmap();
+      if (checkConvergence) {
+        await changeReadBuffer.mapAsync(GPUMapMode.READ);
+        const changes = new Uint32Array(changeReadBuffer.getMappedRange().slice(0))[0];
+        changeReadBuffer.unmap();
 
-      if (changes === 0) {
-        break;
+        if (changes === 0) {
+          break;
+        }
       }
 
       if (shouldStop?.()) {
