@@ -1,10 +1,12 @@
 import {
   buildCacheBundle,
   cacheCellKey,
+  clearAllCellCache,
   getLastCachedCellKeysForSelection,
   hasCachedAirports,
 } from "../cache-area.js";
 import { CACHE_SELECT_FOOTER_HINT, CACHE_SELECT_ZOOM } from "../constants.js";
+import { clearTerrainTileCache } from "../terrain-tiles.js";
 
 let hooks;
 let app;
@@ -28,6 +30,10 @@ export function initCacheUi(h) {
     void runCacheDownload();
   });
 
+  hooks.clearCacheDataBtn?.addEventListener("click", () => {
+    void runClearCache();
+  });
+
   hooks.finishCacheSelectBtn?.addEventListener("click", () => {
     exitCacheSelectMode();
   });
@@ -47,6 +53,10 @@ function canFinishCacheSelect() {
 
 function syncCacheSelectButtons() {
   syncCacheDownloadButton();
+  if (hooks.clearCacheDataBtn) {
+    hooks.clearCacheDataBtn.disabled =
+      !app.cacheSelectMode || app.cacheDownloadInProgress || app.cacheClearInProgress;
+  }
   if (!hooks.finishCacheSelectBtn) {
     return;
   }
@@ -160,6 +170,32 @@ export function toggleCacheCellSelection(lng, lat) {
       ? CACHE_SELECT_FOOTER_HINT
       : `${selected.size} cell${selected.size === 1 ? "" : "s"} selected`
   );
+}
+
+async function runClearCache() {
+  if (!app.cacheSelectMode || app.cacheDownloadInProgress || app.cacheClearInProgress) {
+    return;
+  }
+
+  app.cacheClearInProgress = true;
+  syncCacheSelectButtons();
+  try {
+    clearAllCellCache();
+    await clearTerrainTileCache();
+    hooks.getSelectedCacheCells().clear();
+    hooks.clearCacheDataWarnings?.();
+    hooks.reloadHillshadeSource?.();
+    hooks.refreshCacheSelectOverlays();
+    hooks.refreshCachedAirportMapLayer?.();
+    hooks.refreshRestAirspaceLayerData?.({ allCells: app.cacheSelectMode });
+    hooks.setStatus("Cache cleared — select areas and hit Cache");
+  } catch (error) {
+    hooks.setStatus(`Clear cache error: ${error.message}`);
+    console.error(error);
+  } finally {
+    app.cacheClearInProgress = false;
+    syncCacheSelectButtons();
+  }
 }
 
 async function runCacheDownload() {

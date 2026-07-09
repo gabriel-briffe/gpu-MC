@@ -9,7 +9,7 @@ export const CACHE_TERRAIN_Z_MIN = 3;
 export const CACHE_TERRAIN_Z_MAX = 9;
 /** Terrain tile failures at this zoom and above are silent (no infobox warning). */
 export const CACHE_TERRAIN_WARN_Z_MAX = 7;
-export const CACHE_CELL_TTL_MS = 24 * 60 * 60 * 1000;
+export const CACHE_CELL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
 const CELL_CACHE_STORAGE_KEY = "gpu-mc-cell-cache-v1";
 
@@ -85,6 +85,20 @@ export function getLastCachedCellKeysForSelection() {
 export function setLastCachedCellKeys(cellKeys) {
   lastCachedCellKeys = [...cellKeys];
   persistCellCache();
+}
+
+/** Remove all cached airport/airspace cells and remembered coverage from memory and localStorage. */
+export function clearAllCellCache() {
+  cellCache.clear();
+  lastCachedCellKeys = [];
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  try {
+    localStorage.removeItem(CELL_CACHE_STORAGE_KEY);
+  } catch (error) {
+    console.warn("Failed to clear airport cell cache", error);
+  }
 }
 
 export function isCellCached(cellKey) {
@@ -298,7 +312,7 @@ async function cacheAirportsForCells(cellKeys, config, onStatus, onWarning) {
     if (isCellCacheFresh(existing)) {
       cellsSkipped += 1;
       onStatus?.(
-        `Airports — cell ${index + 1}/${cellKeys.length} (${cellKey}) fresh (<24h), kept cached`
+        `Airports — cell ${index + 1}/${cellKeys.length} (${cellKey}) fresh (<1 month), kept cached`
       );
       continue;
     }

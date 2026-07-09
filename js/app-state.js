@@ -34,6 +34,7 @@ export function createApp() {
     airportRectInteraction: null,
     cacheSelectMode: false,
     cacheDownloadInProgress: false,
+    cacheClearInProgress: false,
     pathLayerReady: false,
     seedLayersReady: false,
     contourLayersReady: false,

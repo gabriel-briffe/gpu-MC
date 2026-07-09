@@ -135,6 +135,18 @@ export async function fetchTerrainTileDecoded(z, x, y) {
   return payload;
 }
 
+export async function clearTerrainTileCache() {
+  decodedMemory.clear();
+  if (typeof caches === "undefined") {
+    return;
+  }
+  try {
+    await caches.delete(TERRAIN_TILE_CACHE_NAME);
+  } catch {
+    // Ignore quota / private-mode failures.
+  }
+}
+
 export function registerTerrainTileProtocol() {
   if (protocolRegistered || typeof maplibregl === "undefined") {
     return;

@@ -172,6 +172,7 @@ const {
   openCacheDataBtn,
   cacheDataPanel,
   runCacheDownloadBtn,
+  clearCacheDataBtn,
   finishCacheSelectBtn,
 } = dom;
 
@@ -434,9 +435,11 @@ const sharedHooks = {
   openCacheDataBtn,
   cacheDataPanel,
   runCacheDownloadBtn,
+  clearCacheDataBtn,
   finishCacheSelectBtn,
   setOverlaysHiddenForCacheSelect,
   refreshCacheSelectOverlays,
+  reloadHillshadeSource,
   clearCacheGridLayers,
   clearCacheAirportLayers,
   updateCacheGridData,
@@ -709,6 +712,10 @@ function setStatus(text, { clearAfterMs } = {}) {
       }
     }, clearAfterMs);
   }
+}
+
+function reloadHillshadeSource() {
+  app.map?.style?.sourceCaches?.hillshadeSource?.reload?.();
 }
 
 function setTerrainTileMaxZoom(zoom) {

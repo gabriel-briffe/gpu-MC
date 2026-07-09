@@ -58,5 +58,6 @@ export const dom = {
   openCacheDataBtn: document.getElementById("open-cache-data"),
   cacheDataPanel: document.getElementById("cache-data-panel"),
   runCacheDownloadBtn: document.getElementById("run-cache-download"),
+  clearCacheDataBtn: document.getElementById("clear-cache-data"),
   finishCacheSelectBtn: document.getElementById("finish-cache-select"),
 };
