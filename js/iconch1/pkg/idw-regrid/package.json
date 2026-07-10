@@ -1,0 +1,15 @@
+{
+  "name": "idw-regrid",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "idw_regrid_bg.wasm",
+    "idw_regrid.js",
+    "idw_regrid.d.ts"
+  ],
+  "main": "idw_regrid.js",
+  "types": "idw_regrid.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

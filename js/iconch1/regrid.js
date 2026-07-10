@@ -1,8 +1,61 @@
+import initIdwRegrid, {
+  apply_idw_weight_table as wasmApplyIdwWeightTable,
+  build_idw_weight_table as wasmBuildIdwWeightTable,
+} from "./pkg/idw-regrid/idw_regrid.js";
+import { assetUrl } from "../asset-url.js";
+
 const MAX_GRID_CELLS = 450_000;
 const IDW_NEIGHBORS = 8;
 const IDW_POWER = 2;
 const IDW_SEARCH_RADIUS_FACTOR = 1.75;
 const INVALID_INDEX = 0xffffffff;
+
+let wasmInitPromise = null;
+let wasmEnabled = false;
+
+export function isRegridWasmEnabled() {
+  return wasmEnabled;
+}
+
+export function ensureRegridWasm() {
+  if (wasmInitPromise) {
+    return wasmInitPromise;
+  }
+
+  wasmInitPromise = initIdwRegrid({
+    module_or_path: assetUrl("vendor/idw-regrid/idw_regrid_bg.wasm"),
+  })
+    .then(() => {
+      wasmEnabled = true;
+    })
+    .catch((error) => {
+      console.warn("[regrid] WASM unavailable, using JS fallback:", error);
+      wasmEnabled = false;
+      wasmInitPromise = null;
+    });
+
+  return wasmInitPromise;
+}
+
+function wasmResultToTable(result) {
+  const table = {
+    ni: result.ni,
+    nj: result.nj,
+    cellCount: result.cell_count,
+    neighborCount: result.neighbor_count,
+    la1_deg: result.la1_deg,
+    lo1_deg: result.lo1_deg,
+    la2_deg: result.la2_deg,
+    lo2_deg: result.lo2_deg,
+    di_deg: result.di_deg,
+    dj_deg: result.dj_deg,
+    scan_mode: result.scan_mode,
+    indices: result.indices,
+    weights: result.weights,
+  };
+  result.free();
+  return table;
+}
 
 function computeBounds(lats, lons) {
   let minLon = Infinity;
@@ -130,11 +183,7 @@ function fieldDescriptor(bounds, ni, nj, di, dj) {
   };
 }
 
-/**
- * One-time geometry table: for each output cell, the K nearest source indices and IDW weights.
- * Forecast values are applied later via applyIdwWeightTable().
- */
-export async function buildIdwWeightTable(lats, lons, spacingDeg) {
+async function buildIdwWeightTableJs(lats, lons, spacingDeg) {
   const bounds = computeBounds(lats, lons);
   const { ni, nj, di, dj } = gridDimensions(bounds, spacingDeg);
   const bucketSize = Math.max(di, dj);
@@ -167,8 +216,7 @@ export async function buildIdwWeightTable(lats, lons, spacingDeg) {
   };
 }
 
-/** Fast path: blend source values using a precomputed IDW weight table. */
-export function applyIdwWeightTable(table, values) {
+function applyIdwWeightTableJs(table, values) {
   const { indices, weights, neighborCount, ni, nj, cellCount, ...meta } = table;
   const out = new Float32Array(cellCount);
 
@@ -197,6 +245,34 @@ export function applyIdwWeightTable(table, values) {
     nj,
     values: out,
   };
+}
+
+/**
+ * One-time geometry table: for each output cell, the K nearest source indices and IDW weights.
+ * Forecast values are applied later via applyIdwWeightTable().
+ */
+export async function buildIdwWeightTable(lats, lons, spacingDeg) {
+  await ensureRegridWasm();
+  if (wasmEnabled) {
+    const result = wasmBuildIdwWeightTable(lats, lons, spacingDeg);
+    return wasmResultToTable(result);
+  }
+  return buildIdwWeightTableJs(lats, lons, spacingDeg);
+}
+
+/** Fast path: blend source values using a precomputed IDW weight table. */
+export function applyIdwWeightTable(table, values) {
+  if (wasmEnabled) {
+    const { indices, weights, neighborCount, ni, nj, cellCount, ...meta } = table;
+    const out = wasmApplyIdwWeightTable(indices, weights, values, neighborCount);
+    return {
+      ...meta,
+      ni,
+      nj,
+      values: out,
+    };
+  }
+  return applyIdwWeightTableJs(table, values);
 }
 
 export async function regridIdw(lats, lons, values, spacingDeg) {

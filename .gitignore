@@ -1,3 +1,4 @@
 js/openaip-config.js
+wasm/idw-regrid/target/
 cloudflare/openaip-proxy.worker.js
 node_modules/

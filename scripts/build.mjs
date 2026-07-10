@@ -25,6 +25,7 @@ const PRECACHE_URLS = [
   "vendor/maplibre-gl/maplibre-gl.css",
   "vendor/maplibre-gl/maplibre-gl-csp-worker.js",
   "vendor/gribinfo/gribinfo_bg.wasm",
+  "vendor/idw-regrid/idw_regrid_bg.wasm",
 ];
 
 const MANIFEST = {
@@ -69,6 +70,13 @@ async function vendorGribinfo() {
   const destDir = path.join(root, "vendor/gribinfo");
   await mkdir(destDir, { recursive: true });
   await cp(srcWasm, path.join(destDir, "gribinfo_bg.wasm"));
+}
+
+async function vendorIdwRegrid() {
+  const srcWasm = path.join(root, "js/iconch1/pkg/idw-regrid/idw_regrid_bg.wasm");
+  const destDir = path.join(root, "vendor/idw-regrid");
+  await mkdir(destDir, { recursive: true });
+  await cp(srcWasm, path.join(destDir, "idw_regrid_bg.wasm"));
 }
 
 async function buildJs() {
@@ -124,6 +132,7 @@ await buildJs();
 await buildCss();
 await vendorMaplibre();
 await vendorGribinfo();
+await vendorIdwRegrid();
 await buildManifest();
 await buildServiceWorker();
 console.log("Built app.min.js, app.min.css, vendor/maplibre-gl, manifest, and sw.js");

@@ -17,7 +17,7 @@ import {
   pickLatestMeteoSwissRun,
   splitGribMessages,
 } from "./meteoswiss-catalog.js";
-import { applyIdwWeightTable, buildIdwWeightTable } from "./regrid.js";
+import { applyIdwWeightTable, buildIdwWeightTable, ensureRegridWasm, isRegridWasmEnabled } from "./regrid.js";
 import { buildSectorGeoJson } from "./contour-geojson.js";
 import { readProxiedFile, toRawGribBytes, formatError } from "./grib-io.js";
 import {
@@ -597,6 +597,7 @@ async function loadGrid() {
   if (gridCache) {
     debugLog("loadGrid cache hit", { levels: gridCache.levelHeights?.size ?? state.levelHeights.size });
     const spacing = model.regridSpacingDeg ?? 0.01;
+    void ensureRegridWasm();
     void ensureRegridWeightTable(gridCache, spacing);
     return gridCache;
   }
@@ -649,6 +650,7 @@ async function loadGrid() {
     levelCount: levelHeights.size,
   });
   const spacing = model.regridSpacingDeg ?? 0.01;
+  void ensureRegridWasm();
   void ensureRegridWeightTable(gridCache, spacing);
   return gridCache;
 }
@@ -672,6 +674,7 @@ async function ensureRegridWeightTable(grid, spacingDeg) {
       cellCount: table.cellCount,
       ni: table.ni,
       nj: table.nj,
+      wasm: isRegridWasmEnabled(),
     });
     return table;
   });
@@ -736,6 +739,7 @@ async function buildLiveGeoJson({
     spacingDeg: spacing,
     forecastHour: entry.forecastHour,
     precomputedWeights: true,
+    regridWasm: isRegridWasmEnabled(),
   });
   const field = applyIdwWeightTable(weightTable, values);
   setCh1Status("Extracting contours…");

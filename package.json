@@ -4,6 +4,7 @@
   "scripts": {
     "start": "npx --yes serve .",
     "build": "node scripts/build.mjs",
+    "build:wasm": "cd wasm/idw-regrid && wasm-pack build --target web --out-dir ../../js/iconch1/pkg/idw-regrid --release",
     "postinstall": "node scripts/build.mjs"
   },
   "dependencies": {
