@@ -480,6 +480,7 @@ function rebuildViewOptions() {
     state.navMinHour = new Date(state.validTimes[0]).getUTCHours();
     state.navMaxHour = new Date(state.validTimes[state.validTimes.length - 1]).getUTCHours();
   }
+  syncCachePanelHours();
 }
 
 function pickDefaultSelection() {
@@ -661,11 +662,11 @@ async function loadGrid() {
   return gridCache;
 }
 
-async function loadWMessage(url) {
+async function loadWMessage(url, level = state.level) {
   let cached = wCache.get(url);
   if (!cached) {
     setCh1Status("Fetching forecast GRIB…");
-    debugLog("loadWMessage fetch", { url, level: state.level });
+    debugLog("loadWMessage fetch", { url, level });
     const buffer = await readProxiedFile(url);
     const raw = await toRawGribBytes(buffer);
     const byLevel = new Map();
@@ -680,30 +681,34 @@ async function loadWMessage(url) {
       bytes: buffer.byteLength,
     });
   }
-  const message = cached.byLevel.get(state.level) ?? cached.byLevel.get(Number(state.level));
+  const message = cached.byLevel.get(level) ?? cached.byLevel.get(Number(level));
   if (!message) {
     debugLog("loadWMessage level missing", {
-      requestedLevel: state.level,
+      requestedLevel: level,
       availableLevels: [...cached.byLevel.keys()].sort((a, b) => a - b),
     });
   }
   return message;
 }
 
-async function buildLiveGeoJson() {
+async function buildLiveGeoJson({
+  validTimeIso: validIso = state.validTimeIso,
+  level = state.level,
+  entry: entryOverride = null,
+} = {}) {
   debugLog("buildLiveGeoJson start", {
-    validTimeIso: state.validTimeIso,
-    level: state.level,
+    validTimeIso: validIso,
+    level,
     heightM: state.heightM,
   });
-  const entry = state.entries.find(
-    (item) => validTimeIso(state.dateStamp, item.forecastHour) === state.validTimeIso
-  );
+  const entry =
+    entryOverride ??
+    state.entries.find((item) => validTimeIso(state.dateStamp, item.forecastHour) === validIso);
   if (!entry) throw new Error("Forecast step not found in catalog");
 
   const grid = await loadGrid();
-  const message = await loadWMessage(entry.url);
-  if (!message) throw new Error(`Level ${state.level} not found in forecast file`);
+  const message = await loadWMessage(entry.url, level);
+  if (!message) throw new Error(`Level ${level} not found in forecast file`);
 
   const values = decode_template42_values_f32(message);
   const spacing = model.regridSpacingDeg ?? 0.01;
@@ -877,23 +882,61 @@ function initSettingsPanel() {
   ui.settingsDefaultAlt.value = String(defaultAltTarget());
 }
 
-function fillUtcHourOptions(select, selectedHour) {
+function cacheableUtcHourRange() {
+  if (state.validTimes.length > 0) {
+    return { minHour: state.navMinHour, maxHour: state.navMaxHour };
+  }
+  const runHour = Number(state.runHour);
+  if (Number.isFinite(runHour)) {
+    return { minHour: runHour, maxHour: 23 };
+  }
+  const nowHour = new Date().getUTCHours();
+  return { minHour: nowHour, maxHour: 23 };
+}
+
+function fillUtcHourOptions(select, { fromHour = 0, toHour = 23, selectedHour } = {}) {
   if (!select) return;
+  const previous = Number(select.value);
+  const minHour = Math.max(0, Math.min(23, fromHour));
+  const maxHour = Math.max(minHour, Math.min(23, toHour));
+  const resolved =
+    Number.isFinite(selectedHour) ? selectedHour
+    : Number.isFinite(previous) ? previous
+    : minHour;
+  const hour = Math.min(maxHour, Math.max(minHour, resolved));
+
   select.innerHTML = "";
-  for (let hour = 0; hour <= 23; hour += 1) {
+  for (let optionHour = minHour; optionHour <= maxHour; optionHour += 1) {
     const option = document.createElement("option");
-    option.value = String(hour);
-    option.textContent = `${String(hour).padStart(2, "0")}Z`;
-    if (hour === selectedHour) option.selected = true;
+    option.value = String(optionHour);
+    option.textContent = `${String(optionHour).padStart(2, "0")}Z`;
+    if (optionHour === hour) option.selected = true;
     select.appendChild(option);
   }
 }
 
+function syncCachePanelHours() {
+  if (!ui.cacheTo || !ui.cacheFrom) return;
+
+  const { minHour, maxHour } = cacheableUtcHourRange();
+  const nowHour = new Date().getUTCHours();
+  const previousFrom = Number(ui.cacheFrom.value);
+  const previousTo = Number(ui.cacheTo.value);
+  const fromHour = Number.isFinite(previousFrom)
+    ? Math.min(maxHour, Math.max(minHour, previousFrom))
+    : Math.max(minHour, Math.min(nowHour, maxHour));
+  const toHour = Number.isFinite(previousTo)
+    ? Math.min(maxHour, Math.max(fromHour, previousTo))
+    : maxHour;
+
+  fillUtcHourOptions(ui.cacheFrom, { fromHour: minHour, toHour: maxHour, selectedHour: fromHour });
+  fillUtcHourOptions(ui.cacheTo, { fromHour: minHour, toHour: maxHour, selectedHour: toHour });
+  updateCacheEstimate();
+}
+
 function initCachePanel() {
   if (!ui.cacheTo) return;
-  const nowHour = new Date().getUTCHours();
-  fillUtcHourOptions(ui.cacheFrom, nowHour);
-  fillUtcHourOptions(ui.cacheTo, 23);
+  syncCachePanelHours();
 
   if (ui.cacheAltitudes) {
     ui.cacheAltitudes.innerHTML = "";
@@ -1012,7 +1055,15 @@ function bindEvents() {
     })();
   });
 
-  ui.cacheFrom?.addEventListener("change", updateCacheEstimate);
+  ui.cacheFrom?.addEventListener("change", () => {
+    const { minHour, maxHour } = cacheableUtcHourRange();
+    const fromHour = Number(ui.cacheFrom.value);
+    const toHour = Number(ui.cacheTo?.value ?? "");
+    if (Number.isFinite(fromHour) && Number.isFinite(toHour) && toHour < fromHour && ui.cacheTo) {
+      fillUtcHourOptions(ui.cacheTo, { fromHour: minHour, toHour: maxHour, selectedHour: fromHour });
+    }
+    updateCacheEstimate();
+  });
   ui.cacheTo?.addEventListener("change", updateCacheEstimate);
   ui.cacheAltitudes?.addEventListener("change", updateCacheEstimate);
   ui.cacheRun?.addEventListener("click", () => void runCacheFlight());
@@ -1108,8 +1159,11 @@ async function runCacheFlight() {
         continue;
       }
 
-      state.level = job.levelInfo.level;
-      const geojson = await buildLiveGeoJson();
+      const geojson = await buildLiveGeoJson({
+        validTimeIso: job.validIso,
+        level: job.levelInfo.level,
+        entry: job.entry,
+      });
       const byteSize = estimateJsonByteSize(geojson);
       await putChContourCacheEntry({
         key,

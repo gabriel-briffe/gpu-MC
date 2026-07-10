@@ -121,6 +121,7 @@ import { raiseIconCh1Layer } from "./map/layers.js";
 import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
+import { initWakeLock } from "./wake-lock.js";
 
 const app = createApp();
 
@@ -1084,3 +1085,4 @@ app.map.on("load", async () => {
 
 bindMapEvents(app, sharedHooks);
 bindUiEvents(app, sharedHooks);
+initWakeLock();
