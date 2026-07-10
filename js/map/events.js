@@ -7,11 +7,26 @@ import {
 } from "../compute/visualization.js";
 import { requestStopCompute, runComputation } from "../compute/session.js";
 
+const TAP_MOVE_TOLERANCE_SQ = 100;
+
 function markTouchHandled(app) {
   app.touchHandledRecently = true;
   window.setTimeout(() => {
     app.touchHandledRecently = false;
   }, 400);
+}
+
+function clearMapTap(app) {
+  app.mapTapStart = null;
+}
+
+function mapTapMoved(app, point) {
+  if (!app.mapTapStart) {
+    return false;
+  }
+  const dx = point.x - app.mapTapStart.x;
+  const dy = point.y - app.mapTapStart.y;
+  return dx * dx + dy * dy > TAP_MOVE_TOLERANCE_SQ;
 }
 
 function maybeUpdateAirspaceInfo(hooks, lng, lat) {
@@ -71,6 +86,13 @@ export function bindMapEvents(app, hooks) {
     }
   });
 
+  map.on("movestart", () => {
+    if (app.mapTapStart) {
+      clearMapTap(app);
+      app.touchGestureWasPan = true;
+    }
+  });
+
   map.on("mousedown", (event) => {
     if (event.originalEvent.button !== 0) {
       return;
@@ -103,6 +125,11 @@ export function bindMapEvents(app, hooks) {
     }
     if (hooks.getManualAirportSelectMode() && !hooks.isComputing() && event.points.length === 1) {
       app.manualTouchStart = event.point;
+      return;
+    }
+    if (hooks.isAirportPickMode?.() && !hooks.isComputing() && event.points.length === 1) {
+      app.touchGestureWasPan = false;
+      app.mapTapStart = { x: event.point.x, y: event.point.y };
     }
   });
 
@@ -117,9 +144,14 @@ export function bindMapEvents(app, hooks) {
     if (app.manualTouchStart) {
       const dx = event.point.x - app.manualTouchStart.x;
       const dy = event.point.y - app.manualTouchStart.y;
-      if (dx * dx + dy * dy > 100) {
+      if (dx * dx + dy * dy > TAP_MOVE_TOLERANCE_SQ) {
         app.manualTouchStart = null;
       }
+    }
+
+    if (app.mapTapStart && (event.points.length !== 1 || mapTapMoved(app, event.point))) {
+      clearMapTap(app);
+      app.touchGestureWasPan = true;
     }
   });
 
@@ -136,7 +168,7 @@ export function bindMapEvents(app, hooks) {
       if (app.manualTouchStart) {
         const dx = event.point.x - app.manualTouchStart.x;
         const dy = event.point.y - app.manualTouchStart.y;
-        if (dx * dx + dy * dy > 100) {
+        if (dx * dx + dy * dy > TAP_MOVE_TOLERANCE_SQ) {
           app.manualTouchStart = null;
           return;
         }
@@ -147,7 +179,18 @@ export function bindMapEvents(app, hooks) {
       return;
     }
 
+    if (app.touchGestureWasPan) {
+      app.touchGestureWasPan = false;
+      markTouchHandled(app);
+      return;
+    }
+
     if (hooks.isAirportPickMode?.()) {
+      if (!app.mapTapStart) {
+        markTouchHandled(app);
+        return;
+      }
+      clearMapTap(app);
       const picked = hooks.pickAirportAtMapPoint?.(event.point);
       if (picked && hooks.togglePendingSeedAt?.(picked)) {
         markTouchHandled(app);
@@ -157,6 +200,8 @@ export function bindMapEvents(app, hooks) {
 
   map.on("touchcancel", () => {
     app.manualTouchStart = null;
+    clearMapTap(app);
+    app.touchGestureWasPan = false;
     if (hooks.hasAirportRectInteraction()) {
       hooks.cancelAirportRectInteraction();
       hooks.syncAirportAreaSelectUi();
@@ -174,9 +219,11 @@ export function bindMapEvents(app, hooks) {
 
     if (
       app.touchHandledRecently ||
+      app.touchGestureWasPan ||
       hooks.getAirportAreaSelectMode() ||
       hooks.hasAirportRectInteraction()
     ) {
+      app.touchGestureWasPan = false;
       return;
     }
 

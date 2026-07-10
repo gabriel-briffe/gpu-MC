@@ -52,6 +52,8 @@ export function createApp() {
     manualInspectTimeout: null,
     touchHandledRecently: false,
     manualTouchStart: null,
+    mapTapStart: null,
+    touchGestureWasPan: false,
     selectedCacheCells: new Set(),
     cacheDataWarnings: [],
     interaction: {

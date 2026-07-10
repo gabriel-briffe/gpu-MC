@@ -1,4 +1,4 @@
-const SHELL_CACHE = "gpu-mc-shell-fc68509928";
+const SHELL_CACHE = "gpu-mc-shell-56d788b514";
 const PRECACHE_URLS = ["index.html","app.min.js","app.min.css","manifest.webmanifest","sw-register.js","sw.js","icons/icon.svg","vendor/maplibre-gl/maplibre-gl.js","vendor/maplibre-gl/maplibre-gl.css","vendor/maplibre-gl/maplibre-gl-csp-worker.js"];
 
 /** Service worker — SHELL_CACHE and PRECACHE_URLS are injected by scripts/build.mjs. */
