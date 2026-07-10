@@ -13,6 +13,44 @@ const MAPLIBRE_VENDOR_FILES = [
   "maplibre-gl-csp-worker.js",
 ];
 
+const PRECACHE_URLS = [
+  "index.html",
+  "app.min.js",
+  "app.min.css",
+  "manifest.webmanifest",
+  "sw-register.js",
+  "sw.js",
+  "icons/icon.svg",
+  "vendor/maplibre-gl/maplibre-gl.js",
+  "vendor/maplibre-gl/maplibre-gl.css",
+  "vendor/maplibre-gl/maplibre-gl-csp-worker.js",
+];
+
+const MANIFEST = {
+  name: "Mapterhorn Glide Cone",
+  short_name: "Glide Cone",
+  description: "GPU glide cone planner over Mapterhorn terrain",
+  start_url: "./",
+  scope: "./",
+  display: "standalone",
+  background_color: "#12161c",
+  theme_color: "#12161c",
+  icons: [
+    {
+      src: "icons/icon.svg",
+      sizes: "any",
+      type: "image/svg+xml",
+      purpose: "any",
+    },
+    {
+      src: "icons/icon.svg",
+      sizes: "512x512",
+      type: "image/svg+xml",
+      purpose: "maskable",
+    },
+  ],
+};
+
 const openAipConfigAliasPlugin = {
   name: "openaip-config-alias",
   setup(build) {
@@ -56,23 +94,19 @@ async function vendorMaplibre() {
   );
 }
 
+async function buildManifest() {
+  await writeFile(
+    path.join(root, "manifest.webmanifest"),
+    `${JSON.stringify(MANIFEST, null, 2)}\n`
+  );
+}
+
 async function buildServiceWorker() {
   const appJs = await readFile(path.join(root, "app.min.js"));
   const hash = createHash("sha256").update(appJs).digest("hex").slice(0, 10);
   const shellCache = `gpu-mc-shell-${hash}`;
-  const precacheUrls = [
-    "/index.html",
-    "/app.min.js",
-    "/app.min.css",
-    "/manifest.webmanifest",
-    "/sw-register.js",
-    "/icons/icon.svg",
-    "/vendor/maplibre-gl/maplibre-gl.js",
-    "/vendor/maplibre-gl/maplibre-gl.css",
-    "/vendor/maplibre-gl/maplibre-gl-csp-worker.js",
-  ];
   const swSource = await readFile(path.join(root, "scripts/sw-source.js"), "utf8");
-  const preamble = `const SHELL_CACHE = ${JSON.stringify(shellCache)};\nconst PRECACHE_URLS = ${JSON.stringify(precacheUrls)};\n\n`;
+  const preamble = `const SHELL_CACHE = ${JSON.stringify(shellCache)};\nconst PRECACHE_URLS = ${JSON.stringify(PRECACHE_URLS)};\n\n`;
   await writeFile(path.join(root, "sw.js"), preamble + swSource);
 }
 
@@ -80,5 +114,6 @@ await mkdir(root, { recursive: true });
 await buildJs();
 await buildCss();
 await vendorMaplibre();
+await buildManifest();
 await buildServiceWorker();
-console.log("Built app.min.js, app.min.css, vendor/maplibre-gl, and sw.js");
+console.log("Built app.min.js, app.min.css, vendor/maplibre-gl, manifest, and sw.js");

@@ -44,7 +44,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    event.respondWith(networkFirstShell(request, "/index.html"));
+    event.respondWith(networkFirstShell(request, "index.html"));
     return;
   }
 

@@ -16,6 +16,7 @@ import {
   TERRAIN_TILE_URL_TEMPLATE,
   BASE_MAP_TERRAIN_MAX_ZOOM,
 } from "./terrain-tiles.js";
+import { assetUrl } from "./asset-url.js";
 import { dom } from "./dom.js";
 import {
   DEFAULT_MAX_ALTITUDE,
@@ -508,7 +509,7 @@ initParamsPanel(app, dom);
 sharedHooks.schedulePersistParamsState = () => app.hooks.schedulePersistParamsState?.();
 
 if (typeof maplibregl !== "undefined") {
-  maplibregl.setWorkerUrl("/vendor/maplibre-gl/maplibre-gl-csp-worker.js");
+  maplibregl.setWorkerUrl(assetUrl("vendor/maplibre-gl/maplibre-gl-csp-worker.js"));
 }
 
 registerTerrainTileProtocol();
