@@ -2,6 +2,10 @@
   "name": "mapterhorn-hillshade",
   "private": true,
   "scripts": {
-    "start": "npx --yes serve ."
+    "start": "npx --yes serve .",
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
   }
 }
