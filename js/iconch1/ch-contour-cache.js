@@ -233,11 +233,22 @@ export async function listFreshChContourCacheEntries(modelId, now = new Date()) 
 export function formatValidTimeLabel(validTimeIso) {
   const date = new Date(validTimeIso);
   if (Number.isNaN(date.getTime())) return validTimeIso;
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
   const d = String(date.getUTCDate()).padStart(2, "0");
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
   const h = String(date.getUTCHours()).padStart(2, "0");
-  return `${y}-${m}-${d} ${h}Z`;
+  return `${d}/${m} ${h}Z`;
+}
+
+export function validTimesInRange(validTimes, fromIso, toIso) {
+  const fromMs = new Date(fromIso).getTime();
+  const toMs = new Date(toIso).getTime();
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs)) return [];
+  const minMs = Math.min(fromMs, toMs);
+  const maxMs = Math.max(fromMs, toMs);
+  return validTimes.filter((iso) => {
+    const ms = new Date(iso).getTime();
+    return ms >= minMs && ms <= maxMs;
+  });
 }
 
 export function utcTodayKey(now = new Date()) {

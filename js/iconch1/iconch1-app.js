@@ -22,7 +22,6 @@ import { buildSectorGeoJson } from "./contour-geojson.js";
 import { readProxiedFile, toRawGribBytes, formatError } from "./grib-io.js";
 import {
   CH_CONTOUR_TARGET_HEIGHTS_M,
-  CH_CONTOUR_UTC_HOUR_END,
   buildChContourCacheKey,
   deleteChContourCacheForDay,
   estimateJsonByteSize,
@@ -30,14 +29,13 @@ import {
   formatValidTimeLabel,
   getChContourCacheStats,
   getFreshChContourCacheEntry,
-  hourlyUtcSlotsForDay,
   listFreshChContourCacheEntries,
   pickLevelsNearTargets,
   putChContourCacheEntry,
   snapToNearestTime,
-  stepUtcHour,
   utcTodayKey,
   validTimeIso,
+  validTimesInRange,
 } from "./ch-contour-cache.js";
 import { assetUrl } from "../asset-url.js";
 
@@ -78,8 +76,6 @@ const state = {
   level: "",
   heightM: null,
   displayM: null,
-  navMinHour: 0,
-  navMaxHour: 23,
   loadGeneration: 0,
   cacheRunning: false,
   started: false,
@@ -229,9 +225,7 @@ function defaultAltTarget() {
 }
 
 async function refreshCacheRecords() {
-  state.cacheRecords = (await listFreshChContourCacheEntries(MODEL_ID)).filter((record) =>
-    record.validTimeIso.startsWith(state.todayKey)
-  );
+  state.cacheRecords = await listFreshChContourCacheEntries(MODEL_ID);
   rebuildLevelAltitudeMap();
   debugLog("cache records refreshed", {
     todayKey: state.todayKey,
@@ -240,7 +234,7 @@ async function refreshCacheRecords() {
 }
 
 function applyCacheMetadata() {
-  if (!state.cacheRecords.length) throw new Error("No cached contours for today");
+  if (!state.cacheRecords.length) throw new Error("No cached contours");
   const sample = state.cacheRecords[0];
   state.dateStamp = sample.runDateStamp;
   state.runHour = sample.runDateStamp.slice(8, 10);
@@ -426,9 +420,9 @@ function updateSelectors() {
     ui.altSelect.value = String(state.level);
   }
 
-  const hour = state.validTimeIso ? new Date(state.validTimeIso).getUTCHours() : null;
-  ui.timePrev.disabled = hour == null || hour <= state.navMinHour;
-  ui.timeNext.disabled = hour == null || hour >= state.navMaxHour;
+  const timeIdx = state.validTimeIso ? state.validTimes.indexOf(state.validTimeIso) : -1;
+  ui.timePrev.disabled = timeIdx <= 0;
+  ui.timeNext.disabled = timeIdx < 0 || timeIdx >= state.validTimes.length - 1;
 
   const levelIdx = levels.findIndex((entry) => entry.level === state.level);
   ui.altUp.disabled = levelIdx < 0 || levelIdx >= levels.length - 1;
@@ -437,22 +431,23 @@ function updateSelectors() {
   updateMapAttribution();
 }
 
-function formatUtcHour(iso) {
-  return `${String(new Date(iso).getUTCHours()).padStart(2, "0")}Z`;
-}
-
-function todayValidTimesFromEntries() {
-  return state.entries
-    .map((entry) => validTimeIso(state.dateStamp, entry.forecastHour))
-    .filter((iso) => iso.startsWith(state.todayKey))
-    .sort();
+function catalogValidTimesFromEntries() {
+  const seen = new Set();
+  const times = [];
+  for (const entry of state.entries) {
+    const iso = validTimeIso(state.dateStamp, entry.forecastHour);
+    if (seen.has(iso)) continue;
+    seen.add(iso);
+    times.push(iso);
+  }
+  return times.sort();
 }
 
 function rebuildViewOptions() {
   rebuildLevelAltitudeMap();
 
   if (state.entries.length) {
-    state.validTimes = todayValidTimesFromEntries();
+    state.validTimes = catalogValidTimesFromEntries();
     state.levels = sortLevelsByDisplay(
       pickLevelsNearTargets(state.levelHeights, CH_CONTOUR_TARGET_HEIGHTS_M).map((entry) =>
         levelAltitudeEntry(entry.level, entry.heightM, entry.targetM)
@@ -464,11 +459,9 @@ function rebuildViewOptions() {
       );
     }
   } else {
-    const times = [...new Set(state.cacheRecords.map((record) => record.validTimeIso))].sort();
-    state.validTimes = times.filter((iso) => iso.startsWith(state.todayKey));
+    state.validTimes = [...new Set(state.cacheRecords.map((record) => record.validTimeIso))].sort();
     const levelMap = new Map();
     for (const record of state.cacheRecords) {
-      if (!state.validTimes.includes(record.validTimeIso)) continue;
       levelMap.set(record.level, record.heightM);
     }
     state.levels = sortLevelsByDisplay(
@@ -476,16 +469,11 @@ function rebuildViewOptions() {
     );
   }
 
-  if (state.validTimes.length > 0) {
-    state.navMinHour = new Date(state.validTimes[0]).getUTCHours();
-    state.navMaxHour = new Date(state.validTimes[state.validTimes.length - 1]).getUTCHours();
-  }
-  syncCachePanelHours();
+  syncCachePanelTimes();
 }
 
 function pickDefaultSelection() {
   const now = new Date();
-  const nowHour = now.getUTCHours();
   const targetAlt = defaultAltTarget();
 
   if (!state.validTimes.length) return;
@@ -493,12 +481,8 @@ function pickDefaultSelection() {
   const futureTimes = state.validTimes.filter(
     (iso) => new Date(iso).getTime() >= now.getTime() - 30 * 60 * 1000
   );
-  state.validTimeIso = futureTimes[0] ?? state.validTimes[0];
-
-  const nearNow = hourlyUtcSlotsForDay(state.todayKey, nowHour, CH_CONTOUR_UTC_HOUR_END)
-    .map((date) => date.toISOString().replace(".000Z", "Z"))
-    .find((iso) => state.validTimes.includes(iso));
-  if (nearNow) state.validTimeIso = nearNow;
+  const candidates = futureTimes.length ? futureTimes : state.validTimes;
+  state.validTimeIso = snapToNearestTime(now.getTime(), candidates) ?? candidates[0];
 
   const levelsForTime = levelsAtTime(state.validTimeIso);
   let best = levelsForTime[0];
@@ -540,11 +524,13 @@ function applySelection(validIso, level) {
   updateSelectors();
 }
 
-function stepTime(deltaHours) {
-  if (!hooks.isIconCh1Enabled?.() || !state.validTimeIso) return;
-  const stepped = stepUtcHour(state.validTimeIso, deltaHours, state.navMinHour, state.navMaxHour, state.todayKey);
-  const snapped = snapToNearestTime(new Date(stepped).getTime(), state.validTimes);
-  if (!snapped) return;
+function stepTime(deltaSteps) {
+  if (!hooks.isIconCh1Enabled?.() || !state.validTimeIso || !state.validTimes.length) return;
+  const idx = state.validTimes.indexOf(state.validTimeIso);
+  if (idx < 0) return;
+  const nextIdx = idx + deltaSteps;
+  if (nextIdx < 0 || nextIdx >= state.validTimes.length) return;
+  const snapped = state.validTimes[nextIdx];
   const levels = levelsAtTime(snapped);
   const level = levels.some((entry) => entry.level === state.level)
     ? state.level
@@ -878,7 +864,7 @@ async function checkCacheAvailableTimes() {
   }
   try {
     await loadLiveCatalog({ updateSelection: false });
-    syncCachePanelHours();
+    syncCachePanelTimes();
     updateCacheEstimate();
     updateSelectors();
     clearCh1Status();
@@ -897,7 +883,7 @@ function syncCacheCheckTimesButton() {
 async function loadCachedCatalog() {
   await refreshCacheRecords();
   if (!state.cacheRecords.length) {
-    throw new Error("No cached contours for today");
+    throw new Error("No cached contours");
   }
   applyCacheMetadata();
   rebuildViewOptions();
@@ -923,62 +909,53 @@ function initSettingsPanel() {
   ui.settingsDefaultAlt.value = String(defaultAltTarget());
 }
 
-function cacheableUtcHourRange() {
-  if (state.validTimes.length > 0) {
-    return { minHour: state.navMinHour, maxHour: state.navMaxHour };
-  }
-  const runHour = Number(state.runHour);
-  if (Number.isFinite(runHour)) {
-    return { minHour: runHour, maxHour: 23 };
-  }
-  const nowHour = new Date().getUTCHours();
-  return { minHour: nowHour, maxHour: 23 };
-}
-
-function fillUtcHourOptions(select, { fromHour = 0, toHour = 23, selectedHour } = {}) {
+function fillValidTimeOptions(select, validTimes, selectedIso) {
   if (!select) return;
-  const previous = Number(select.value);
-  const minHour = Math.max(0, Math.min(23, fromHour));
-  const maxHour = Math.max(minHour, Math.min(23, toHour));
+  const previous = select.value;
   const resolved =
-    Number.isFinite(selectedHour) ? selectedHour
-    : Number.isFinite(previous) ? previous
-    : minHour;
-  const hour = Math.min(maxHour, Math.max(minHour, resolved));
-
+    selectedIso && validTimes.includes(selectedIso) ? selectedIso
+    : validTimes.includes(previous) ? previous
+    : validTimes[0];
   select.innerHTML = "";
-  for (let optionHour = minHour; optionHour <= maxHour; optionHour += 1) {
+  for (const iso of validTimes) {
     const option = document.createElement("option");
-    option.value = String(optionHour);
-    option.textContent = `${String(optionHour).padStart(2, "0")}Z`;
-    if (optionHour === hour) option.selected = true;
+    option.value = iso;
+    option.textContent = formatValidTimeLabel(iso);
+    if (iso === resolved) option.selected = true;
     select.appendChild(option);
   }
 }
 
-function syncCachePanelHours() {
+function syncCachePanelTimes() {
   if (!ui.cacheTo || !ui.cacheFrom) return;
 
-  const { minHour, maxHour } = cacheableUtcHourRange();
-  const nowHour = new Date().getUTCHours();
-  const previousFrom = Number(ui.cacheFrom.value);
-  const previousTo = Number(ui.cacheTo.value);
-  const fromHour = Number.isFinite(previousFrom)
-    ? Math.min(maxHour, Math.max(minHour, previousFrom))
-    : Math.max(minHour, Math.min(nowHour, maxHour));
-  const toHour = Number.isFinite(previousTo)
-    ? Math.min(maxHour, Math.max(fromHour, previousTo))
-    : maxHour;
+  const times = state.validTimes;
+  if (!times.length) {
+    ui.cacheFrom.innerHTML = "";
+    ui.cacheTo.innerHTML = "";
+    updateCacheEstimate();
+    syncCacheCheckTimesButton();
+    return;
+  }
 
-  fillUtcHourOptions(ui.cacheFrom, { fromHour: minHour, toHour: maxHour, selectedHour: fromHour });
-  fillUtcHourOptions(ui.cacheTo, { fromHour: minHour, toHour: maxHour, selectedHour: toHour });
+  const nowIso = snapToNearestTime(Date.now(), times) ?? times[0];
+  const previousFrom = ui.cacheFrom.value;
+  const previousTo = ui.cacheTo.value;
+  const fromIso = times.includes(previousFrom) ? previousFrom : nowIso;
+  let toIso = times.includes(previousTo) ? previousTo : times[times.length - 1];
+  if (new Date(toIso).getTime() < new Date(fromIso).getTime()) {
+    toIso = fromIso;
+  }
+
+  fillValidTimeOptions(ui.cacheFrom, times, fromIso);
+  fillValidTimeOptions(ui.cacheTo, times, toIso);
   updateCacheEstimate();
   syncCacheCheckTimesButton();
 }
 
 function initCachePanel() {
   if (!ui.cacheTo) return;
-  syncCachePanelHours();
+  syncCachePanelTimes();
 
   if (ui.cacheAltitudes) {
     ui.cacheAltitudes.innerHTML = "";
@@ -1002,31 +979,31 @@ function selectedCacheTargets() {
 
 function updateCacheEstimate() {
   if (!ui.cacheEstimate || !ui.cacheTo || !ui.cacheFrom) return;
-  const fromHour = Number(ui.cacheFrom.value);
-  const toHour = Number(ui.cacheTo.value);
-  const hours = Number.isFinite(fromHour) && Number.isFinite(toHour) && fromHour <= toHour
-    ? toHour - fromHour + 1
-    : 0;
+  const fromIso = ui.cacheFrom.value;
+  const toIso = ui.cacheTo.value;
+  const slots = validTimesInRange(state.validTimes, fromIso, toIso);
   const targets = selectedCacheTargets();
-  const count = hours * targets.length;
+  const count = slots.length * targets.length;
   ui.cacheEstimate.textContent =
     count > 0 ? `~${count} map${count === 1 ? "" : "s"} · est. ${formatByteSize(count * 350000)}` : "—";
 }
 
 async function updateStoredPackSummary() {
   if (!ui.storedPack) return;
-  const records = (await listFreshChContourCacheEntries(MODEL_ID)).filter((record) =>
-    record.validTimeIso.startsWith(state.todayKey)
-  );
+  const records = await listFreshChContourCacheEntries(MODEL_ID);
   if (!records.length) {
-    ui.storedPack.textContent = "No pack for today";
+    ui.storedPack.textContent = "No cached pack";
     return;
   }
-  const times = new Set(records.map((record) => record.validTimeIso));
+  const times = [...new Set(records.map((record) => record.validTimeIso))].sort();
   const levels = new Set(records.map((record) => record.level));
   let bytes = 0;
   for (const record of records) bytes += record.byteSize ?? estimateJsonByteSize(record.geojson);
-  ui.storedPack.textContent = `Today · ${times.size} time(s) · ${levels.size} level(s) · ${formatByteSize(bytes)}`;
+  const rangeLabel =
+    times.length === 1
+      ? formatValidTimeLabel(times[0])
+      : `${formatValidTimeLabel(times[0])}–${formatValidTimeLabel(times[times.length - 1])}`;
+  ui.storedPack.textContent = `${rangeLabel} · ${times.length} time(s) · ${levels.size} level(s) · ${formatByteSize(bytes)}`;
 }
 
 function bindEvents() {
@@ -1098,11 +1075,10 @@ function bindEvents() {
   });
 
   ui.cacheFrom?.addEventListener("change", () => {
-    const { minHour, maxHour } = cacheableUtcHourRange();
-    const fromHour = Number(ui.cacheFrom.value);
-    const toHour = Number(ui.cacheTo?.value ?? "");
-    if (Number.isFinite(fromHour) && Number.isFinite(toHour) && toHour < fromHour && ui.cacheTo) {
-      fillUtcHourOptions(ui.cacheTo, { fromHour: minHour, toHour: maxHour, selectedHour: fromHour });
+    const fromIso = ui.cacheFrom.value;
+    const toIso = ui.cacheTo?.value ?? "";
+    if (fromIso && toIso && new Date(toIso).getTime() < new Date(fromIso).getTime() && ui.cacheTo) {
+      fillValidTimeOptions(ui.cacheTo, state.validTimes, fromIso);
     }
     updateCacheEstimate();
   });
@@ -1168,28 +1144,20 @@ async function runCacheFlight() {
   try {
     if (!state.entries.length) await loadLiveCatalog();
 
-    const fromHour = Number(ui.cacheFrom?.value ?? "");
-    const toHour = Number(ui.cacheTo.value);
-    if (!Number.isFinite(fromHour) || !Number.isFinite(toHour) || fromHour > toHour) {
-      throw new Error("Invalid cache hour range");
+    const fromIso = ui.cacheFrom?.value ?? "";
+    const toIso = ui.cacheTo?.value ?? "";
+    if (!fromIso || !toIso || new Date(toIso).getTime() < new Date(fromIso).getTime()) {
+      throw new Error("Invalid cache time range");
     }
     const targets = selectedCacheTargets();
     const levels = pickLevelsNearTargets(state.levelHeights, targets);
-    const hourSlots = hourlyUtcSlotsForDay(state.todayKey, fromHour, toHour);
+    const hourSlots = validTimesInRange(state.validTimes, fromIso, toIso);
 
     const jobs = [];
-    for (const slot of hourSlots) {
-      const iso = slot.toISOString().replace(".000Z", "Z");
-      const entry =
-        state.entries.find((item) => validTimeIso(state.dateStamp, item.forecastHour) === iso) ??
-        state.entries
-          .map((item) => ({ item, iso: validTimeIso(state.dateStamp, item.forecastHour) }))
-          .filter(({ iso: candidate }) => candidate.startsWith(state.todayKey))
-          .sort(
-            (a, b) =>
-              Math.abs(new Date(a.iso).getTime() - slot.getTime()) -
-              Math.abs(new Date(b.iso).getTime() - slot.getTime())
-          )[0]?.item;
+    for (const iso of hourSlots) {
+      const entry = state.entries.find(
+        (item) => validTimeIso(state.dateStamp, item.forecastHour) === iso
+      );
       if (!entry) continue;
       const validIso = validTimeIso(state.dateStamp, entry.forecastHour);
       for (const levelInfo of levels) {
@@ -1268,7 +1236,7 @@ async function bootstrapCatalog() {
   } else if (navigator.onLine) {
     await loadLiveCatalog();
   } else {
-    throw new Error("Offline with no cached data for today");
+    throw new Error("Offline with no cached data");
   }
 
   updateSelectors();
