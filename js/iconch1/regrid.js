@@ -2,6 +2,7 @@ const MAX_GRID_CELLS = 450_000;
 const IDW_NEIGHBORS = 8;
 const IDW_POWER = 2;
 const IDW_SEARCH_RADIUS_FACTOR = 1.75;
+const INVALID_INDEX = 0xffffffff;
 
 function computeBounds(lats, lons) {
   let minLon = Infinity;
@@ -62,7 +63,7 @@ function buildSpatialIndex(lats, lons, bucketSize) {
   return buckets;
 }
 
-function idwAt(lon, lat, lats, lons, values, buckets, bucketSize, maxDistDeg) {
+function idwNeighborsAt(lon, lat, lats, lons, buckets, bucketSize, maxDistDeg) {
   const maxDist2 = maxDistDeg * maxDistDeg;
   const bx = Math.floor(lon / bucketSize);
   const by = Math.floor(lat / bucketSize);
@@ -73,8 +74,6 @@ function idwAt(lon, lat, lats, lons, values, buckets, bucketSize, maxDistDeg) {
       const bucket = buckets.get(`${bx + dx},${by + dy}`);
       if (!bucket) continue;
       for (const p of bucket) {
-        const value = values[p];
-        if (!Number.isFinite(value)) continue;
         const dLon = lons[p] - lon;
         const dLat = lats[p] - lat;
         const dist2 = dLon * dLon + dLat * dLat;
@@ -84,46 +83,39 @@ function idwAt(lon, lat, lats, lons, values, buckets, bucketSize, maxDistDeg) {
     }
   }
 
-  if (candidates.length === 0) return NaN;
+  if (candidates.length === 0) return [];
 
   candidates.sort((a, b) => a.dist2 - b.dist2);
-  const nearest = candidates.slice(0, IDW_NEIGHBORS);
+  return candidates.slice(0, IDW_NEIGHBORS);
+}
 
-  if (nearest[0].dist2 < 1e-14) {
-    return values[nearest[0].p];
+function storeCellWeights(indices, weights, cellOffset, neighbors) {
+  indices.fill(INVALID_INDEX, cellOffset, cellOffset + IDW_NEIGHBORS);
+  weights.fill(0, cellOffset, cellOffset + IDW_NEIGHBORS);
+  if (neighbors.length === 0) return;
+
+  if (neighbors[0].dist2 < 1e-14) {
+    indices[cellOffset] = neighbors[0].p;
+    weights[cellOffset] = 1;
+    return;
   }
 
   let weightSum = 0;
-  let valueSum = 0;
-  for (const { p, dist2 } of nearest) {
+  for (let n = 0; n < neighbors.length; n += 1) {
+    const { p, dist2 } = neighbors[n];
     const weight = 1 / Math.pow(Math.sqrt(dist2), IDW_POWER);
+    indices[cellOffset + n] = p;
+    weights[cellOffset + n] = weight;
     weightSum += weight;
-    valueSum += weight * values[p];
   }
 
-  return valueSum / weightSum;
+  if (weightSum <= 0) return;
+  for (let n = 0; n < neighbors.length; n += 1) {
+    weights[cellOffset + n] /= weightSum;
+  }
 }
 
-export async function regridIdw(lats, lons, values, spacingDeg) {
-  const bounds = computeBounds(lats, lons);
-  const { ni, nj, di, dj } = gridDimensions(bounds, spacingDeg);
-  const bucketSize = Math.max(di, dj);
-  const maxDistDeg = bucketSize * IDW_SEARCH_RADIUS_FACTOR;
-  const buckets = buildSpatialIndex(lats, lons, bucketSize);
-  const out = new Float32Array(ni * nj);
-  const yieldEvery = Math.max(1, Math.floor(nj / 20));
-
-  for (let j = 0; j < nj; j += 1) {
-    const lat = bounds.minLat + j * dj;
-    for (let i = 0; i < ni; i += 1) {
-      const lon = bounds.minLon + i * di;
-      out[j * ni + i] = idwAt(lon, lat, lats, lons, values, buckets, bucketSize, maxDistDeg);
-    }
-    if (j > 0 && j % yieldEvery === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-  }
-
+function fieldDescriptor(bounds, ni, nj, di, dj) {
   return {
     ni,
     nj,
@@ -135,6 +127,79 @@ export async function regridIdw(lats, lons, values, spacingDeg) {
     dj_deg: dj,
     // Bit 0x40: j index increases northward (row 0 = south), matching our south→north storage.
     scan_mode: 0x40,
+  };
+}
+
+/**
+ * One-time geometry table: for each output cell, the K nearest source indices and IDW weights.
+ * Forecast values are applied later via applyIdwWeightTable().
+ */
+export async function buildIdwWeightTable(lats, lons, spacingDeg) {
+  const bounds = computeBounds(lats, lons);
+  const { ni, nj, di, dj } = gridDimensions(bounds, spacingDeg);
+  const bucketSize = Math.max(di, dj);
+  const maxDistDeg = bucketSize * IDW_SEARCH_RADIUS_FACTOR;
+  const buckets = buildSpatialIndex(lats, lons, bucketSize);
+  const cellCount = ni * nj;
+  const indices = new Uint32Array(cellCount * IDW_NEIGHBORS);
+  const weights = new Float32Array(cellCount * IDW_NEIGHBORS);
+  const yieldEvery = Math.max(1, Math.floor(nj / 20));
+
+  for (let j = 0; j < nj; j += 1) {
+    const lat = bounds.minLat + j * dj;
+    for (let i = 0; i < ni; i += 1) {
+      const lon = bounds.minLon + i * di;
+      const cellOffset = (j * ni + i) * IDW_NEIGHBORS;
+      const neighbors = idwNeighborsAt(lon, lat, lats, lons, buckets, bucketSize, maxDistDeg);
+      storeCellWeights(indices, weights, cellOffset, neighbors);
+    }
+    if (j > 0 && j % yieldEvery === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  return {
+    ...fieldDescriptor(bounds, ni, nj, di, dj),
+    cellCount,
+    neighborCount: IDW_NEIGHBORS,
+    indices,
+    weights,
+  };
+}
+
+/** Fast path: blend source values using a precomputed IDW weight table. */
+export function applyIdwWeightTable(table, values) {
+  const { indices, weights, neighborCount, ni, nj, cellCount, ...meta } = table;
+  const out = new Float32Array(cellCount);
+
+  for (let k = 0; k < cellCount; k += 1) {
+    const base = k * neighborCount;
+    let valueSum = 0;
+    let weightSum = 0;
+
+    for (let n = 0; n < neighborCount; n += 1) {
+      const p = indices[base + n];
+      if (p === INVALID_INDEX) continue;
+      const weight = weights[base + n];
+      if (weight <= 0) continue;
+      const value = values[p];
+      if (!Number.isFinite(value)) continue;
+      valueSum += weight * value;
+      weightSum += weight;
+    }
+
+    out[k] = weightSum > 0 ? valueSum / weightSum : NaN;
+  }
+
+  return {
+    ...meta,
+    ni,
+    nj,
     values: out,
   };
+}
+
+export async function regridIdw(lats, lons, values, spacingDeg) {
+  const table = await buildIdwWeightTable(lats, lons, spacingDeg);
+  return applyIdwWeightTable(table, values);
 }

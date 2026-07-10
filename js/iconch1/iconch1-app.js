@@ -17,7 +17,7 @@ import {
   pickLatestMeteoSwissRun,
   splitGribMessages,
 } from "./meteoswiss-catalog.js";
-import { regridIdw } from "./regrid.js";
+import { applyIdwWeightTable, buildIdwWeightTable } from "./regrid.js";
 import { buildSectorGeoJson } from "./contour-geojson.js";
 import { readProxiedFile, toRawGribBytes, formatError } from "./grib-io.js";
 import {
@@ -84,6 +84,7 @@ const state = {
 let wasmReady = null;
 let mapLayersReady = null;
 let gridCache = null;
+let regridWeightPromise = null;
 const wCache = new Map();
 
 function getMap() {
@@ -595,6 +596,8 @@ async function ensureMapLayers() {
 async function loadGrid() {
   if (gridCache) {
     debugLog("loadGrid cache hit", { levels: gridCache.levelHeights?.size ?? state.levelHeights.size });
+    const spacing = model.regridSpacingDeg ?? 0.01;
+    void ensureRegridWeightTable(gridCache, spacing);
     return gridCache;
   }
   setCh1Status("Fetching grid constants…");
@@ -645,7 +648,35 @@ async function loadGrid() {
     clonPoints: clon?.length ?? 0,
     levelCount: levelHeights.size,
   });
+  const spacing = model.regridSpacingDeg ?? 0.01;
+  void ensureRegridWeightTable(gridCache, spacing);
   return gridCache;
+}
+
+async function ensureRegridWeightTable(grid, spacingDeg) {
+  if (grid.idwWeightTable?.spacingDeg === spacingDeg) {
+    return grid.idwWeightTable.table;
+  }
+
+  if (regridWeightPromise?.spacingDeg === spacingDeg) {
+    return regridWeightPromise.promise;
+  }
+
+  setCh1Status("Preparing regrid…");
+  debugLog("buildIdwWeightTable start", { spacingDeg });
+  const promise = buildIdwWeightTable(grid.clat, grid.clon, spacingDeg).then((table) => {
+    grid.idwWeightTable = { spacingDeg, table };
+    regridWeightPromise = null;
+    debugLog("buildIdwWeightTable done", {
+      spacingDeg,
+      cellCount: table.cellCount,
+      ni: table.ni,
+      nj: table.nj,
+    });
+    return table;
+  });
+  regridWeightPromise = { spacingDeg, promise };
+  return promise;
 }
 
 async function loadWMessage(url, level = state.level) {
@@ -698,13 +729,15 @@ async function buildLiveGeoJson({
 
   const values = decode_template42_values_f32(message);
   const spacing = model.regridSpacingDeg ?? 0.01;
+  const weightTable = await ensureRegridWeightTable(grid, spacing);
   setCh1Status("Regridding field…");
   debugLog("buildLiveGeoJson regrid", {
     valueCount: values.length,
     spacingDeg: spacing,
     forecastHour: entry.forecastHour,
+    precomputedWeights: true,
   });
-  const field = await regridIdw(grid.clat, grid.clon, values, spacing);
+  const field = applyIdwWeightTable(weightTable, values);
   setCh1Status("Extracting contours…");
   const geojson = buildSectorGeoJson(field, new Float32Array(field.values));
   debugLog("buildLiveGeoJson done", {
