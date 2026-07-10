@@ -114,6 +114,7 @@ export function updateOverlay(imageData, dem) {
       coordinates,
     });
     raisePathLayer();
+    hooks.raiseIconCh1Layer?.();
     if (parseVizMode().sectors) {
       applySectorsOverlayOpacity();
     }
@@ -135,6 +136,7 @@ export function updateOverlay(imageData, dem) {
     },
   });
   raisePathLayer();
+  hooks.raiseIconCh1Layer?.();
   if (parseVizMode().sectors) {
     applySectorsOverlayOpacity();
   }

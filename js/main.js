@@ -111,10 +111,13 @@ import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
 import {
   initAppMenu,
   isGlideConesEnabled,
+  isIconCh1Enabled,
   openAppMenu,
   openGlideSettings,
   closeAppMenu,
 } from "./app-menu.js";
+import { initIconCh1 } from "./iconch1/iconch1-app.js";
+import { raiseIconCh1Layer } from "./map/layers.js";
 import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
@@ -405,6 +408,8 @@ const sharedHooks = {
   openGlideSettings,
   closeAppMenu,
   isGlideConesEnabled,
+  isIconCh1Enabled,
+  raiseIconCh1Layer,
   computeContextBarEl,
   clearCellInspect,
   clearGlidePath,
@@ -469,6 +474,7 @@ initManualSelect(sharedHooks);
 initAreaSelect(sharedHooks);
 initCacheUi(sharedHooks);
 initAppMenu(sharedHooks, dom);
+initIconCh1(sharedHooks, dom);
 initAutoCompute(sharedHooks);
 initSingleCompute(sharedHooks);
 initMapLayers(sharedHooks);
@@ -523,6 +529,7 @@ app.hooks = {
   openGlideSettings,
   closeAppMenu,
   isGlideConesEnabled,
+  isIconCh1Enabled,
   clearPendingSeedsSelection: () => sharedHooks.clearPendingSeedsSelection?.(),
 };
 initParamsPanel(app, dom);
@@ -568,6 +575,16 @@ app.map = new maplibregl.Map({
     ],
   },
 });
+
+app.mapReady = new Promise((resolve) => {
+  if (app.map.loaded()) {
+    resolve(app.map);
+    return;
+  }
+  app.map.once("load", () => resolve(app.map));
+});
+sharedHooks.waitForMapReady = () => app.mapReady;
+app.hooks.waitForMapReady = () => app.mapReady;
 
 function lockGeolocatePanZoom() {
   if (!app.map || !app.geolocateControl) {
@@ -869,6 +886,21 @@ function setComputeContextBarTone(tone) {
   }
 }
 
+function updateComputeContextBarInset() {
+  if (
+    !computeContextBarEl ||
+    computeContextBarEl.hidden ||
+    !document.body.classList.contains("has-compute-context")
+  ) {
+    document.body.style.removeProperty("--compute-context-bar-height");
+    return;
+  }
+  document.body.style.setProperty(
+    "--compute-context-bar-height",
+    `${computeContextBarEl.offsetHeight}px`
+  );
+}
+
 function syncComputeContextBar() {
   if (!computeContextBarEl) {
     return;
@@ -876,11 +908,13 @@ function syncComputeContextBar() {
   if (!isGlideConesEnabled()) {
     computeContextBarEl.hidden = true;
     document.body.classList.remove("has-compute-context");
+    updateComputeContextBarInset();
     return;
   }
   if (getCacheSelectMode()) {
     computeContextBarEl.hidden = true;
     document.body.classList.remove("has-compute-context");
+    updateComputeContextBarInset();
     return;
   }
   if (!app.coneState) {
@@ -894,6 +928,7 @@ function syncComputeContextBar() {
     }
     setComputeContextBarTone(null);
     document.body.classList.remove("has-compute-context");
+    updateComputeContextBarInset();
     return;
   }
 
@@ -926,11 +961,17 @@ function syncComputeContextBar() {
 
   computeContextBarEl.hidden = false;
   document.body.classList.add("has-compute-context");
-
-  if (hasActiveInspectTooltip()) {
-    window.requestAnimationFrame(() => positionCellTooltip());
-  }
+  window.requestAnimationFrame(() => {
+    updateComputeContextBarInset();
+    if (hasActiveInspectTooltip()) {
+      positionCellTooltip();
+    }
+  });
 }
+
+window.addEventListener("resize", () => {
+  updateComputeContextBarInset();
+});
 
 function syncDownloadContoursButton() {
   if (!downloadContoursBtn) {

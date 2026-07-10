@@ -36,7 +36,11 @@ export function initAppMenu(h, domRefs) {
   });
 
   dom.iconCh1SettingsBtn?.addEventListener("click", () => {
-    setIconCh1SettingsOpen(!app.iconCh1SettingsOpen);
+    const open = !app.iconCh1SettingsOpen;
+    setIconCh1SettingsOpen(open);
+    if (open) {
+      hooks.refreshIconCh1Settings?.();
+    }
   });
 
   syncAppMenuUi();
@@ -109,7 +113,15 @@ export function setGlideConesEnabled(enabled) {
 }
 
 export function setIconCh1Enabled(enabled) {
+  if (app.iconCh1Enabled === enabled) {
+    return;
+  }
   app.iconCh1Enabled = enabled;
+  if (enabled) {
+    hooks.startIconCh1?.();
+  } else {
+    hooks.stopIconCh1?.();
+  }
   syncAppMenuUi();
 }
 

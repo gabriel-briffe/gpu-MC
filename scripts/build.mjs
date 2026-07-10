@@ -24,6 +24,7 @@ const PRECACHE_URLS = [
   "vendor/maplibre-gl/maplibre-gl.js",
   "vendor/maplibre-gl/maplibre-gl.css",
   "vendor/maplibre-gl/maplibre-gl-csp-worker.js",
+  "vendor/gribinfo/gribinfo_bg.wasm",
 ];
 
 const MANIFEST = {
@@ -63,6 +64,13 @@ const openAipConfigAliasPlugin = {
   },
 };
 
+async function vendorGribinfo() {
+  const srcWasm = path.join(root, "js/iconch1/pkg/gribinfo_bg.wasm");
+  const destDir = path.join(root, "vendor/gribinfo");
+  await mkdir(destDir, { recursive: true });
+  await cp(srcWasm, path.join(destDir, "gribinfo_bg.wasm"));
+}
+
 async function buildJs() {
   await esbuild.build({
     entryPoints: [path.join(root, "js/main.js")],
@@ -73,6 +81,7 @@ async function buildJs() {
     outfile: path.join(root, "app.min.js"),
     logLevel: "info",
     plugins: [openAipConfigAliasPlugin],
+    external: [],
   });
 }
 
@@ -114,6 +123,7 @@ await mkdir(root, { recursive: true });
 await buildJs();
 await buildCss();
 await vendorMaplibre();
+await vendorGribinfo();
 await buildManifest();
 await buildServiceWorker();
 console.log("Built app.min.js, app.min.css, vendor/maplibre-gl, manifest, and sw.js");

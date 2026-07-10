@@ -12,9 +12,11 @@
     <link rel="stylesheet" href="app.min.css" />
   </head>
   <body>
-    <button type="button" id="app-menu-btn" class="app-menu-btn" aria-label="Menu" aria-expanded="false">
-      ☰
-    </button>
+    <div id="app-menu-chrome" class="map-top-chrome">
+      <button type="button" id="app-menu-btn" class="iconch1-step-btn" aria-label="Menu" aria-expanded="false">
+        ☰
+      </button>
+    </div>
     <div id="app-menu-backdrop" class="app-menu-backdrop" hidden></div>
 
     <div id="cache-select-bar" hidden>
@@ -34,14 +36,23 @@
 
     <div id="iconch1-chrome" hidden>
       <header class="iconch1-time-header" id="iconch1-time-header" aria-label="Forecast time">
-        <button type="button" class="iconch1-step-btn" disabled aria-hidden="true">◀</button>
-        <span class="iconch1-readout">Time —</span>
-        <button type="button" class="iconch1-step-btn" disabled aria-hidden="true">▶</button>
+        <div class="iconch1-time-row">
+          <button type="button" class="iconch1-step-btn" id="iconch1-time-prev" aria-label="Earlier time">◀</button>
+          <div class="iconch1-value-wrap">
+            <button type="button" class="iconch1-value-btn" id="iconch1-time-value" aria-label="Jump to time nearest now">—</button>
+            <select id="iconch1-time-select" class="iconch1-value-select" tabindex="-1" aria-label="Pick valid time UTC"></select>
+          </div>
+          <button type="button" class="iconch1-step-btn" id="iconch1-time-next" aria-label="Later time">▶</button>
+        </div>
+        <p id="iconch1-status" class="iconch1-status" hidden aria-live="polite"></p>
       </header>
-      <aside class="iconch1-alt-rail" id="iconch1-alt-rail" aria-label="Altitude">
-        <button type="button" class="iconch1-step-btn" disabled aria-hidden="true">▲</button>
-        <span class="iconch1-readout">—</span>
-        <button type="button" class="iconch1-step-btn" disabled aria-hidden="true">▼</button>
+      <aside class="iconch1-alt-rail map-top-chrome" id="iconch1-alt-rail" aria-label="Altitude">
+        <button type="button" class="iconch1-step-btn" id="iconch1-alt-up" aria-label="Higher altitude">▲</button>
+        <div class="iconch1-value-wrap">
+          <button type="button" class="iconch1-value-btn" id="iconch1-alt-value" aria-label="Set altitude from your location">—</button>
+          <select id="iconch1-alt-select" class="iconch1-value-select" tabindex="-1" aria-label="Pick altitude"></select>
+        </div>
+        <button type="button" class="iconch1-step-btn" id="iconch1-alt-down" aria-label="Lower altitude">▼</button>
       </aside>
     </div>
 
@@ -446,7 +457,34 @@
             </button>
           </div>
           <div id="iconch1-settings" class="app-menu-subsection" hidden>
-            <p class="param-section-desc">Vertical velocity contours — settings coming soon.</p>
+            <div class="iconch1-settings-panel">
+              <label class="iconch1-field">
+                <span>Default altitude</span>
+                <select id="iconch1-settings-default-alt"></select>
+              </label>
+              <p class="iconch1-settings-meta">Cache TTL: 24 hours</p>
+              <div class="iconch1-stored-pack" id="iconch1-stored-pack">No pack for today</div>
+              <section class="iconch1-settings-cache">
+                <h3>Cache today</h3>
+                <p class="iconch1-cache-intro">Download contours for <strong>today UTC</strong> to use offline.</p>
+                <label class="iconch1-field">
+                  <span>For (UTC)</span>
+                  <select id="iconch1-cache-from" aria-label="Cache start time UTC"></select>
+                </label>
+                <label class="iconch1-field">
+                  <span>To (UTC)</span>
+                  <select id="iconch1-cache-to" aria-label="Cache end time UTC"></select>
+                </label>
+                <fieldset class="iconch1-altitudes">
+                  <legend>Altitudes</legend>
+                  <div class="iconch1-altitude-grid" id="iconch1-cache-altitudes"></div>
+                </fieldset>
+                <p class="iconch1-cache-estimate" id="iconch1-cache-estimate">—</p>
+                <button type="button" class="action-btn btn-green" id="iconch1-cache-run">Cache contours</button>
+                <progress class="iconch1-progress" id="iconch1-cache-progress" value="0" max="100" hidden></progress>
+                <button type="button" class="action-btn btn-red" id="iconch1-clear-today-cache">Clear today</button>
+              </section>
+            </div>
           </div>
         </section>
       </div>

@@ -96,6 +96,17 @@ export function raisePathLayer() {
   if (app.pathLayerReady && map.getLayer("glide-path-ground")) {
     map.moveLayer("glide-path-ground");
   }
+  if (map.getLayer("ch1-sectors-layer")) {
+    map.moveLayer("ch1-sectors-layer");
+  }
+}
+
+export function raiseIconCh1Layer() {
+  const map = hooks.getMap();
+  if (!map?.getLayer("ch1-sectors-layer")) {
+    return;
+  }
+  map.moveLayer("ch1-sectors-layer");
 }
 
 export function ensurePathLayer() {
