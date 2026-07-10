@@ -207,13 +207,6 @@ export function openParamHelp(button) {
   app.openParamHelpButton = button;
 }
 
-function syncParamsPanelSummary() {
-  if (!dom.paramsPanelSummaryEl) {
-    return;
-  }
-  dom.paramsPanelSummaryEl.textContent = dom.paramsPanel?.open ? "Close settings" : "Open settings";
-}
-
 export function initParamsPanel(appState, domRefs) {
   app = appState;
   dom = domRefs;
@@ -323,13 +316,10 @@ export function initParamsPanel(appState, domRefs) {
     if (event.target.closest("#stop-compute")) {
       return;
     }
-    if (!dom.paramsPanel?.open) {
-      dom.paramsPanel.open = true;
+    if (!app.glideSettingsOpen) {
+      app.hooks.openGlideSettings?.();
     }
   });
-
-  dom.paramsPanel?.addEventListener("toggle", syncParamsPanelSummary);
-  syncParamsPanelSummary();
 }
 
 export { isDebugMode, isAutoParamsMode, isManualParamsMode, isSingleParamsMode };

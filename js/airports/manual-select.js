@@ -164,9 +164,7 @@ export function enterManualAirportSelectMode() {
   app.manualAirportSelectMode = true;
   app.manualStagingAirports = [];
   updateManualStagingList();
-  if (hooks.paramsPanel) {
-    hooks.paramsPanel.open = false;
-  }
+  hooks.closeAppMenu?.();
   ensurePendingManualAirportLayer();
   hooks.updateSeedMarkers();
   syncManualAirportSelectUi();
@@ -180,8 +178,8 @@ export function exitManualAirportSelectMode(reopenParams = false) {
   updateManualStagingList();
   hooks.updateSeedMarkers();
   syncManualAirportSelectUi();
-  if (reopenParams && hooks.paramsPanel) {
-    hooks.paramsPanel.open = true;
+  if (reopenParams) {
+    hooks.openGlideSettings?.();
     window.requestAnimationFrame(() => hooks.scrollToSeedsSection());
   }
   const map = hooks.getMap();

@@ -264,7 +264,8 @@ export function syncSeedLayerVisibility() {
   if (!getSeedLayersReady() || !map) {
     return;
   }
-  const visibility = isManualParamsMode() ? "visible" : "none";
+  const visibility =
+    hooks.isGlideConesEnabled?.() && isManualParamsMode() ? "visible" : "none";
   for (const layerId of ["seeds-circle", "seeds-label", "seeds-hit"]) {
     if (map.getLayer(layerId)) {
       map.setLayoutProperty(layerId, "visibility", visibility);

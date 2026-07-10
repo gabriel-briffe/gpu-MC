@@ -88,6 +88,15 @@ function focusMapForCacheSelect() {
   });
 }
 
+function syncCacheSelectBar() {
+  if (hooks.cacheSelectBar) {
+    hooks.cacheSelectBar.hidden = !app.cacheSelectMode;
+  }
+  document.body.classList.toggle("cache-select-mode", app.cacheSelectMode);
+  hooks.updateParamsFooter?.();
+  hooks.syncComputeContextBar?.();
+}
+
 export function enterCacheSelectMode({ focusMap = false } = {}) {
   if (app.cacheSelectMode || hooks.isComputing()) {
     return;
@@ -105,19 +114,14 @@ export function enterCacheSelectMode({ focusMap = false } = {}) {
   for (const cellKey of getLastCachedCellKeysForSelection()) {
     hooks.getSelectedCacheCells().add(cellKey);
   }
-  hooks.paramsShell?.classList.add("cache-select-mode");
-  if (hooks.paramsPanel) {
-    hooks.paramsPanel.open = false;
-  }
-  if (hooks.cacheDataPanel) {
-    hooks.cacheDataPanel.hidden = false;
-  }
+  hooks.closeAppMenu?.();
   if (hooks.openCacheDataBtn) {
     hooks.openCacheDataBtn.disabled = true;
   }
 
   hooks.setOverlaysHiddenForCacheSelect(true);
   hooks.refreshCacheSelectOverlays();
+  syncCacheSelectBar();
   syncCacheSelectButtons();
   const count = hooks.getSelectedCacheCells().size;
   hooks.setStatus(
@@ -137,10 +141,6 @@ export function exitCacheSelectMode() {
 
   app.cacheSelectMode = false;
   hooks.getSelectedCacheCells().clear();
-  hooks.paramsShell?.classList.remove("cache-select-mode");
-  if (hooks.cacheDataPanel) {
-    hooks.cacheDataPanel.hidden = true;
-  }
   if (hooks.openCacheDataBtn) {
     hooks.openCacheDataBtn.disabled = false;
   }
@@ -151,7 +151,7 @@ export function exitCacheSelectMode() {
   hooks.refreshCachedAirportMapLayer?.();
   hooks.updateSeedMarkers?.();
   hooks.setStatus("");
-  hooks.syncComputeContextBar?.();
+  syncCacheSelectBar();
   syncCacheSelectButtons();
 }
 

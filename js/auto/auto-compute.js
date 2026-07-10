@@ -180,7 +180,7 @@ export function cancelPendingAutoCompute() {
 }
 
 export function scheduleAutoCompute({ debounce = false, refreshAirports = false } = {}) {
-  if (!isAutoParamsMode() || hooks.getCacheSelectMode()) {
+  if (!isAutoParamsMode() || hooks.getCacheSelectMode() || !hooks.isGlideConesEnabled?.()) {
     return;
   }
   app.autoComputePending = true;
@@ -203,7 +203,13 @@ export function scheduleAutoCompute({ debounce = false, refreshAirports = false 
 }
 
 export async function flushAutoCompute() {
-  if (!app.autoComputePending || !isAutoParamsMode() || hooks.getCacheSelectMode() || hooks.isComputing()) {
+  if (
+    !app.autoComputePending ||
+    !isAutoParamsMode() ||
+    hooks.getCacheSelectMode() ||
+    hooks.isComputing() ||
+    !hooks.isGlideConesEnabled?.()
+  ) {
     return;
   }
   if (!hooks.getMap()) {
@@ -216,7 +222,13 @@ export async function flushAutoCompute() {
 }
 
 export function onAutoModeMapMoveEnd() {
-  if (!isAutoParamsMode() || hooks.getCacheSelectMode() || !app.autoComputeRegion || hooks.isComputing()) {
+  if (
+    !isAutoParamsMode() ||
+    hooks.getCacheSelectMode() ||
+    !app.autoComputeRegion ||
+    hooks.isComputing() ||
+    !hooks.isGlideConesEnabled?.()
+  ) {
     return;
   }
   const map = hooks.getMap();

@@ -15,49 +15,258 @@
         inset: 0;
       }
 
-      #not-for-flying-banner {
+      .app-menu-btn {
         position: fixed;
-        top: 0.75rem;
-        left: 0.75rem;
-        z-index: 3;
-        padding: 0.45rem 0.7rem;
-        border-radius: 0.4rem;
-        background: #ffffff;
-        color: #ff3333;
-        font-size: 1.05rem;
-        font-weight: 800;
-        letter-spacing: 0.1em;
-        line-height: 1.15;
-        text-align: center;
-        pointer-events: none;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        top: max(0.75rem, env(safe-area-inset-top));
+        left: max(0.75rem, env(safe-area-inset-left));
+        z-index: 4;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        background: rgba(18, 22, 28, 0.92);
+        color: #f5f7fa;
+        font-size: 1.25rem;
+        line-height: 1;
+        cursor: pointer;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
       }
 
-      #not-for-flying-banner span {
-        display: block;
+      .app-menu-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 3;
+        background: rgba(0, 0, 0, 0.45);
+      }
+
+      .app-menu-backdrop[hidden] {
+        display: none;
+      }
+
+      #params-shell.app-menu-popup {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        right: auto;
+        bottom: auto;
+        transform: translate(-50%, -50%);
+        z-index: 4;
+        width: min(96vw, 28rem);
+        max-height: min(80dvh, calc(100dvh - 2rem));
+      }
+
+      #params-shell.app-menu-popup[hidden] {
+        display: none;
+      }
+
+      .app-menu-popup-inner {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-height: min(80dvh, calc(100dvh - 2rem));
+        overflow: hidden;
+      }
+
+      #cache-select-bar {
+        position: fixed;
+        top: max(0.75rem, env(safe-area-inset-top));
+        left: 50%;
+        z-index: 4;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.45rem;
+        width: min(92vw, 24rem);
+        padding: 0.65rem 0.85rem;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        background: rgba(18, 22, 28, 0.92);
+        color: #f5f7fa;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(8px);
+        transform: translateX(-50%);
+        pointer-events: auto;
+      }
+
+      #cache-select-bar[hidden] {
+        display: none;
+      }
+
+      .cache-select-status {
+        margin: 0;
+        font-size: 0.8rem;
+        line-height: 1.35;
+        text-align: center;
+        color: #c8d3e0;
+      }
+
+      .cache-select-actions {
+        display: flex;
+        gap: 0.45rem;
+      }
+
+      .cache-select-actions .action-btn {
+        flex: 1;
+        min-width: 0;
+      }
+
+      body.cache-select-mode .app-menu-btn {
+        z-index: 5;
+      }
+
+      .app-menu-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        min-height: 0;
+      }
+
+      .app-menu-section-head {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+      }
+
+      .module-enable-btn {
+        flex: 1;
+        min-height: 44px;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 0.5rem;
+        background: rgba(255, 255, 255, 0.04);
+        color: #b8c4d4;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .module-enable-btn.is-active {
+        border-color: rgba(95, 165, 255, 0.55);
+        background: rgba(59, 130, 246, 0.28);
+        color: #e8f2ff;
+      }
+
+      .app-menu-settings-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 0.5rem;
+        background: rgba(255, 255, 255, 0.04);
+        color: #c8d3e0;
+        font-size: 1.1rem;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+
+      .app-menu-settings-btn[aria-expanded="true"] {
+        border-color: rgba(95, 165, 255, 0.45);
+        background: rgba(59, 130, 246, 0.18);
+        color: #e8f2ff;
+      }
+
+      .app-menu-divider {
+        border: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        margin: 0.15rem 0;
+      }
+
+      .app-menu-subsection[hidden] {
+        display: none;
+      }
+
+      .app-menu-subsection {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      #iconch1-chrome[hidden] {
+        display: none;
+      }
+
+      .iconch1-time-header {
+        position: fixed;
+        top: max(0.75rem, env(safe-area-inset-top));
+        left: 50%;
+        z-index: 3;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.45rem 0.6rem;
+        border-radius: 12px;
+        background: rgba(18, 22, 28, 0.92);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+        transform: translateX(-50%);
+        pointer-events: none;
+      }
+
+      .iconch1-alt-rail {
+        position: fixed;
+        top: calc(max(0.75rem, env(safe-area-inset-top)) + 3.5rem);
+        left: max(0.75rem, env(safe-area-inset-left));
+        z-index: 3;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.35rem;
+        min-width: 4.5rem;
+        padding: 0.4rem;
+        border-radius: 12px;
+        background: rgba(18, 22, 28, 0.92);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+        pointer-events: none;
+      }
+
+      .iconch1-step-btn {
+        min-height: 40px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.06);
+        color: #9aa4b2;
+        font-size: 0.95rem;
+      }
+
+      .iconch1-readout {
+        min-height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.04);
+        color: #e8eef4;
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-align: center;
+      }
+
+      body.glidecones-disabled #compute-context-bar {
+        display: none !important;
       }
 
       #params-shell {
-        position: fixed;
-        top: 0.75rem;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 3;
         border-radius: 0.75rem;
         background: rgba(18, 22, 28, 0.92);
         color: #f5f7fa;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
         backdrop-filter: blur(8px);
         font-size: 0.85rem;
-        max-width: min(96vw, 72rem);
-        max-height: calc(100dvh - 1.25rem);
         overflow: hidden;
         display: flex;
         flex-direction: column;
       }
 
-      #params-panel {
-        flex: 0 0 auto;
+      .app-menu-popup-inner {
+        padding: 0.65rem 0.75rem 0.75rem;
       }
 
       #params-scroll {
@@ -66,18 +275,14 @@
         overflow-y: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
-        max-height: min(62dvh, calc(100dvh - 11rem));
+        max-height: min(50dvh, calc(100dvh - 14rem));
       }
 
-      #params-panel:not([open]) ~ #params-scroll {
+      #glidecones-section:not(.glide-settings-open) .params-mode-bar #params-mode-manual {
         display: none;
       }
 
-      #params-panel:not([open]) ~ .params-mode-bar #params-mode-manual {
-        display: none;
-      }
-
-      #params-panel:not([open]) ~ .params-mode-bar {
+      #glidecones-section:not(.glide-settings-open) .params-mode-bar {
         justify-content: center;
       }
 
@@ -104,46 +309,10 @@
         text-align: center;
       }
 
-      #params-shell.cache-select-mode #params-mode-bar,
-      #params-shell.cache-select-mode #params-scroll {
-        display: none !important;
-      }
-
-      #params-shell.cache-select-mode #params-panel > summary {
-        pointer-events: none;
-        opacity: 0.55;
-      }
-
-      #params-panel > summary {
-        list-style: none;
-        cursor: pointer;
-        padding: 0.5rem 0.75rem;
-        color: #c8d3e0;
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        user-select: none;
-      }
-
-      #params-panel > summary::-webkit-details-marker {
-        display: none;
-      }
-
-      #params-panel > summary::after {
-        content: " ▸";
-        float: right;
-        opacity: 0.7;
-      }
-
-      #params-panel[open] > summary::after {
-        content: " ▾";
-      }
-
       .params-mode-bar {
         display: flex;
         gap: 0.35rem;
-        padding: 0.45rem 0.85rem 0.4rem;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 0;
       }
 
       .params-mode-btn {
@@ -473,10 +642,6 @@
         font-variant-numeric: tabular-nums;
       }
 
-      #params-panel:not([open]) ~ #params-footer #params-footer-info {
-        cursor: pointer;
-      }
-
       #params-footer #status {
         color: #b8c5d6;
       }
@@ -534,33 +699,39 @@
         color: #9aa4b2;
       }
 
-      #params-shell button.action-btn.btn-blue {
+      #params-shell button.action-btn.btn-blue,
+      #cache-select-bar button.action-btn.btn-blue {
         border-color: rgba(90, 159, 255, 0.55);
         background: rgba(90, 159, 255, 0.2);
         color: #d8e8ff;
       }
 
-      #params-shell button.action-btn.btn-blue:hover:not(:disabled) {
+      #params-shell button.action-btn.btn-blue:hover:not(:disabled),
+      #cache-select-bar button.action-btn.btn-blue:hover:not(:disabled) {
         background: rgba(90, 159, 255, 0.32);
       }
 
-      #params-shell button.action-btn.btn-green {
+      #params-shell button.action-btn.btn-green,
+      #cache-select-bar button.action-btn.btn-green {
         border-color: rgba(100, 210, 120, 0.6);
         background: rgba(70, 190, 100, 0.22);
         color: #d8ffe3;
       }
 
-      #params-shell button.action-btn.btn-green:hover:not(:disabled) {
+      #params-shell button.action-btn.btn-green:hover:not(:disabled),
+      #cache-select-bar button.action-btn.btn-green:hover:not(:disabled) {
         background: rgba(70, 190, 100, 0.36);
       }
 
-      #params-shell button.action-btn.btn-red {
+      #params-shell button.action-btn.btn-red,
+      #cache-select-bar button.action-btn.btn-red {
         border-color: rgba(255, 120, 120, 0.55);
         background: rgba(255, 80, 80, 0.18);
         color: #ffd6d6;
       }
 
-      #params-shell button.action-btn.btn-red:hover:not(:disabled) {
+      #params-shell button.action-btn.btn-red:hover:not(:disabled),
+      #cache-select-bar button.action-btn.btn-red:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.32);
       }
 
@@ -651,7 +822,8 @@
         display: none;
       }
 
-      #params-shell button.action-btn {
+      #params-shell button.action-btn,
+      #cache-select-bar button.action-btn {
         padding: 0.45rem 0.75rem;
         border: 1px solid rgba(255, 120, 120, 0.45);
         border-radius: 0.4rem;
@@ -662,16 +834,19 @@
         white-space: nowrap;
       }
 
-      #params-shell button.action-btn:hover:not(:disabled) {
+      #params-shell button.action-btn:hover:not(:disabled),
+      #cache-select-bar button.action-btn:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.24);
       }
 
-      #params-shell button.action-btn:disabled {
+      #params-shell button.action-btn:disabled,
+      #cache-select-bar button.action-btn:disabled {
         opacity: 0.55;
         cursor: wait;
       }
 
-      #params-shell button.action-btn[hidden] {
+      #params-shell button.action-btn[hidden],
+      #cache-select-bar button.action-btn[hidden] {
         display: none;
       }
 

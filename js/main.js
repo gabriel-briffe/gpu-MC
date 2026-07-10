@@ -108,6 +108,13 @@ import {
 import { initAutoCompute, scheduleAutoCompute, clearAutoComputeScheduling, onAutoModeMapMoveEnd, syncAutoWindowSizeUi } from "./auto/auto-compute.js";
 import { initSingleCompute, clearSingleComputeScheduling, flushSingleAirportCompute, getSingleComputePending, scheduleSingleAirportCompute } from "./single/single-compute.js";
 import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
+import {
+  initAppMenu,
+  isGlideConesEnabled,
+  openAppMenu,
+  openGlideSettings,
+  closeAppMenu,
+} from "./app-menu.js";
 import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
@@ -156,7 +163,6 @@ const {
   computeContextReqLdReadingEl,
   computeContextParamsEl,
   seedListEl,
-  paramsPanel,
   paramsFooterEl,
   paramsFooterInfoEl,
   paramsShell,
@@ -171,7 +177,8 @@ const {
   clearAllSeedsBtn,
   pathInputHintEl,
   openCacheDataBtn,
-  cacheDataPanel,
+  cacheSelectBar,
+  cacheSelectStatusEl,
   runCacheDownloadBtn,
   clearCacheDataBtn,
   finishCacheSelectBtn,
@@ -229,11 +236,16 @@ function getParamsFooterHint() {
 }
 
 function updateParamsFooter() {
+  const text = app.footerStatusText || getParamsFooterHint();
+  if (getCacheSelectMode() && dom.cacheSelectStatusEl) {
+    dom.cacheSelectStatusEl.textContent = text;
+    return;
+  }
   if (!statusEl) {
     return;
   }
   statusEl.hidden = false;
-  statusEl.textContent = app.footerStatusText || getParamsFooterHint();
+  statusEl.textContent = text;
 }
 
 function isGeoTrackingOn() {
@@ -389,7 +401,10 @@ const sharedHooks = {
   infoEl: info,
   cellTooltipEl,
   paramsShell,
-  paramsPanel,
+  openAppMenu,
+  openGlideSettings,
+  closeAppMenu,
+  isGlideConesEnabled,
   computeContextBarEl,
   clearCellInspect,
   clearGlidePath,
@@ -434,7 +449,8 @@ const sharedHooks = {
   autoWindowSizeFieldEl,
   autoWindowGlideHintEl,
   openCacheDataBtn,
-  cacheDataPanel,
+  cacheSelectBar,
+  cacheSelectStatusEl,
   runCacheDownloadBtn,
   clearCacheDataBtn,
   finishCacheSelectBtn,
@@ -452,6 +468,7 @@ initSeeds(sharedHooks);
 initManualSelect(sharedHooks);
 initAreaSelect(sharedHooks);
 initCacheUi(sharedHooks);
+initAppMenu(sharedHooks, dom);
 initAutoCompute(sharedHooks);
 initSingleCompute(sharedHooks);
 initMapLayers(sharedHooks);
@@ -502,8 +519,11 @@ app.hooks = {
     app.computeShouldStop = value;
   },
   syncComputeContextBar,
+  openAppMenu,
+  openGlideSettings,
+  closeAppMenu,
+  isGlideConesEnabled,
   clearPendingSeedsSelection: () => sharedHooks.clearPendingSeedsSelection?.(),
-  scheduleSingleAirportCompute,
 };
 initParamsPanel(app, dom);
 sharedHooks.schedulePersistParamsState = () => app.hooks.schedulePersistParamsState?.();
@@ -853,6 +873,11 @@ function syncComputeContextBar() {
   if (!computeContextBarEl) {
     return;
   }
+  if (!isGlideConesEnabled()) {
+    computeContextBarEl.hidden = true;
+    document.body.classList.remove("has-compute-context");
+    return;
+  }
   if (getCacheSelectMode()) {
     computeContextBarEl.hidden = true;
     document.body.classList.remove("has-compute-context");
@@ -998,7 +1023,7 @@ app.map.on("load", async () => {
   if (needsStartupCacheMode()) {
     setParamsMode("single", { initial: true });
     sharedHooks.enterCacheSelectMode?.();
-  } else if (openAipConfigured(app.openAipConfig) && isAutoParamsMode()) {
+  } else if (openAipConfigured(app.openAipConfig) && isAutoParamsMode() && isGlideConesEnabled()) {
     scheduleAutoCompute({ refreshAirports: true });
   }
 

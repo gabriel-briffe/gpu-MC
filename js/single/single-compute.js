@@ -32,7 +32,7 @@ export function getSingleComputePending() {
 }
 
 export function scheduleSingleAirportCompute(pick, { debounce = false } = {}) {
-  if (!isSingleParamsMode() || hooks.getCacheSelectMode?.()) {
+  if (!isSingleParamsMode() || hooks.getCacheSelectMode?.() || !hooks.isGlideConesEnabled?.()) {
     return;
   }
   if (pick?.id) {
@@ -66,7 +66,13 @@ export function scheduleSingleAirportCompute(pick, { debounce = false } = {}) {
 
 export async function flushSingleAirportCompute() {
   const pick = app.singleComputePending;
-  if (!pick || !isSingleParamsMode() || hooks.getCacheSelectMode?.() || hooks.isComputing()) {
+  if (
+    !pick ||
+    !isSingleParamsMode() ||
+    hooks.getCacheSelectMode?.() ||
+    hooks.isComputing() ||
+    !hooks.isGlideConesEnabled?.()
+  ) {
     return;
   }
   app.singleComputePending = null;

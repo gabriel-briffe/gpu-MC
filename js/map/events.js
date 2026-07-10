@@ -305,18 +305,7 @@ export function bindUiEvents(app, hooks) {
   });
 
   hooks.runComputeBtn?.addEventListener("click", () => {
-    if (hooks.paramsPanel) {
-      hooks.paramsPanel.open = false;
-    }
+    hooks.closeAppMenu?.();
     runComputation();
-  });
-
-  hooks.paramsPanel?.addEventListener("toggle", () => {
-    if (hooks.paramsPanel.open && hooks.getAirportAreaSelectMode()) {
-      hooks.exitAirportAreaSelectMode(false);
-    }
-    if (hooks.paramsPanel.open && hooks.getManualAirportSelectMode()) {
-      hooks.exitManualAirportSelectMode(false);
-    }
   });
 }

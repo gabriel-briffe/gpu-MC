@@ -12,15 +12,58 @@
     <link rel="stylesheet" href="app.min.css" />
   </head>
   <body>
-    <div id="not-for-flying-banner" aria-hidden="true">
-      <span>NOT FOR</span>
-      <span>FLYING</span>
+    <button type="button" id="app-menu-btn" class="app-menu-btn" aria-label="Menu" aria-expanded="false">
+      ☰
+    </button>
+    <div id="app-menu-backdrop" class="app-menu-backdrop" hidden></div>
+
+    <div id="cache-select-bar" hidden>
+      <p id="cache-select-status" class="cache-select-status"></p>
+      <div class="cache-select-actions">
+        <button type="button" class="action-btn btn-green" id="run-cache-download" disabled>
+          Cache
+        </button>
+        <button type="button" class="action-btn btn-red" id="clear-cache-data">
+          Clear
+        </button>
+        <button type="button" class="action-btn btn-green" id="finish-cache-select" disabled>
+          Done
+        </button>
+      </div>
     </div>
-    <div id="params-shell" class="params-mode-auto">
-      <details id="params-panel">
-        <summary id="params-panel-summary">Open settings</summary>
-      </details>
-      <div class="params-mode-bar" role="group" aria-label="Parameter mode">
+
+    <div id="iconch1-chrome" hidden>
+      <header class="iconch1-time-header" id="iconch1-time-header" aria-label="Forecast time">
+        <button type="button" class="iconch1-step-btn" disabled aria-hidden="true">◀</button>
+        <span class="iconch1-readout">Time —</span>
+        <button type="button" class="iconch1-step-btn" disabled aria-hidden="true">▶</button>
+      </header>
+      <aside class="iconch1-alt-rail" id="iconch1-alt-rail" aria-label="Altitude">
+        <button type="button" class="iconch1-step-btn" disabled aria-hidden="true">▲</button>
+        <span class="iconch1-readout">—</span>
+        <button type="button" class="iconch1-step-btn" disabled aria-hidden="true">▼</button>
+      </aside>
+    </div>
+
+    <div id="params-shell" class="params-mode-auto app-menu-popup" hidden>
+      <div class="app-menu-popup-inner">
+
+        <section class="app-menu-section" id="glidecones-section">
+          <div class="app-menu-section-head">
+            <button type="button" class="module-enable-btn is-active" id="glidecones-enable" aria-pressed="true">
+              Glide cones
+            </button>
+            <button
+              type="button"
+              class="app-menu-settings-btn"
+              id="glidecones-settings-btn"
+              aria-label="Glide cone settings"
+              aria-expanded="false"
+            >
+              ⚙
+            </button>
+          </div>
+          <div class="params-mode-bar" role="group" aria-label="Parameter mode">
         <button type="button" class="params-mode-btn" id="params-mode-single" aria-pressed="false">
           Single
         </button>
@@ -31,6 +74,7 @@
           Manual
         </button>
       </div>
+          <div id="glidecones-settings" class="app-menu-subsection" hidden>
       <div id="params-scroll">
         <form id="params" aria-label="Glide parameters">
           <div class="params-section">
@@ -375,26 +419,36 @@
           </button>
         </div>
       </div>
-      <div id="cache-data-panel" class="params-overlay-panel" hidden>
-        <div class="params-section-title">Cache mode</div>
-        <p class="param-section-desc">Select areas of interest, then hit "cache".</p>
-        <div class="params-section-actions">
-          <button type="button" class="action-btn btn-green" id="run-cache-download" disabled>
-            Cache
-          </button>
-          <button type="button" class="action-btn btn-red" id="clear-cache-data">
-            Clear
-          </button>
-          <button type="button" class="action-btn btn-green" id="finish-cache-select" disabled>
-            Done
-          </button>
-        </div>
-      </div>
       <div id="params-footer">
         <div id="params-footer-info">
           <div id="status">Loading WebGPU…</div>
         </div>
         <button type="button" id="stop-compute" hidden>Stop</button>
+      </div>
+          </div>
+        </section>
+
+        <hr class="app-menu-divider" />
+
+        <section class="app-menu-section" id="iconch1-section">
+          <div class="app-menu-section-head">
+            <button type="button" class="module-enable-btn" id="iconch1-enable" aria-pressed="false">
+              IconCH1
+            </button>
+            <button
+              type="button"
+              class="app-menu-settings-btn"
+              id="iconch1-settings-btn"
+              aria-label="IconCH1 settings"
+              aria-expanded="false"
+            >
+              ⚙
+            </button>
+          </div>
+          <div id="iconch1-settings" class="app-menu-subsection" hidden>
+            <p class="param-section-desc">Vertical velocity contours — settings coming soon.</p>
+          </div>
+        </section>
       </div>
     </div>
     <div id="param-help-popover" hidden role="tooltip"></div>

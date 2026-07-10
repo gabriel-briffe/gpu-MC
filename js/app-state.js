@@ -54,6 +54,11 @@ export function createApp() {
     manualTouchStart: null,
     mapTapStart: null,
     touchGestureWasPan: false,
+    appMenuOpen: false,
+    glideConesEnabled: true,
+    iconCh1Enabled: false,
+    glideSettingsOpen: false,
+    iconCh1SettingsOpen: false,
     selectedCacheCells: new Set(),
     cacheDataWarnings: [],
     interaction: {

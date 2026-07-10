@@ -294,9 +294,7 @@ export function enterAirportAreaSelectMode() {
   }
   app.airportAreaSelectMode = true;
   app.airportAreaDrawMode = app.airportSelectRects.length === 0;
-  if (hooks.paramsPanel) {
-    hooks.paramsPanel.open = false;
-  }
+  hooks.closeAppMenu?.();
   ensureAirportSelectLayers();
   syncAirportAreaSelectUi();
   hooks.setStatus(
@@ -320,8 +318,8 @@ export function exitAirportAreaSelectMode(reopenParams = false) {
   app.airportAreaDrawMode = false;
   cancelAirportRectInteraction();
   syncAirportAreaSelectUi();
-  if (reopenParams && hooks.paramsPanel) {
-    hooks.paramsPanel.open = true;
+  if (reopenParams) {
+    hooks.openGlideSettings?.();
     window.requestAnimationFrame(() => hooks.scrollToSeedsSection());
   }
   const map = hooks.getMap();

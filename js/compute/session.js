@@ -68,7 +68,7 @@ function makeComputeProgressHandler(dem, glideParams) {
 }
 
 export async function runComputation(seedsOverride = null, { gridBounds = null } = {}) {
-  if (hooks.isComputing()) {
+  if (hooks.isComputing() || !hooks.isGlideConesEnabled?.()) {
     return;
   }
 
