@@ -4,10 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mapterhorn Glide Cone</title>
-    <link
-      href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css"
-      rel="stylesheet"
-    />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#12161c" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/icon.svg" />
+    <link href="/vendor/maplibre-gl/maplibre-gl.css" rel="stylesheet" />
     <link rel="stylesheet" href="app.min.css" />
   </head>
   <body>
@@ -425,7 +426,8 @@
       </div>
     </div>
 
-    <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+    <script src="/vendor/maplibre-gl/maplibre-gl.js"></script>
+    <script src="/sw-register.js"></script>
     <script type="module" src="app.min.js"></script>
   </body>
 </html>

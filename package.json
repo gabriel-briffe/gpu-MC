@@ -3,7 +3,11 @@
   "private": true,
   "scripts": {
     "start": "npx --yes serve .",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "postinstall": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "maplibre-gl": "5.6.0"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

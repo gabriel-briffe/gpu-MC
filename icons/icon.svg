@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Mapterhorn Glide Cone">
+  <rect width="512" height="512" rx="96" fill="#12161c"/>
+  <path fill="#4ade80" d="M96 352 L256 128 L416 352 Z" opacity="0.35"/>
+  <path fill="none" stroke="#4ade80" stroke-width="28" stroke-linejoin="round" d="M96 352 L256 128 L416 352 Z"/>
+  <circle cx="256" cy="128" r="36" fill="#f5f7fa"/>
+</svg>

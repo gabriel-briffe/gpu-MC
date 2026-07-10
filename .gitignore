@@ -1,3 +1,4 @@
 js/openaip-config.js
 cloudflare/openaip-proxy.worker.js
 node_modules/
+vendor/

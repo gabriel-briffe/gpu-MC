@@ -507,6 +507,10 @@ app.hooks = {
 initParamsPanel(app, dom);
 sharedHooks.schedulePersistParamsState = () => app.hooks.schedulePersistParamsState?.();
 
+if (typeof maplibregl !== "undefined") {
+  maplibregl.setWorkerUrl("/vendor/maplibre-gl/maplibre-gl-csp-worker.js");
+}
+
 registerTerrainTileProtocol();
 
 app.map = new maplibregl.Map({
@@ -940,6 +944,13 @@ async function ensureEngine() {
   return app.engine;
 }
 
+function syncOfflineBanner() {
+  if (navigator.onLine || app.computing || app.cacheDownloadInProgress) {
+    return;
+  }
+  setStatus("Offline — using cached terrain and aeronautical data");
+}
+
 app.map.on("load", async () => {
   syncBaseMapTerrainMaxZoom();
   ensurePathLayer();
@@ -958,6 +969,13 @@ app.map.on("load", async () => {
   });
   app.map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);
+  window.addEventListener("online", () => {
+    if (!app.computing && !app.cacheDownloadInProgress && !getCacheSelectMode()) {
+      setStatus("");
+    }
+  });
+  window.addEventListener("offline", syncOfflineBanner);
+  syncOfflineBanner();
 
   try {
     app.openAipConfig = await loadOpenAipConfig();
