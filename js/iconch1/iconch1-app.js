@@ -789,7 +789,11 @@ async function displayCurrent() {
       source = "indexeddb";
       setCh1Status("Loading cached contours…");
       debugLog("displayCurrent cache hit", { key, featureCount: geojson.features?.length ?? 0 });
-    } else if (state.entries.length && navigator.onLine) {
+    } else if (navigator.onLine) {
+      await ensureLiveCatalog();
+      if (!state.entries.length) {
+        throw new Error("Not cached — go online or download this time/altitude");
+      }
       source = "live";
       setCh1Status("Building contours…");
       debugLog("displayCurrent cache miss — building live", { key, entryCount: state.entries.length });
@@ -828,7 +832,7 @@ async function displayCurrent() {
   }
 }
 
-async function loadLiveCatalog() {
+async function loadLiveCatalog({ updateSelection = true } = {}) {
   setCh1Status("Fetching catalog…");
   debugLog("loadLiveCatalog start");
   const run = await pickLatestMeteoSwissRun(model.collection, MODEL_ID);
@@ -849,7 +853,9 @@ async function loadLiveCatalog() {
   state.entries = entries;
   await loadGrid();
   rebuildViewOptions();
-  pickDefaultSelection();
+  if (updateSelection) {
+    pickDefaultSelection();
+  }
   debugLog("loadLiveCatalog done", {
     dateStamp: state.dateStamp,
     validTimes: state.validTimes.length,
@@ -863,11 +869,46 @@ async function loadLiveCatalog() {
   });
 }
 
+async function checkCacheAvailableTimes() {
+  if (!navigator.onLine) {
+    throw new Error("Offline — connect to check available times");
+  }
+  if (ui.cacheCheckTimes) {
+    ui.cacheCheckTimes.disabled = true;
+  }
+  try {
+    await loadLiveCatalog({ updateSelection: false });
+    syncCachePanelHours();
+    updateCacheEstimate();
+    updateSelectors();
+    clearCh1Status();
+  } finally {
+    syncCacheCheckTimesButton();
+  }
+}
+
+function syncCacheCheckTimesButton() {
+  if (!ui.cacheCheckTimes) {
+    return;
+  }
+  ui.cacheCheckTimes.disabled = !navigator.onLine || state.cacheRunning;
+}
+
 async function loadCachedCatalog() {
   await refreshCacheRecords();
+  if (!state.cacheRecords.length) {
+    throw new Error("No cached contours for today");
+  }
   applyCacheMetadata();
   rebuildViewOptions();
   pickDefaultSelection();
+}
+
+async function ensureLiveCatalog() {
+  if (state.entries.length || !navigator.onLine) {
+    return;
+  }
+  await loadLiveCatalog();
 }
 
 function initSettingsPanel() {
@@ -932,6 +973,7 @@ function syncCachePanelHours() {
   fillUtcHourOptions(ui.cacheFrom, { fromHour: minHour, toHour: maxHour, selectedHour: fromHour });
   fillUtcHourOptions(ui.cacheTo, { fromHour: minHour, toHour: maxHour, selectedHour: toHour });
   updateCacheEstimate();
+  syncCacheCheckTimesButton();
 }
 
 function initCachePanel() {
@@ -1064,6 +1106,18 @@ function bindEvents() {
     }
     updateCacheEstimate();
   });
+  ui.cacheCheckTimes?.addEventListener("click", () => {
+    void (async () => {
+      try {
+        await checkCacheAvailableTimes();
+      } catch (error) {
+        if (ui.cacheEstimate) {
+          ui.cacheEstimate.textContent = formatError(error);
+        }
+        console.warn("IconCH1 cache times:", formatError(error));
+      }
+    })();
+  });
   ui.cacheTo?.addEventListener("change", updateCacheEstimate);
   ui.cacheAltitudes?.addEventListener("change", updateCacheEstimate);
   ui.cacheRun?.addEventListener("click", () => void runCacheFlight());
@@ -1089,6 +1143,7 @@ function bindEvents() {
 
   window.addEventListener("offline", () => {
     if (!hooks.isIconCh1Enabled?.()) return;
+    syncCacheCheckTimesButton();
     if (!state.entries.length && state.cacheRecords.length) {
       void (async () => {
         try {
@@ -1107,6 +1162,7 @@ async function runCacheFlight() {
   if (state.cacheRunning) return;
   state.cacheRunning = true;
   if (ui.cacheRun) ui.cacheRun.disabled = true;
+  syncCacheCheckTimesButton();
   if (ui.cacheProgress) ui.cacheProgress.hidden = false;
 
   try {
@@ -1194,6 +1250,7 @@ async function runCacheFlight() {
   } finally {
     state.cacheRunning = false;
     if (ui.cacheRun) ui.cacheRun.disabled = false;
+    syncCacheCheckTimesButton();
     if (ui.cacheProgress) ui.cacheProgress.hidden = true;
   }
 }
@@ -1204,20 +1261,12 @@ async function bootstrapCatalog() {
   state.todayKey = utcTodayKey();
   await refreshCacheRecords();
 
-  if (navigator.onLine) {
-    try {
-      await loadLiveCatalog();
-    } catch (error) {
-      debugLog("loadLiveCatalog failed", { error: formatError(error), cacheRecords: state.cacheRecords.length });
-      if (!state.cacheRecords.length) throw error;
-      applyCacheMetadata();
-      rebuildViewOptions();
-      pickDefaultSelection();
-      debugLog("bootstrapCatalog fell back to cache metadata");
-    }
-  } else if (state.cacheRecords.length) {
+  if (state.cacheRecords.length) {
+    setCh1Status("Loading cached catalog…");
     await loadCachedCatalog();
-    debugLog("bootstrapCatalog used offline cache");
+    debugLog("bootstrapCatalog built from cache", { count: state.cacheRecords.length });
+  } else if (navigator.onLine) {
+    await loadLiveCatalog();
   } else {
     throw new Error("Offline with no cached data for today");
   }
@@ -1241,6 +1290,7 @@ export function initIconCh1(h, domRefs) {
     altValue: domRefs.iconCh1AltValue,
     cacheFrom: domRefs.iconCh1CacheFrom,
     cacheTo: domRefs.iconCh1CacheTo,
+    cacheCheckTimes: domRefs.iconCh1CacheCheckTimes,
     cacheAltitudes: domRefs.iconCh1CacheAltitudes,
     cacheEstimate: domRefs.iconCh1CacheEstimate,
     cacheRun: domRefs.iconCh1CacheRun,

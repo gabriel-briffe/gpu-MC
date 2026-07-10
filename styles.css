@@ -376,6 +376,11 @@
         font-size: 0.85rem;
       }
 
+      #iconch1-cache-check-times {
+        width: 100%;
+        margin-bottom: 0.35rem;
+      }
+
       .iconch1-cache-intro {
         margin: 0 0 0.5rem;
         font-size: 0.75rem;

@@ -22,6 +22,7 @@ export const dom = {
   iconCh1StoredPack: document.getElementById("iconch1-stored-pack"),
   iconCh1CacheFrom: document.getElementById("iconch1-cache-from"),
   iconCh1CacheTo: document.getElementById("iconch1-cache-to"),
+  iconCh1CacheCheckTimes: document.getElementById("iconch1-cache-check-times"),
   iconCh1CacheAltitudes: document.getElementById("iconch1-cache-altitudes"),
   iconCh1CacheEstimate: document.getElementById("iconch1-cache-estimate"),
   iconCh1CacheRun: document.getElementById("iconch1-cache-run"),
