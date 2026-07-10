@@ -619,6 +619,7 @@ app.map.addControl(new maplibregl.NavigationControl(), "top-right");
 app.geolocateControl = new maplibregl.GeolocateControl({
   positionOptions: { enableHighAccuracy: true },
   trackUserLocation: true,
+  showUserHeading: true,
 });
 app.map.addControl(app.geolocateControl, "top-right");
 app.geolocateControl._container?.addEventListener("click", lockGeolocatePanZoom, true);
