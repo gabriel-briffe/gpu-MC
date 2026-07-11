@@ -24,6 +24,8 @@ export function apply_idw_weight_table(indices: Uint32Array, weights: Float32Arr
 
 export function build_idw_weight_table(lats: Float32Array, lons: Float32Array, spacing_deg: number): IdwWeightTableResult;
 
+export function build_sector_geojson_json(ni: number, nj: number, la1_deg: number, lo1_deg: number, la2_deg: number, lo2_deg: number, di_deg: number, dj_deg: number, scan_mode: number, values: Float32Array): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -31,6 +33,7 @@ export interface InitOutput {
     readonly __wbg_idwweighttableresult_free: (a: number, b: number) => void;
     readonly apply_idw_weight_table: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
     readonly build_idw_weight_table: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+    readonly build_sector_geojson_json: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number, number];
     readonly idwweighttableresult_cell_count: (a: number) => number;
     readonly idwweighttableresult_di_deg: (a: number) => number;
     readonly idwweighttableresult_dj_deg: (a: number) => number;

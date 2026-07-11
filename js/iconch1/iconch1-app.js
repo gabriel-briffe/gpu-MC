@@ -742,12 +742,14 @@ async function buildLiveGeoJson({
     regridWasm: isRegridWasmEnabled(),
   });
   const field = applyIdwWeightTable(weightTable, values);
+  await ensureRegridWasm();
   setCh1Status("Extracting contours…");
   const geojson = buildSectorGeoJson(field, new Float32Array(field.values));
   debugLog("buildLiveGeoJson done", {
     featureCount: geojson.features?.length ?? 0,
-    gridWidth: field.width,
-    gridHeight: field.height,
+    gridWidth: field.ni,
+    gridHeight: field.nj,
+    contourWasm: isRegridWasmEnabled(),
   });
   return geojson;
 }

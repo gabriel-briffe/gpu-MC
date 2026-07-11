@@ -4,6 +4,7 @@ export const memory: WebAssembly.Memory;
 export const __wbg_idwweighttableresult_free: (a: number, b: number) => void;
 export const apply_idw_weight_table: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
 export const build_idw_weight_table: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+export const build_sector_geojson_json: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number, number];
 export const idwweighttableresult_cell_count: (a: number) => number;
 export const idwweighttableresult_di_deg: (a: number) => number;
 export const idwweighttableresult_dj_deg: (a: number) => number;

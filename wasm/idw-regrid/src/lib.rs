@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use wasm_bindgen::prelude::*;
 
+mod contours;
+
 const MAX_GRID_CELLS: usize = 450_000;
 const IDW_NEIGHBORS: usize = 8;
 const IDW_POWER: f64 = 2.0;
@@ -367,4 +369,32 @@ pub fn apply_idw_weight_table(
     }
 
     Ok(out)
+}
+
+#[wasm_bindgen]
+pub fn build_sector_geojson_json(
+    ni: u32,
+    nj: u32,
+    la1_deg: f64,
+    lo1_deg: f64,
+    la2_deg: f64,
+    lo2_deg: f64,
+    di_deg: f64,
+    dj_deg: f64,
+    scan_mode: u32,
+    values: &[f32],
+) -> Result<String, JsValue> {
+    contours::build_sector_geojson_json(
+        ni,
+        nj,
+        la1_deg,
+        lo1_deg,
+        la2_deg,
+        lo2_deg,
+        di_deg,
+        dj_deg,
+        scan_mode,
+        values,
+    )
+    .map_err(|e| JsValue::from_str(&e))
 }

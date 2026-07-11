@@ -1,6 +1,7 @@
 import initIdwRegrid, {
   apply_idw_weight_table as wasmApplyIdwWeightTable,
   build_idw_weight_table as wasmBuildIdwWeightTable,
+  build_sector_geojson_json as wasmBuildSectorGeojsonJson,
 } from "./pkg/idw-regrid/idw_regrid.js";
 import { assetUrl } from "../asset-url.js";
 
@@ -278,4 +279,20 @@ export function applyIdwWeightTable(table, values) {
 export async function regridIdw(lats, lons, values, spacingDeg) {
   const table = await buildIdwWeightTable(lats, lons, spacingDeg);
   return applyIdwWeightTable(table, values);
+}
+
+export function buildSectorGeoJsonWasm(field, values) {
+  const json = wasmBuildSectorGeojsonJson(
+    field.ni,
+    field.nj,
+    field.la1_deg,
+    field.lo1_deg,
+    field.la2_deg,
+    field.lo2_deg,
+    field.di_deg,
+    field.dj_deg,
+    field.scan_mode,
+    values
+  );
+  return JSON.parse(json);
 }

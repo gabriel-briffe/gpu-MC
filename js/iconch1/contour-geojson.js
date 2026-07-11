@@ -1,3 +1,9 @@
+import {
+  buildSectorGeoJsonWasm,
+  ensureRegridWasm,
+  isRegridWasmEnabled,
+} from "./regrid.js";
+
 const SECTOR_POSITIVE_MIN = 0.5;
 const SECTOR_POSITIVE_MAX = 5.0;
 const SECTOR_NEGATIVE_START = -0.5;
@@ -334,7 +340,7 @@ function contoursForThreshold(field, values, threshold, compare = "gt") {
   return stitchSegments(segments);
 }
 
-export function buildSectorGeoJson(field, values) {
+function buildSectorGeoJsonJs(field, values) {
   const features = [];
 
   for (const { threshold, color, compare } of SECTOR_LEVELS) {
@@ -355,4 +361,15 @@ export function buildSectorGeoJson(field, values) {
     type: "FeatureCollection",
     features,
   };
+}
+
+export function buildSectorGeoJson(field, values) {
+  if (isRegridWasmEnabled()) {
+    return buildSectorGeoJsonWasm(field, values);
+  }
+  return buildSectorGeoJsonJs(field, values);
+}
+
+export async function ensureSectorContourWasm() {
+  return ensureRegridWasm();
 }
