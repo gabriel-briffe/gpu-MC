@@ -41,6 +41,7 @@ import {
   validTimesInRange,
 } from "./ch-contour-cache.js";
 import { assetUrl } from "../asset-url.js";
+import { toggleIconChActiveModel } from "../app-menu.js";
 
 const ICON_CH_MODELS = ["icon-ch1", "icon-ch2"];
 const DEFAULT_ALT_TARGET_M = 4000;
@@ -445,14 +446,17 @@ function resolveForecastHour(validIso, level) {
   return cached?.forecastHour ?? "";
 }
 
+function modelAttributionLabel(modelId = state.modelId) {
+  return modelId === "icon-ch2" ? "IconCH2" : "IconCH1";
+}
+
 function buildForecastAttribution() {
-  if (!state.dateStamp || !state.validTimeIso || state.level === "") {
-    return getModel().label;
+  if (!state.dateStamp || state.level === "") {
+    return modelAttributionLabel();
   }
   const run = formatDateStamp(state.dateStamp);
-  const valid = formatValidTimeLabel(state.validTimeIso);
   const step = state.forecastHour !== "" ? `+${state.forecastHour}h` : "—";
-  return `Forecast ${valid} · Run ${run} · Step ${step} · L${state.level}`;
+  return `${modelAttributionLabel()} · Run ${run} · Step ${step} · L${state.level}`;
 }
 
 function updateMapAttribution(clear = false) {
@@ -462,8 +466,10 @@ function updateMapAttribution(clear = false) {
   if (!inner) return;
 
   let node = inner.querySelector(".ch1-forecast-attrib");
+  let meteoNode = inner.querySelector(".meteosuisse-attrib");
   if (clear) {
     node?.remove();
+    meteoNode?.remove();
     return;
   }
 
@@ -477,6 +483,14 @@ function updateMapAttribution(clear = false) {
     }
   }
   node.textContent = text;
+
+  if (!meteoNode) {
+    meteoNode = document.createElement("span");
+    meteoNode.className = "meteosuisse-attrib";
+    meteoNode.innerHTML =
+      ' | <a href="https://www.meteoswiss.admin.ch" target="_blank" rel="noopener">Meteosuisse</a>';
+    inner.appendChild(meteoNode);
+  }
 }
 
 function pickNearestTimeToNow() {
@@ -1405,24 +1419,47 @@ function bindEvents() {
     setCacheSettingsModel("icon-ch2");
   });
 
-  window.addEventListener("keydown", (event) => {
-    if (!hooks.isIconCh1Enabled?.()) return;
-    if (event.target.closest("#params-shell") || event.target.closest("dialog")) return;
-    if (event.target.matches("select, input, textarea")) return;
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      stepTime(-1);
-    } else if (event.key === "ArrowRight") {
-      event.preventDefault();
-      stepTime(1);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      stepAltitude(1);
-    } else if (event.key === "ArrowDown") {
-      event.preventDefault();
-      stepAltitude(-1);
-    }
-  });
+function iconChShortcutsAllowed() {
+  if (!hooks.isIconCh1Enabled?.()) return false;
+  const active = document.activeElement;
+  if (active?.closest?.("#params-shell") || active?.closest?.("dialog")) {
+    return false;
+  }
+  if (active?.matches?.("select, input, textarea, [contenteditable='true']")) {
+    return false;
+  }
+  return true;
+}
+
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (!iconChShortcutsAllowed()) return;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        stepTime(-1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        stepTime(1);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        stepAltitude(1);
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        stepAltitude(-1);
+      } else if (
+        event.code === "KeyT" &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleIconChActiveModel();
+      }
+    },
+    true
+  );
 
   window.addEventListener("offline", () => {
     if (!hooks.isIconCh1Enabled?.()) return;

@@ -130,6 +130,14 @@ export function setGlideConesEnabled(enabled) {
   syncAppMenuUi();
 }
 
+export function toggleIconChActiveModel() {
+  if (!app.iconChActiveModel) {
+    return;
+  }
+  const next = app.iconChActiveModel === "icon-ch1" ? "icon-ch2" : "icon-ch1";
+  setIconChActiveModel(next);
+}
+
 export function setIconChActiveModel(modelId) {
   if (app.iconChActiveModel === modelId) {
     return;
