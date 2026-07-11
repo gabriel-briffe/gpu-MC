@@ -1,6 +1,8 @@
 import {
+  buildSectorGeoJsonFromFieldGrib,
   buildSectorGeoJsonWasm,
   ensureRegridWasm,
+  isIdwPipelineInstalled,
   isRegridWasmEnabled,
 } from "./regrid.js";
 
@@ -364,6 +366,9 @@ function buildSectorGeoJsonJs(field, values) {
 }
 
 export function buildSectorGeoJson(field, values) {
+  if (isIdwPipelineInstalled()) {
+    throw new Error("buildSectorGeoJson requires decoded values when WASM pipeline is not used");
+  }
   if (isRegridWasmEnabled()) {
     return buildSectorGeoJsonWasm(field, values);
   }

@@ -17,7 +17,7 @@ import {
   pickLatestMeteoSwissRun,
   splitGribMessages,
 } from "./meteoswiss-catalog.js";
-import { applyIdwWeightTable, buildIdwWeightTable, ensureRegridWasm, isRegridWasmEnabled } from "./regrid.js";
+import { applyIdwWeightTable, buildIdwWeightTable, buildSectorGeoJsonFromFieldGrib, ensureRegridWasm, isIdwPipelineInstalled, isRegridWasmEnabled } from "./regrid.js";
 import { buildSectorGeoJson } from "./contour-geojson.js";
 import { readProxiedFile, toRawGribBytes, formatError } from "./grib-io.js";
 import {
@@ -657,7 +657,7 @@ async function loadGrid() {
 
 async function ensureRegridWeightTable(grid, spacingDeg) {
   if (grid.idwWeightTable?.spacingDeg === spacingDeg) {
-    return grid.idwWeightTable.table;
+    return grid.idwWeightTable.table ?? grid.idwWeightTable.meta;
   }
 
   if (regridWeightPromise?.spacingDeg === spacingDeg) {
@@ -667,7 +667,7 @@ async function ensureRegridWeightTable(grid, spacingDeg) {
   setCh1Status("Preparing regrid…");
   debugLog("buildIdwWeightTable start", { spacingDeg });
   const promise = buildIdwWeightTable(grid.clat, grid.clon, spacingDeg).then((table) => {
-    grid.idwWeightTable = { spacingDeg, table };
+    grid.idwWeightTable = { spacingDeg, table, meta: table.pipeline ? table : null };
     regridWeightPromise = null;
     debugLog("buildIdwWeightTable done", {
       spacingDeg,
@@ -675,6 +675,7 @@ async function ensureRegridWeightTable(grid, spacingDeg) {
       ni: table.ni,
       nj: table.nj,
       wasm: isRegridWasmEnabled(),
+      pipeline: isIdwPipelineInstalled(),
     });
     return table;
   });
@@ -730,9 +731,27 @@ async function buildLiveGeoJson({
   const message = await loadWMessage(entry.url, level);
   if (!message) throw new Error(`Level ${level} not found in forecast file`);
 
-  const values = decode_template42_values_f32(message);
   const spacing = model.regridSpacingDeg ?? 0.01;
-  const weightTable = await ensureRegridWeightTable(grid, spacing);
+  await ensureRegridWeightTable(grid, spacing);
+  await ensureRegridWasm();
+
+  if (isIdwPipelineInstalled()) {
+    setCh1Status("Extracting contours…");
+    debugLog("buildLiveGeoJson pipeline", {
+      spacingDeg: spacing,
+      forecastHour: entry.forecastHour,
+      pipeline: true,
+    });
+    const geojson = buildSectorGeoJsonFromFieldGrib(message);
+    debugLog("buildLiveGeoJson done", {
+      featureCount: geojson.features?.length ?? 0,
+      pipeline: true,
+      contourWasm: true,
+    });
+    return geojson;
+  }
+
+  const values = decode_template42_values_f32(message);
   setCh1Status("Regridding field…");
   debugLog("buildLiveGeoJson regrid", {
     valueCount: values.length,
@@ -740,16 +759,18 @@ async function buildLiveGeoJson({
     forecastHour: entry.forecastHour,
     precomputedWeights: true,
     regridWasm: isRegridWasmEnabled(),
+    pipeline: false,
   });
+  const weightTable = grid.idwWeightTable?.table ?? (await ensureRegridWeightTable(grid, spacing));
   const field = applyIdwWeightTable(weightTable, values);
-  await ensureRegridWasm();
   setCh1Status("Extracting contours…");
-  const geojson = buildSectorGeoJson(field, new Float32Array(field.values));
+  const geojson = buildSectorGeoJson(field, field.values);
   debugLog("buildLiveGeoJson done", {
     featureCount: geojson.features?.length ?? 0,
     gridWidth: field.ni,
     gridHeight: field.nj,
     contourWasm: isRegridWasmEnabled(),
+    pipeline: false,
   });
   return geojson;
 }

@@ -1,7 +1,8 @@
 import initIdwRegrid, {
   apply_idw_weight_table as wasmApplyIdwWeightTable,
-  build_idw_weight_table as wasmBuildIdwWeightTable,
+  build_sector_geojson_from_field_grib as wasmBuildSectorGeojsonFromFieldGrib,
   build_sector_geojson_json as wasmBuildSectorGeojsonJson,
+  install_idw_weight_table as wasmInstallIdwWeightTable,
 } from "./pkg/idw-regrid/idw_regrid.js";
 import { assetUrl } from "../asset-url.js";
 
@@ -13,9 +14,14 @@ const INVALID_INDEX = 0xffffffff;
 
 let wasmInitPromise = null;
 let wasmEnabled = false;
+let pipelineInstalled = false;
 
 export function isRegridWasmEnabled() {
   return wasmEnabled;
+}
+
+export function isIdwPipelineInstalled() {
+  return wasmEnabled && pipelineInstalled;
 }
 
 export function ensureRegridWasm() {
@@ -38,8 +44,8 @@ export function ensureRegridWasm() {
   return wasmInitPromise;
 }
 
-function wasmResultToTable(result) {
-  const table = {
+function wasmInstallResultToMeta(result) {
+  const meta = {
     ni: result.ni,
     nj: result.nj,
     cellCount: result.cell_count,
@@ -51,11 +57,11 @@ function wasmResultToTable(result) {
     di_deg: result.di_deg,
     dj_deg: result.dj_deg,
     scan_mode: result.scan_mode,
-    indices: result.indices,
-    weights: result.weights,
+    spacingDeg: result.spacing_deg,
+    pipeline: true,
   };
   result.free();
-  return table;
+  return meta;
 }
 
 function computeBounds(lats, lons) {
@@ -255,14 +261,19 @@ function applyIdwWeightTableJs(table, values) {
 export async function buildIdwWeightTable(lats, lons, spacingDeg) {
   await ensureRegridWasm();
   if (wasmEnabled) {
-    const result = wasmBuildIdwWeightTable(lats, lons, spacingDeg);
-    return wasmResultToTable(result);
+    const result = wasmInstallIdwWeightTable(lats, lons, spacingDeg);
+    pipelineInstalled = true;
+    return wasmInstallResultToMeta(result);
   }
+  pipelineInstalled = false;
   return buildIdwWeightTableJs(lats, lons, spacingDeg);
 }
 
 /** Fast path: blend source values using a precomputed IDW weight table. */
 export function applyIdwWeightTable(table, values) {
+  if (table?.pipeline) {
+    throw new Error("applyIdwWeightTable unavailable when WASM pipeline is installed");
+  }
   if (wasmEnabled) {
     const { indices, weights, neighborCount, ni, nj, cellCount, ...meta } = table;
     const out = wasmApplyIdwWeightTable(indices, weights, values, neighborCount);
@@ -279,6 +290,11 @@ export function applyIdwWeightTable(table, values) {
 export async function regridIdw(lats, lons, values, spacingDeg) {
   const table = await buildIdwWeightTable(lats, lons, spacingDeg);
   return applyIdwWeightTable(table, values);
+}
+
+export function buildSectorGeoJsonFromFieldGrib(fieldGrib) {
+  const json = wasmBuildSectorGeojsonFromFieldGrib(fieldGrib);
+  return JSON.parse(json);
 }
 
 export function buildSectorGeoJsonWasm(field, values) {
