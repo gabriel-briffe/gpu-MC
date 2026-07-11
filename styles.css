@@ -362,6 +362,81 @@
         color: #8b96a8;
       }
 
+      .iconch-settings-model-slider {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.45rem;
+        margin: 0.35rem auto 0.55rem;
+        max-width: 11.5rem;
+      }
+
+      .iconch-settings-model-label {
+        flex: 0 0 auto;
+        border: 0;
+        background: transparent;
+        padding: 0;
+        font: inherit;
+        font-size: 0.72rem;
+        color: #9aa4b2;
+        cursor: pointer;
+      }
+
+      .iconch-settings-model-label.is-selected {
+        color: #fff;
+        font-weight: 700;
+      }
+
+      .iconch-settings-model-slider input[type="range"] {
+        flex: 0 0 2.75rem;
+        width: 2.75rem;
+        margin: 0;
+        cursor: pointer;
+      }
+
+      .iconch-section-head {
+        gap: 0.35rem;
+      }
+
+      .iconch-model-buttons {
+        display: flex;
+        flex: 1;
+        gap: 0.35rem;
+        min-width: 0;
+      }
+
+      .iconch-model-buttons .module-enable-btn {
+        flex: 1;
+        min-width: 0;
+        padding-left: 0.35rem;
+        padding-right: 0.35rem;
+        font-size: 0.72rem;
+      }
+
+      .iconch-btn-row {
+        display: flex;
+        gap: 0.35rem;
+        margin-bottom: 0.35rem;
+      }
+
+      .iconch-btn-row .action-btn {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .iconch-stored-pack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        padding: 0.55rem 0.65rem;
+        border-radius: 0.45rem;
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 0.78rem;
+        line-height: 1.4;
+        color: #c8d3e0;
+        margin-bottom: 0.35rem;
+      }
+
       .iconch1-stored-pack {
         padding: 0.55rem 0.65rem;
         border-radius: 0.45rem;
@@ -374,11 +449,6 @@
       .iconch1-settings-cache h3 {
         margin: 0.35rem 0 0.5rem;
         font-size: 0.85rem;
-      }
-
-      #iconch1-cache-check-times {
-        width: 100%;
-        margin-bottom: 0.35rem;
       }
 
       .iconch1-cache-intro {
@@ -436,7 +506,7 @@
         display: none;
       }
 
-      #iconch1-settings .action-btn {
+      #iconch-settings .action-btn {
         width: 100%;
         margin-top: 0.25rem;
       }
@@ -902,7 +972,7 @@
 
       #params-shell button.action-btn.btn-blue,
       #cache-select-bar button.action-btn.btn-blue,
-      #iconch1-settings button.action-btn.btn-blue {
+      #iconch-settings button.action-btn.btn-blue {
         border-color: rgba(90, 159, 255, 0.55);
         background: rgba(90, 159, 255, 0.2);
         color: #d8e8ff;
@@ -910,13 +980,13 @@
 
       #params-shell button.action-btn.btn-blue:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-blue:hover:not(:disabled),
-      #iconch1-settings button.action-btn.btn-blue:hover:not(:disabled) {
+      #iconch-settings button.action-btn.btn-blue:hover:not(:disabled) {
         background: rgba(90, 159, 255, 0.32);
       }
 
       #params-shell button.action-btn.btn-green,
       #cache-select-bar button.action-btn.btn-green,
-      #iconch1-settings button.action-btn.btn-green {
+      #iconch-settings button.action-btn.btn-green {
         border-color: rgba(100, 210, 120, 0.6);
         background: rgba(70, 190, 100, 0.22);
         color: #d8ffe3;
@@ -924,13 +994,13 @@
 
       #params-shell button.action-btn.btn-green:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-green:hover:not(:disabled),
-      #iconch1-settings button.action-btn.btn-green:hover:not(:disabled) {
+      #iconch-settings button.action-btn.btn-green:hover:not(:disabled) {
         background: rgba(70, 190, 100, 0.36);
       }
 
       #params-shell button.action-btn.btn-red,
       #cache-select-bar button.action-btn.btn-red,
-      #iconch1-settings button.action-btn.btn-red {
+      #iconch-settings button.action-btn.btn-red {
         border-color: rgba(255, 120, 120, 0.55);
         background: rgba(255, 80, 80, 0.18);
         color: #ffd6d6;
@@ -938,7 +1008,7 @@
 
       #params-shell button.action-btn.btn-red:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-red:hover:not(:disabled),
-      #iconch1-settings button.action-btn.btn-red:hover:not(:disabled) {
+      #iconch-settings button.action-btn.btn-red:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.32);
       }
 
@@ -1031,7 +1101,7 @@
 
       #params-shell button.action-btn,
       #cache-select-bar button.action-btn,
-      #iconch1-settings button.action-btn {
+      #iconch-settings button.action-btn {
         padding: 0.45rem 0.75rem;
         border: 1px solid rgba(255, 120, 120, 0.45);
         border-radius: 0.4rem;
@@ -1044,13 +1114,13 @@
 
       #params-shell button.action-btn:hover:not(:disabled),
       #cache-select-bar button.action-btn:hover:not(:disabled),
-      #iconch1-settings button.action-btn:hover:not(:disabled) {
+      #iconch-settings button.action-btn:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.24);
       }
 
       #params-shell button.action-btn:disabled,
       #cache-select-bar button.action-btn:disabled,
-      #iconch1-settings button.action-btn:disabled {
+      #iconch-settings button.action-btn:disabled {
         opacity: 0.55;
         cursor: wait;
       }

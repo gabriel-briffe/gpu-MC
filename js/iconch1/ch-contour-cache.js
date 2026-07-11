@@ -251,6 +251,69 @@ export function validTimesInRange(validTimes, fromIso, toIso) {
   });
 }
 
+/** Match a valid-time ISO string to a catalog entry (timestamp equality). */
+export function findValidTimeIso(validTimes, iso) {
+  if (!iso || !validTimes.length) return null;
+  const targetMs = new Date(iso).getTime();
+  if (Number.isNaN(targetMs)) return null;
+  return validTimes.find((candidate) => new Date(candidate).getTime() === targetMs) ?? null;
+}
+
+/** Next catalog valid time at or after now (UTC). */
+export function defaultCacheFromIso(validTimes, now = new Date()) {
+  if (!validTimes.length) return "";
+  const nowMs = now.getTime();
+  const upcoming = validTimes.find((iso) => new Date(iso).getTime() >= nowMs);
+  return upcoming ?? snapToNearestTime(nowMs, validTimes) ?? validTimes[0];
+}
+
+/** Next catalog step for the upcoming 19Z UTC window (exact 19Z when available). */
+export function defaultCacheToIso(validTimes, now = new Date()) {
+  if (!validTimes.length) return "";
+  const nowMs = now.getTime();
+
+  const target19 = new Date(now);
+  target19.setUTCMilliseconds(0);
+  target19.setUTCSeconds(0);
+  target19.setUTCMinutes(0);
+  target19.setUTCHours(CH_CONTOUR_UTC_HOUR_END);
+  if (target19.getTime() < nowMs) {
+    target19.setUTCDate(target19.getUTCDate() + 1);
+  }
+  const target19Ms = target19.getTime();
+  const targetDay = target19.toISOString().slice(0, 10);
+
+  for (const iso of validTimes) {
+    const date = new Date(iso);
+    const ms = date.getTime();
+    if (ms >= nowMs && date.getUTCHours() === CH_CONTOUR_UTC_HOUR_END && date.getUTCMinutes() === 0) {
+      return iso;
+    }
+  }
+
+  let bestSameDay = null;
+  for (const iso of validTimes) {
+    const date = new Date(iso);
+    const ms = date.getTime();
+    if (ms < nowMs || !iso.startsWith(targetDay) || date.getUTCHours() > CH_CONTOUR_UTC_HOUR_END) {
+      continue;
+    }
+    bestSameDay = iso;
+  }
+  if (bestSameDay) return bestSameDay;
+
+  let bestBeforeTarget = null;
+  for (const iso of validTimes) {
+    const ms = new Date(iso).getTime();
+    if (ms < nowMs || ms > target19Ms) continue;
+    bestBeforeTarget = iso;
+  }
+  if (bestBeforeTarget) return bestBeforeTarget;
+
+  const upcoming = validTimes.find((iso) => new Date(iso).getTime() >= nowMs);
+  return upcoming ?? validTimes[validTimes.length - 1];
+}
+
 export function utcTodayKey(now = new Date()) {
   return now.toISOString().slice(0, 10);
 }
@@ -298,6 +361,30 @@ export async function deleteChContourCacheForDay(modelId, dayKey) {
   if (keys.length === 0) return 0;
 
   const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.onerror = () => reject(tx.error ?? new Error("IndexedDB delete failed"));
+    tx.oncomplete = () => resolve();
+    const store = tx.objectStore(STORE_NAME);
+    for (const key of keys) store.delete(key);
+  });
+  return keys.length;
+}
+
+export async function deleteAllChContourCacheForModel(modelId) {
+  const db = await openDb();
+  const keys = await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    tx.onerror = () => reject(tx.error ?? new Error("IndexedDB read failed"));
+    const request = tx.objectStore(STORE_NAME).getAll();
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB read failed"));
+    request.onsuccess = () => {
+      const records = request.result ?? [];
+      resolve(records.filter((record) => record.modelId === modelId).map((record) => record.key));
+    };
+  });
+  if (keys.length === 0) return 0;
+
   await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
     tx.onerror = () => reject(tx.error ?? new Error("IndexedDB delete failed"));

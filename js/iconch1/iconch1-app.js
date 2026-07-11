@@ -17,13 +17,16 @@ import {
   pickLatestMeteoSwissRun,
   splitGribMessages,
 } from "./meteoswiss-catalog.js";
-import { applyIdwWeightTable, buildIdwWeightTable, buildSectorGeoJsonFromFieldGrib, ensureRegridWasm, isIdwPipelineInstalled, isRegridWasmEnabled } from "./regrid.js";
+import { applyIdwWeightTable, buildIdwWeightTable, buildSectorGeoJsonFromFieldGrib, clearIdwPipeline, ensureRegridWasm, invalidateIdwWeightTable, isIdwPipelineInstalled, isRegridWasmEnabled } from "./regrid.js";
 import { buildSectorGeoJson } from "./contour-geojson.js";
 import { readProxiedFile, toRawGribBytes, formatError } from "./grib-io.js";
 import {
   CH_CONTOUR_TARGET_HEIGHTS_M,
   buildChContourCacheKey,
-  deleteChContourCacheForDay,
+  defaultCacheFromIso,
+  defaultCacheToIso,
+  findValidTimeIso,
+  deleteAllChContourCacheForModel,
   estimateJsonByteSize,
   formatByteSize,
   formatValidTimeLabel,
@@ -39,15 +42,15 @@ import {
 } from "./ch-contour-cache.js";
 import { assetUrl } from "../asset-url.js";
 
-const MODEL_ID = "icon-ch1";
+const ICON_CH_MODELS = ["icon-ch1", "icon-ch2"];
+const DEFAULT_ALT_TARGET_M = 4000;
 export const ICONCH1_SECTOR_SOURCE_ID = "ch1-sectors";
 export const ICONCH1_SECTOR_LAYER_ID = "ch1-sectors-layer";
-const STORAGE = {
-  defaultAlt: "ch1-default-alt-target",
-};
+const DEBUG_PREFIX = "[IconCH]";
 
-const model = GRIB_MODELS[MODEL_ID];
-const DEBUG_PREFIX = "[IconCH1]";
+function getModel(modelId = state.modelId) {
+  return GRIB_MODELS[modelId];
+}
 
 function debugLog(step, detail) {
   if (detail === undefined) {
@@ -62,6 +65,7 @@ let ui;
 let eventsBound = false;
 
 const state = {
+  modelId: "icon-ch1",
   todayKey: utcTodayKey(),
   dateStamp: "",
   runHour: "",
@@ -76,6 +80,7 @@ const state = {
   level: "",
   heightM: null,
   displayM: null,
+  pendingSwitchPreserve: null,
   loadGeneration: 0,
   cacheRunning: false,
   started: false,
@@ -86,6 +91,140 @@ let mapLayersReady = null;
 let gridCache = null;
 let regridWeightPromise = null;
 const wCache = new Map();
+const modelWorkspaces = new Map();
+const cachePanels = {
+  "icon-ch1": { validTimes: [], fromIso: "", toIso: "", rangeCustomized: false },
+  "icon-ch2": { validTimes: [], fromIso: "", toIso: "", rangeCustomized: false },
+};
+let cacheSettingsModelId = "icon-ch1";
+const ONE_HOUR_FORECAST_MB = {
+  "icon-ch1": 177,
+  "icon-ch2": 44,
+};
+
+function getCacheSettingsModel() {
+  return cacheSettingsModelId;
+}
+
+function cacheSettingsModelFromSliderValue(value) {
+  return Number(value) === 1 ? "icon-ch2" : "icon-ch1";
+}
+
+function cacheSettingsModelShort(modelId = cacheSettingsModelId) {
+  return modelId === "icon-ch2" ? "CH2" : "CH1";
+}
+
+function snapshotWorkspace(modelId) {
+  modelWorkspaces.set(modelId, {
+    dateStamp: state.dateStamp,
+    runHour: state.runHour,
+    entries: state.entries,
+    levelHeights: state.levelHeights,
+    levelAltitudeMap: state.levelAltitudeMap,
+    cacheRecords: state.cacheRecords,
+    validTimes: state.validTimes,
+    levels: state.levels,
+    validTimeIso: state.validTimeIso,
+    forecastHour: state.forecastHour,
+    level: state.level,
+    heightM: state.heightM,
+    displayM: state.displayM,
+    started: state.started,
+    gridCache,
+    cacheFromIso: ui.cacheFrom?.value ?? "",
+    cacheToIso: ui.cacheTo?.value ?? "",
+  });
+}
+
+function restoreWorkspace(modelId) {
+  const workspace = modelWorkspaces.get(modelId);
+  if (!workspace) {
+    return false;
+  }
+  state.dateStamp = workspace.dateStamp;
+  state.runHour = workspace.runHour;
+  state.entries = workspace.entries;
+  state.levelHeights = workspace.levelHeights;
+  state.levelAltitudeMap = workspace.levelAltitudeMap;
+  state.cacheRecords = workspace.cacheRecords;
+  state.validTimes = workspace.validTimes;
+  state.levels = workspace.levels;
+  state.validTimeIso = workspace.validTimeIso;
+  state.forecastHour = workspace.forecastHour;
+  state.level = workspace.level;
+  state.heightM = workspace.heightM;
+  state.displayM = workspace.displayM;
+  state.started = workspace.started;
+  gridCache = workspace.gridCache;
+  if (workspace.cacheFromIso) {
+    cachePanels[modelId].fromIso = workspace.cacheFromIso;
+  }
+  if (workspace.cacheToIso) {
+    cachePanels[modelId].toIso = workspace.cacheToIso;
+  }
+  return true;
+}
+
+function resetModelState(modelId) {
+  state.dateStamp = "";
+  state.runHour = "";
+  state.entries = [];
+  state.levelHeights = new Map();
+  state.levelAltitudeMap = new Map();
+  state.cacheRecords = [];
+  state.validTimes = [];
+  state.levels = [];
+  state.validTimeIso = "";
+  state.forecastHour = "";
+  state.level = "";
+  state.heightM = null;
+  state.displayM = null;
+  state.started = false;
+  gridCache = null;
+  cachePanels[modelId].validTimes = [];
+}
+
+function resetIdwState() {
+  clearIdwPipeline();
+  regridWeightPromise = null;
+  invalidateIdwWeightTable(gridCache);
+  for (const workspace of modelWorkspaces.values()) {
+    invalidateIdwWeightTable(workspace.gridCache);
+  }
+}
+
+async function runInModelContext(modelId, fn) {
+  const activeModelId = hooks.getIconChActiveModel?.() ?? state.modelId;
+  const switched = state.modelId !== modelId;
+
+  if (switched) {
+    snapshotWorkspace(state.modelId);
+    resetIdwState();
+    wCache.clear();
+    state.modelId = modelId;
+    if (!restoreWorkspace(modelId)) {
+      resetModelState(modelId);
+    }
+  }
+
+  try {
+    return await fn();
+  } finally {
+    if (switched) {
+      snapshotWorkspace(modelId);
+      resetIdwState();
+      wCache.clear();
+      state.modelId = activeModelId;
+      if (!restoreWorkspace(activeModelId)) {
+        resetModelState(activeModelId);
+      }
+      if (hooks.isIconCh1Enabled?.() && activeModelId) {
+        rebuildViewOptions();
+        updateSelectors();
+      }
+    }
+  }
+}
 
 function getMap() {
   return hooks.getMap?.();
@@ -221,12 +360,11 @@ function clearLoadError() {
 }
 
 function defaultAltTarget() {
-  const value = Number(localStorage.getItem(STORAGE.defaultAlt));
-  return CH_CONTOUR_TARGET_HEIGHTS_M.includes(value) ? value : 3000;
+  return DEFAULT_ALT_TARGET_M;
 }
 
-async function refreshCacheRecords() {
-  state.cacheRecords = await listFreshChContourCacheEntries(MODEL_ID);
+async function refreshCacheRecords(modelId = state.modelId) {
+  state.cacheRecords = await listFreshChContourCacheEntries(modelId);
   rebuildLevelAltitudeMap();
   debugLog("cache records refreshed", {
     todayKey: state.todayKey,
@@ -309,7 +447,7 @@ function resolveForecastHour(validIso, level) {
 
 function buildForecastAttribution() {
   if (!state.dateStamp || !state.validTimeIso || state.level === "") {
-    return "ICON CH1";
+    return getModel().label;
   }
   const run = formatDateStamp(state.dateStamp);
   const valid = formatValidTimeLabel(state.validTimeIso);
@@ -470,22 +608,16 @@ function rebuildViewOptions() {
     );
   }
 
-  syncCachePanelTimes();
+  cachePanels[state.modelId].validTimes = [...state.validTimes];
+  if (state.modelId === cacheSettingsModelId && cachePanels[cacheSettingsModelId].rangeCustomized) {
+    syncCachePanelTimes(cacheSettingsModelId);
+  }
 }
 
-function pickDefaultSelection() {
-  const now = new Date();
+function pickDefaultLevelForTime(validIso) {
+  const levelsForTime = levelsAtTime(validIso);
+  if (!levelsForTime.length) return null;
   const targetAlt = defaultAltTarget();
-
-  if (!state.validTimes.length) return;
-
-  const futureTimes = state.validTimes.filter(
-    (iso) => new Date(iso).getTime() >= now.getTime() - 30 * 60 * 1000
-  );
-  const candidates = futureTimes.length ? futureTimes : state.validTimes;
-  state.validTimeIso = snapToNearestTime(now.getTime(), candidates) ?? candidates[0];
-
-  const levelsForTime = levelsAtTime(state.validTimeIso);
   let best = levelsForTime[0];
   let bestDiff = Infinity;
   for (const entry of levelsForTime) {
@@ -495,13 +627,60 @@ function pickDefaultSelection() {
       best = entry;
     }
   }
-  if (best) {
-    state.level = best.level;
-    state.heightM = best.heightM;
-    state.displayM = best.displayM;
-    state.forecastHour = resolveForecastHour(state.validTimeIso, state.level);
+  return best?.level ?? null;
+}
+
+function applySelectionWithPreferredLevel(validIso, preferredLevel) {
+  const levelsForTime = levelsAtTime(validIso);
+  if (!levelsForTime.length) return;
+  const level =
+    preferredLevel != null &&
+    preferredLevel !== "" &&
+    levelsForTime.some((entry) => entry.level === preferredLevel)
+      ? preferredLevel
+      : pickDefaultLevelForTime(validIso);
+  if (level == null) return;
+  applySelection(validIso, level);
+}
+
+function pickSelectionAfterCatalogLoad() {
+  if (!state.validTimes.length) return;
+
+  const preferred = state.pendingSwitchPreserve;
+  state.pendingSwitchPreserve = null;
+
+  const preferredIso = preferred?.validIso
+    ? findValidTimeIso(state.validTimes, preferred.validIso)
+    : null;
+  if (preferredIso) {
+    applySelectionWithPreferredLevel(preferredIso, preferred?.level);
+    return;
   }
-  updateSelectors();
+
+  const currentIso = state.validTimeIso
+    ? findValidTimeIso(state.validTimes, state.validTimeIso)
+    : null;
+  if (currentIso) {
+    applySelectionWithPreferredLevel(currentIso, state.level);
+    return;
+  }
+
+  pickDefaultSelection();
+}
+
+function pickDefaultSelection() {
+  const now = new Date();
+
+  if (!state.validTimes.length) return;
+
+  const futureTimes = state.validTimes.filter(
+    (iso) => new Date(iso).getTime() >= now.getTime() - 30 * 60 * 1000
+  );
+  const candidates = futureTimes.length ? futureTimes : state.validTimes;
+  const validIso = snapToNearestTime(now.getTime(), candidates) ?? candidates[0];
+  const level = pickDefaultLevelForTime(validIso);
+  if (level == null) return;
+  applySelection(validIso, level);
 }
 
 function levelsAtTime(validIso) {
@@ -596,17 +775,17 @@ async function ensureMapLayers() {
 async function loadGrid() {
   if (gridCache) {
     debugLog("loadGrid cache hit", { levels: gridCache.levelHeights?.size ?? state.levelHeights.size });
-    const spacing = model.regridSpacingDeg ?? 0.01;
-    void ensureRegridWasm();
-    void ensureRegridWeightTable(gridCache, spacing);
+    const spacing = getModel().regridSpacingDeg ?? 0.01;
+    await ensureRegridWasm();
+    await ensureRegridWeightTable(gridCache, spacing);
     return gridCache;
   }
   setCh1Status("Fetching grid constants…");
   debugLog("loadGrid start");
   await ensureWasm();
   const [horizontalUrl, verticalUrl] = await Promise.all([
-    getCollectionAssetUrl(model.collection, model.staticAssets.horizontal),
-    getCollectionAssetUrl(model.collection, model.staticAssets.vertical),
+    getCollectionAssetUrl(getModel().collection, getModel().staticAssets.horizontal),
+    getCollectionAssetUrl(getModel().collection, getModel().staticAssets.vertical),
   ]);
   debugLog("loadGrid fetching constants", { horizontalUrl, verticalUrl });
   const [horizontalBuffer, verticalBuffer] = await Promise.all([
@@ -649,15 +828,21 @@ async function loadGrid() {
     clonPoints: clon?.length ?? 0,
     levelCount: levelHeights.size,
   });
-  const spacing = model.regridSpacingDeg ?? 0.01;
-  void ensureRegridWasm();
-  void ensureRegridWeightTable(gridCache, spacing);
+  const spacing = getModel().regridSpacingDeg ?? 0.01;
+  await ensureRegridWasm();
+  await ensureRegridWeightTable(gridCache, spacing);
   return gridCache;
 }
 
 async function ensureRegridWeightTable(grid, spacingDeg) {
-  if (grid.idwWeightTable?.spacingDeg === spacingDeg) {
-    return grid.idwWeightTable.table ?? grid.idwWeightTable.meta;
+  const cached = grid.idwWeightTable;
+  if (cached?.spacingDeg === spacingDeg) {
+    const table = cached.table ?? cached.meta;
+    if (table?.pipeline && !isIdwPipelineInstalled()) {
+      invalidateIdwWeightTable(grid);
+    } else {
+      return table;
+    }
   }
 
   if (regridWeightPromise?.spacingDeg === spacingDeg) {
@@ -731,7 +916,7 @@ async function buildLiveGeoJson({
   const message = await loadWMessage(entry.url, level);
   if (!message) throw new Error(`Level ${level} not found in forecast file`);
 
-  const spacing = model.regridSpacingDeg ?? 0.01;
+  const spacing = getModel().regridSpacingDeg ?? 0.01;
   await ensureRegridWeightTable(grid, spacing);
   await ensureRegridWasm();
 
@@ -793,7 +978,7 @@ async function storeBuiltContour(geojson, key) {
     const byteSize = estimateJsonByteSize(geojson);
     const record = await putChContourCacheEntry({
       key,
-      modelId: MODEL_ID,
+      modelId: state.modelId,
       runDateStamp: state.dateStamp,
       forecastHour: state.forecastHour,
       validTimeIso: state.validTimeIso,
@@ -828,7 +1013,7 @@ async function displayCurrent() {
   try {
     let geojson;
     let source = "unknown";
-    const key = buildChContourCacheKey(MODEL_ID, state.validTimeIso, state.level);
+    const key = buildChContourCacheKey(state.modelId, state.validTimeIso, state.level);
     const cached = await getFreshChContourCacheEntry(key);
     if (cached?.geojson) {
       geojson = cached.geojson;
@@ -881,11 +1066,11 @@ async function displayCurrent() {
 async function loadLiveCatalog({ updateSelection = true } = {}) {
   setCh1Status("Fetching catalog…");
   debugLog("loadLiveCatalog start");
-  const run = await pickLatestMeteoSwissRun(model.collection, MODEL_ID);
-  if (!run) throw new Error("No recent ICON CH1 run found.");
+  const run = await pickLatestMeteoSwissRun(getModel().collection, state.modelId);
+  if (!run) throw new Error(`No recent ${getModel().label} run found.`);
   debugLog("loadLiveCatalog run picked", run);
 
-  const items = await fetchForecastItemsForRun(model.collection, run.referenceIso);
+  const items = await fetchForecastItemsForRun(getModel().collection, run.referenceIso);
   const entries = catalogEntriesFromItems(items);
   if (!entries.length) throw new Error("No forecast steps found.");
   debugLog("loadLiveCatalog items fetched", {
@@ -900,7 +1085,7 @@ async function loadLiveCatalog({ updateSelection = true } = {}) {
   await loadGrid();
   rebuildViewOptions();
   if (updateSelection) {
-    pickDefaultSelection();
+    pickSelectionAfterCatalogLoad();
   }
   debugLog("loadLiveCatalog done", {
     dateStamp: state.dateStamp,
@@ -915,29 +1100,70 @@ async function loadLiveCatalog({ updateSelection = true } = {}) {
   });
 }
 
-async function checkCacheAvailableTimes() {
+async function checkCacheAvailableTimesForModel(modelId) {
   if (!navigator.onLine) {
     throw new Error("Offline — connect to check available times");
   }
-  if (ui.cacheCheckTimes) {
-    ui.cacheCheckTimes.disabled = true;
-  }
+  syncCacheActionButtons();
   try {
-    await loadLiveCatalog({ updateSelection: false });
-    syncCachePanelTimes();
-    updateCacheEstimate();
-    updateSelectors();
-    clearCh1Status();
+    await runInModelContext(modelId, async () => {
+      cachePanels[modelId].fromIso = "";
+      cachePanels[modelId].toIso = "";
+      cachePanels[modelId].rangeCustomized = false;
+      await loadLiveCatalog({ updateSelection: false });
+      cachePanels[modelId].validTimes = [...state.validTimes];
+      if (modelId === cacheSettingsModelId) {
+        syncCachePanelTimes(modelId);
+      }
+      if (modelId === hooks.getIconChActiveModel?.()) {
+        updateSelectors();
+      }
+      clearCh1Status();
+    });
   } finally {
-    syncCacheCheckTimesButton();
+    syncCacheActionButtons();
   }
 }
 
-function syncCacheCheckTimesButton() {
-  if (!ui.cacheCheckTimes) {
+function syncCacheActionButtons() {
+  const disabled = !navigator.onLine || state.cacheRunning;
+  if (ui.cacheCheckTimes) ui.cacheCheckTimes.disabled = disabled;
+  if (ui.cacheRun) ui.cacheRun.disabled = disabled;
+}
+
+function setCacheSettingsModel(modelId) {
+  if (!ICON_CH_MODELS.includes(modelId)) {
     return;
   }
-  ui.cacheCheckTimes.disabled = !navigator.onLine || state.cacheRunning;
+  cacheSettingsModelId = modelId;
+  if (ui.cacheSettingsModel) {
+    ui.cacheSettingsModel.value = modelId === "icon-ch2" ? "1" : "0";
+  }
+  syncCacheSettingsModelUi();
+}
+
+function syncCacheSettingsModelUi() {
+  const short = cacheSettingsModelShort();
+  if (ui.cacheCheckTimes) {
+    ui.cacheCheckTimes.textContent = `Check times ${short}`;
+  }
+  if (ui.cacheRun) {
+    ui.cacheRun.textContent = `Cache ${short}`;
+  }
+  if (ui.cacheEstimate) {
+    const mb = ONE_HOUR_FORECAST_MB[cacheSettingsModelId];
+    ui.cacheEstimate.textContent = `One hour forecast for ${short}: ${mb}MB`;
+  }
+  if (ui.cacheSettingsCh1) {
+    ui.cacheSettingsCh1.classList.toggle("is-selected", cacheSettingsModelId === "icon-ch1");
+  }
+  if (ui.cacheSettingsCh2) {
+    ui.cacheSettingsCh2.classList.toggle("is-selected", cacheSettingsModelId === "icon-ch2");
+  }
+  if (ui.cacheSettingsModel) {
+    ui.cacheSettingsModel.value = cacheSettingsModelId === "icon-ch2" ? "1" : "0";
+  }
+  syncCachePanelTimes(cacheSettingsModelId);
 }
 
 async function loadCachedCatalog() {
@@ -947,7 +1173,7 @@ async function loadCachedCatalog() {
   }
   applyCacheMetadata();
   rebuildViewOptions();
-  pickDefaultSelection();
+  pickSelectionAfterCatalogLoad();
 }
 
 async function ensureLiveCatalog() {
@@ -957,25 +1183,9 @@ async function ensureLiveCatalog() {
   await loadLiveCatalog();
 }
 
-function initSettingsPanel() {
-  if (!ui.settingsDefaultAlt) return;
-  ui.settingsDefaultAlt.innerHTML = "";
-  for (const targetM of CH_CONTOUR_TARGET_HEIGHTS_M) {
-    const option = document.createElement("option");
-    option.value = String(targetM);
-    option.textContent = `${targetM} m`;
-    ui.settingsDefaultAlt.appendChild(option);
-  }
-  ui.settingsDefaultAlt.value = String(defaultAltTarget());
-}
-
 function fillValidTimeOptions(select, validTimes, selectedIso) {
   if (!select) return;
-  const previous = select.value;
-  const resolved =
-    selectedIso && validTimes.includes(selectedIso) ? selectedIso
-    : validTimes.includes(previous) ? previous
-    : validTimes[0];
+  const resolved = findValidTimeIso(validTimes, selectedIso) ?? validTimes[0] ?? "";
   select.innerHTML = "";
   for (const iso of validTimes) {
     const option = document.createElement("option");
@@ -984,86 +1194,79 @@ function fillValidTimeOptions(select, validTimes, selectedIso) {
     if (iso === resolved) option.selected = true;
     select.appendChild(option);
   }
+  if (resolved) {
+    select.value = resolved;
+  }
 }
 
-function syncCachePanelTimes() {
+function captureCachePanelSelection(modelId) {
+  const panel = cachePanels[modelId];
+  if (modelId === cacheSettingsModelId && ui.cacheFrom?.value && ui.cacheTo?.value) {
+    panel.fromIso = ui.cacheFrom.value;
+    panel.toIso = ui.cacheTo.value;
+  }
+  return {
+    fromIso: panel.fromIso,
+    toIso: panel.toIso,
+    validTimes: panel.validTimes,
+  };
+}
+
+function syncCachePanelTimes(modelId = cacheSettingsModelId) {
   if (!ui.cacheTo || !ui.cacheFrom) return;
 
-  const times = state.validTimes;
+  const panel = cachePanels[modelId];
+  const times = panel.validTimes;
   if (!times.length) {
     ui.cacheFrom.innerHTML = "";
     ui.cacheTo.innerHTML = "";
-    updateCacheEstimate();
-    syncCacheCheckTimesButton();
+    syncCacheActionButtons();
     return;
   }
 
-  const nowIso = snapToNearestTime(Date.now(), times) ?? times[0];
-  const previousFrom = ui.cacheFrom.value;
-  const previousTo = ui.cacheTo.value;
-  const fromIso = times.includes(previousFrom) ? previousFrom : nowIso;
-  let toIso = times.includes(previousTo) ? previousTo : times[times.length - 1];
+  const storedFrom = findValidTimeIso(times, panel.fromIso);
+  const storedTo = findValidTimeIso(times, panel.toIso);
+  const useStored = panel.rangeCustomized && storedFrom && storedTo;
+  const fromIso = useStored ? storedFrom : defaultCacheFromIso(times);
+  let toIso = useStored ? storedTo : defaultCacheToIso(times);
   if (new Date(toIso).getTime() < new Date(fromIso).getTime()) {
     toIso = fromIso;
   }
 
+  panel.fromIso = fromIso;
+  panel.toIso = toIso;
   fillValidTimeOptions(ui.cacheFrom, times, fromIso);
   fillValidTimeOptions(ui.cacheTo, times, toIso);
-  updateCacheEstimate();
-  syncCacheCheckTimesButton();
+  syncCacheActionButtons();
 }
 
 function initCachePanel() {
   if (!ui.cacheTo) return;
-  syncCachePanelTimes();
-
-  if (ui.cacheAltitudes) {
-    ui.cacheAltitudes.innerHTML = "";
-    for (const targetM of CH_CONTOUR_TARGET_HEIGHTS_M) {
-      const id = `ch1-alt-${targetM}`;
-      const label = document.createElement("label");
-      label.htmlFor = id;
-      const labelText = targetM >= 1000 ? `${targetM / 1000}k` : `${targetM}m`;
-      label.innerHTML = `<input type="checkbox" id="${id}" value="${targetM}" checked /> ${labelText}`;
-      ui.cacheAltitudes.appendChild(label);
-    }
-  }
-
-  updateCacheEstimate();
+  syncCacheSettingsModelUi();
 }
 
 function selectedCacheTargets() {
-  if (!ui.cacheAltitudes) return [];
-  return [...ui.cacheAltitudes.querySelectorAll("input:checked")].map((input) => Number(input.value));
+  return [...CH_CONTOUR_TARGET_HEIGHTS_M];
 }
 
-function updateCacheEstimate() {
-  if (!ui.cacheEstimate || !ui.cacheTo || !ui.cacheFrom) return;
-  const fromIso = ui.cacheFrom.value;
-  const toIso = ui.cacheTo.value;
-  const slots = validTimesInRange(state.validTimes, fromIso, toIso);
-  const targets = selectedCacheTargets();
-  const count = slots.length * targets.length;
-  ui.cacheEstimate.textContent =
-    count > 0 ? `~${count} map${count === 1 ? "" : "s"} · est. ${formatByteSize(count * 350000)}` : "—";
+async function cachedModelByteSize(modelId) {
+  const records = await listFreshChContourCacheEntries(modelId);
+  let bytes = 0;
+  for (const record of records) {
+    bytes += record.byteSize ?? estimateJsonByteSize(record.geojson);
+  }
+  return bytes;
 }
 
 async function updateStoredPackSummary() {
-  if (!ui.storedPack) return;
-  const records = await listFreshChContourCacheEntries(MODEL_ID);
-  if (!records.length) {
-    ui.storedPack.textContent = "No cached pack";
-    return;
+  if (ui.storedCh1) {
+    const bytes = await cachedModelByteSize("icon-ch1");
+    ui.storedCh1.textContent = `IconCH1 : ${bytes > 0 ? formatByteSize(bytes) : "—"}`;
   }
-  const times = [...new Set(records.map((record) => record.validTimeIso))].sort();
-  const levels = new Set(records.map((record) => record.level));
-  let bytes = 0;
-  for (const record of records) bytes += record.byteSize ?? estimateJsonByteSize(record.geojson);
-  const rangeLabel =
-    times.length === 1
-      ? formatValidTimeLabel(times[0])
-      : `${formatValidTimeLabel(times[0])}–${formatValidTimeLabel(times[times.length - 1])}`;
-  ui.storedPack.textContent = `${rangeLabel} · ${times.length} time(s) · ${levels.size} level(s) · ${formatByteSize(bytes)}`;
+  if (ui.storedCh2) {
+    const bytes = await cachedModelByteSize("icon-ch2");
+    ui.storedCh2.textContent = `IconCH2 : ${bytes > 0 ? formatByteSize(bytes) : "—"}`;
+  }
 }
 
 function bindEvents() {
@@ -1115,48 +1318,92 @@ function bindEvents() {
     });
   }
 
-  ui.settingsDefaultAlt?.addEventListener("change", () => {
-    localStorage.setItem(STORAGE.defaultAlt, ui.settingsDefaultAlt.value);
-  });
-
   ui.clearTodayCache?.addEventListener("click", () => {
     void (async () => {
-      await deleteChContourCacheForDay(MODEL_ID, state.todayKey);
+      for (const modelId of ICON_CH_MODELS) {
+        await deleteAllChContourCacheForModel(modelId);
+        const workspace = modelWorkspaces.get(modelId);
+        if (workspace) {
+          workspace.cacheRecords = [];
+          workspace.entries = [];
+          workspace.validTimes = [];
+        }
+        cachePanels[modelId].validTimes = [];
+        cachePanels[modelId].fromIso = "";
+        cachePanels[modelId].toIso = "";
+        cachePanels[modelId].rangeCustomized = false;
+      }
       state.cacheRecords = [];
+      state.entries = [];
+      state.validTimes = [];
+      state.started = false;
       updateStoredPackSummary();
-      if (navigator.onLine) {
-        await loadLiveCatalog();
-      } else {
+      syncCacheSettingsModelUi();
+      if (!navigator.onLine) {
+        clearCh1Status();
+        const map = getMap();
+        if (map?.getLayer(ICONCH1_SECTOR_LAYER_ID)) {
+          map.setLayoutProperty(ICONCH1_SECTOR_LAYER_ID, "visibility", "none");
+        }
+        if (map?.getSource(ICONCH1_SECTOR_SOURCE_ID)) {
+          map.getSource(ICONCH1_SECTOR_SOURCE_ID).setData({
+            type: "FeatureCollection",
+            features: [],
+          });
+        }
+        updateSelectors();
         return;
       }
+      await bootstrapCatalog();
+      state.started = true;
       updateSelectors();
       await displayCurrent();
     })();
   });
 
   ui.cacheFrom?.addEventListener("change", () => {
-    const fromIso = ui.cacheFrom.value;
+    const panel = cachePanels[cacheSettingsModelId];
+    panel.fromIso = ui.cacheFrom.value;
+    panel.rangeCustomized = true;
+    const fromIso = panel.fromIso;
     const toIso = ui.cacheTo?.value ?? "";
+    const times = panel.validTimes;
     if (fromIso && toIso && new Date(toIso).getTime() < new Date(fromIso).getTime() && ui.cacheTo) {
-      fillValidTimeOptions(ui.cacheTo, state.validTimes, fromIso);
+      panel.toIso = fromIso;
+      fillValidTimeOptions(ui.cacheTo, times, fromIso);
     }
-    updateCacheEstimate();
   });
+
   ui.cacheCheckTimes?.addEventListener("click", () => {
     void (async () => {
       try {
-        await checkCacheAvailableTimes();
+        await checkCacheAvailableTimesForModel(cacheSettingsModelId);
       } catch (error) {
-        if (ui.cacheEstimate) {
-          ui.cacheEstimate.textContent = formatError(error);
-        }
-        console.warn("IconCH1 cache times:", formatError(error));
+        showLoadError(error);
+        console.warn(`${getModel(cacheSettingsModelId).label} cache times:`, formatError(error));
       }
     })();
   });
-  ui.cacheTo?.addEventListener("change", updateCacheEstimate);
-  ui.cacheAltitudes?.addEventListener("change", updateCacheEstimate);
-  ui.cacheRun?.addEventListener("click", () => void runCacheFlight());
+
+  ui.cacheTo?.addEventListener("change", () => {
+    const panel = cachePanels[cacheSettingsModelId];
+    panel.toIso = ui.cacheTo?.value ?? "";
+    panel.rangeCustomized = true;
+  });
+
+  ui.cacheRun?.addEventListener("click", () => void runCacheFlightForModel(cacheSettingsModelId));
+
+  ui.cacheSettingsModel?.addEventListener("input", () => {
+    setCacheSettingsModel(cacheSettingsModelFromSliderValue(ui.cacheSettingsModel.value));
+  });
+
+  ui.cacheSettingsCh1?.addEventListener("click", () => {
+    setCacheSettingsModel("icon-ch1");
+  });
+
+  ui.cacheSettingsCh2?.addEventListener("click", () => {
+    setCacheSettingsModel("icon-ch2");
+  });
 
   window.addEventListener("keydown", (event) => {
     if (!hooks.isIconCh1Enabled?.()) return;
@@ -1179,7 +1426,7 @@ function bindEvents() {
 
   window.addEventListener("offline", () => {
     if (!hooks.isIconCh1Enabled?.()) return;
-    syncCacheCheckTimesButton();
+    syncCacheActionButtons();
     if (!state.entries.length && state.cacheRecords.length) {
       void (async () => {
         try {
@@ -1194,91 +1441,100 @@ function bindEvents() {
   });
 }
 
-async function runCacheFlight() {
+async function runCacheFlightForModel(modelId) {
   if (state.cacheRunning) return;
   state.cacheRunning = true;
-  if (ui.cacheRun) ui.cacheRun.disabled = true;
-  syncCacheCheckTimesButton();
+  syncCacheActionButtons();
   if (ui.cacheProgress) ui.cacheProgress.hidden = false;
 
   try {
-    if (!state.entries.length) await loadLiveCatalog();
+    await runInModelContext(modelId, async () => {
+      const panel = cachePanels[modelId];
+      if (!state.entries.length) await loadLiveCatalog();
+      panel.validTimes = [...state.validTimes];
 
-    const fromIso = ui.cacheFrom?.value ?? "";
-    const toIso = ui.cacheTo?.value ?? "";
-    if (!fromIso || !toIso || new Date(toIso).getTime() < new Date(fromIso).getTime()) {
-      throw new Error("Invalid cache time range");
-    }
-    const targets = selectedCacheTargets();
-    const levels = pickLevelsNearTargets(state.levelHeights, targets);
-    const hourSlots = validTimesInRange(state.validTimes, fromIso, toIso);
-
-    const jobs = [];
-    for (const iso of hourSlots) {
-      const entry = state.entries.find(
-        (item) => validTimeIso(state.dateStamp, item.forecastHour) === iso
-      );
-      if (!entry) continue;
-      const validIso = validTimeIso(state.dateStamp, entry.forecastHour);
-      for (const levelInfo of levels) {
-        jobs.push({ entry, validIso, levelInfo });
+      const { fromIso, toIso, validTimes } = captureCachePanelSelection(modelId);
+      if (!fromIso || !toIso || !validTimes.length) {
+        throw new Error("Check available times before caching");
       }
-    }
+      if (new Date(toIso).getTime() < new Date(fromIso).getTime()) {
+        throw new Error("Invalid cache time range");
+      }
+      const targets = selectedCacheTargets();
+      const levels = pickLevelsNearTargets(state.levelHeights, targets);
+      const hourSlots = validTimesInRange(validTimes, fromIso, toIso);
+      debugLog("runCacheFlightForModel range", {
+        modelId,
+        fromIso,
+        toIso,
+        slotCount: hourSlots.length,
+        catalogCount: validTimes.length,
+      });
 
-    if (ui.cacheProgress) {
-      ui.cacheProgress.max = jobs.length;
-      ui.cacheProgress.value = 0;
-    }
-    let done = 0;
-    let stored = 0;
-    let skipped = 0;
+      const jobs = [];
+      for (const iso of hourSlots) {
+        const entry = state.entries.find(
+          (item) => validTimeIso(state.dateStamp, item.forecastHour) === iso
+        );
+        if (!entry) continue;
+        const validIso = validTimeIso(state.dateStamp, entry.forecastHour);
+        for (const levelInfo of levels) {
+          jobs.push({ entry, validIso, levelInfo });
+        }
+      }
 
-    for (const job of jobs) {
-      const key = buildChContourCacheKey(MODEL_ID, job.validIso, job.levelInfo.level);
-      const existing = await getFreshChContourCacheEntry(key);
-      if (existing) {
-        skipped += 1;
+      if (ui.cacheProgress) {
+        ui.cacheProgress.max = jobs.length;
+        ui.cacheProgress.value = 0;
+      }
+      let done = 0;
+
+      for (const job of jobs) {
+        const key = buildChContourCacheKey(modelId, job.validIso, job.levelInfo.level);
+        const existing = await getFreshChContourCacheEntry(key);
+        if (existing) {
+          done += 1;
+          if (ui.cacheProgress) ui.cacheProgress.value = done;
+          continue;
+        }
+
+        const geojson = await buildLiveGeoJson({
+          validTimeIso: job.validIso,
+          level: job.levelInfo.level,
+          entry: job.entry,
+        });
+        const byteSize = estimateJsonByteSize(geojson);
+        await putChContourCacheEntry({
+          key,
+          modelId,
+          runDateStamp: state.dateStamp,
+          forecastHour: job.entry.forecastHour,
+          validTimeIso: job.validIso,
+          level: job.levelInfo.level,
+          heightM: job.levelInfo.heightM,
+          targetM: job.levelInfo.targetM,
+          geojson,
+          byteSize,
+        });
         done += 1;
         if (ui.cacheProgress) ui.cacheProgress.value = done;
-        continue;
       }
 
-      const geojson = await buildLiveGeoJson({
-        validTimeIso: job.validIso,
-        level: job.levelInfo.level,
-        entry: job.entry,
-      });
-      const byteSize = estimateJsonByteSize(geojson);
-      await putChContourCacheEntry({
-        key,
-        modelId: MODEL_ID,
-        runDateStamp: state.dateStamp,
-        forecastHour: job.entry.forecastHour,
-        validTimeIso: job.validIso,
-        level: job.levelInfo.level,
-        heightM: job.levelInfo.heightM,
-        targetM: job.levelInfo.targetM,
-        geojson,
-        byteSize,
-      });
-      stored += 1;
-      done += 1;
-      if (ui.cacheProgress) ui.cacheProgress.value = done;
-    }
-
-    await getChContourCacheStats();
-    await refreshCacheRecords();
-    if (!state.entries.length) applyCacheMetadata();
-    rebuildViewOptions();
+      await getChContourCacheStats();
+      await refreshCacheRecords(modelId);
+      if (!state.entries.length) applyCacheMetadata();
+      rebuildViewOptions();
+      if (modelId === hooks.getIconChActiveModel?.()) {
+        updateSelectors();
+        await displayCurrent();
+      }
+    });
     updateStoredPackSummary();
-    updateSelectors();
-    await displayCurrent();
   } catch (error) {
-    console.warn("IconCH1 cache:", formatError(error));
+    console.warn(`${getModel(modelId).label} cache:`, formatError(error));
   } finally {
     state.cacheRunning = false;
-    if (ui.cacheRun) ui.cacheRun.disabled = false;
-    syncCacheCheckTimesButton();
+    syncCacheActionButtons();
     if (ui.cacheProgress) ui.cacheProgress.hidden = true;
   }
 }
@@ -1304,6 +1560,27 @@ async function bootstrapCatalog() {
   debugLog("bootstrapCatalog done");
 }
 
+export function setActiveIconChModel(modelId) {
+  if (state.modelId === modelId) {
+    return;
+  }
+  if (state.validTimeIso) {
+    state.pendingSwitchPreserve = {
+      validIso: state.validTimeIso,
+      level: state.level,
+    };
+  }
+  snapshotWorkspace(state.modelId);
+  resetIdwState();
+  wCache.clear();
+  state.modelId = modelId;
+  state.loadGeneration += 1;
+  if (!restoreWorkspace(modelId)) {
+    resetModelState(modelId);
+  }
+  state.started = false;
+}
+
 export function initIconCh1(h, domRefs) {
   hooks = h;
   ui = {
@@ -1318,22 +1595,24 @@ export function initIconCh1(h, domRefs) {
     altValue: domRefs.iconCh1AltValue,
     cacheFrom: domRefs.iconCh1CacheFrom,
     cacheTo: domRefs.iconCh1CacheTo,
-    cacheCheckTimes: domRefs.iconCh1CacheCheckTimes,
-    cacheAltitudes: domRefs.iconCh1CacheAltitudes,
+    cacheSettingsModel: domRefs.iconChCacheSettingsModel,
+    cacheSettingsCh1: domRefs.iconChCacheSettingsCh1,
+    cacheSettingsCh2: domRefs.iconChCacheSettingsCh2,
+    cacheCheckTimes: domRefs.iconChCacheCheckTimes,
     cacheEstimate: domRefs.iconCh1CacheEstimate,
-    cacheRun: domRefs.iconCh1CacheRun,
+    cacheRun: domRefs.iconChCacheRun,
     cacheProgress: domRefs.iconCh1CacheProgress,
-    settingsDefaultAlt: domRefs.iconCh1SettingsDefaultAlt,
-    storedPack: domRefs.iconCh1StoredPack,
+    storedCh1: domRefs.iconChStoredCh1,
+    storedCh2: domRefs.iconChStoredCh2,
     clearTodayCache: domRefs.iconCh1ClearTodayCache,
   };
 
-  initSettingsPanel();
   initCachePanel();
   bindEvents();
 
   hooks.startIconCh1 = startIconCh1;
   hooks.stopIconCh1 = stopIconCh1;
+  hooks.setActiveIconChModel = setActiveIconChModel;
   hooks.refreshIconCh1Settings = refreshIconCh1Settings;
 }
 
@@ -1375,6 +1654,6 @@ export function stopIconCh1() {
 }
 
 export function refreshIconCh1Settings() {
-  initCachePanel();
+  syncCacheSettingsModelUi();
   void updateStoredPackSummary();
 }

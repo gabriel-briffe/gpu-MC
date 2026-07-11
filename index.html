@@ -442,33 +442,49 @@
         <hr class="app-menu-divider" />
 
         <section class="app-menu-section" id="iconch1-section">
-          <div class="app-menu-section-head">
-            <button type="button" class="module-enable-btn" id="iconch1-enable" aria-pressed="false">
-              IconCH1
-            </button>
+          <div class="app-menu-section-head iconch-section-head">
+            <div class="iconch-model-buttons">
+              <button type="button" class="module-enable-btn" id="iconch1-enable" aria-pressed="false">
+                ICON CH1
+              </button>
+              <button type="button" class="module-enable-btn" id="iconch2-enable" aria-pressed="false">
+                ICON CH2
+              </button>
+            </div>
             <button
               type="button"
               class="app-menu-settings-btn"
-              id="iconch1-settings-btn"
-              aria-label="IconCH1 settings"
+              id="iconch-settings-btn"
+              aria-label="ICON settings"
               aria-expanded="false"
             >
               ⚙
             </button>
           </div>
-          <div id="iconch1-settings" class="app-menu-subsection" hidden>
+          <div id="iconch-settings" class="app-menu-subsection" hidden>
             <div class="iconch1-settings-panel">
-              <label class="iconch1-field">
-                <span>Default altitude</span>
-                <select id="iconch1-settings-default-alt"></select>
-              </label>
-              <p class="iconch1-settings-meta">Cache TTL: 24 hours</p>
-              <div class="iconch1-stored-pack" id="iconch1-stored-pack">No cached pack</div>
               <section class="iconch1-settings-cache">
                 <h3>Cache forecast</h3>
+                <div class="iconch-settings-model-slider">
+                  <button type="button" class="iconch-settings-model-label is-selected" id="iconch-cache-settings-ch1">
+                    IconCH1
+                  </button>
+                  <input
+                    type="range"
+                    id="iconch-cache-settings-model"
+                    min="0"
+                    max="1"
+                    step="1"
+                    value="0"
+                    aria-label="Cache settings model"
+                  />
+                  <button type="button" class="iconch-settings-model-label" id="iconch-cache-settings-ch2">
+                    IconCH2
+                  </button>
+                </div>
                 <p class="iconch1-cache-intro">Download contours for offline use across available forecast times.</p>
-                <button type="button" class="action-btn btn-blue" id="iconch1-cache-check-times">
-                  Check available times
+                <button type="button" class="action-btn btn-blue" id="iconch-cache-check-times">
+                  Check times CH1
                 </button>
                 <label class="iconch1-field">
                   <span>For (UTC)</span>
@@ -478,14 +494,16 @@
                   <span>To (UTC)</span>
                   <select id="iconch1-cache-to" aria-label="Cache end time UTC"></select>
                 </label>
-                <fieldset class="iconch1-altitudes">
-                  <legend>Altitudes</legend>
-                  <div class="iconch1-altitude-grid" id="iconch1-cache-altitudes"></div>
-                </fieldset>
-                <p class="iconch1-cache-estimate" id="iconch1-cache-estimate">—</p>
-                <button type="button" class="action-btn btn-green" id="iconch1-cache-run">Cache contours</button>
+                <p class="iconch1-cache-estimate" id="iconch1-cache-estimate">
+                  One hour forecast for CH1: 177MB
+                </p>
+                <button type="button" class="action-btn btn-green" id="iconch-cache-run">Cache CH1</button>
                 <progress class="iconch1-progress" id="iconch1-cache-progress" value="0" max="100" hidden></progress>
-                <button type="button" class="action-btn btn-red" id="iconch1-clear-today-cache">Clear today</button>
+                <div class="iconch-stored-pack" id="iconch-stored-pack">
+                  <div id="iconch-stored-ch1">IconCH1 : —</div>
+                  <div id="iconch-stored-ch2">IconCH2 : —</div>
+                </div>
+                <button type="button" class="action-btn btn-red" id="iconch1-clear-today-cache">Clear all weather data</button>
               </section>
             </div>
           </div>

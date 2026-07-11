@@ -28,19 +28,30 @@ export function initAppMenu(h, domRefs) {
   });
 
   dom.iconCh1EnableBtn?.addEventListener("click", () => {
-    setIconCh1Enabled(!app.iconCh1Enabled);
+    const next = app.iconChActiveModel === "icon-ch1" ? null : "icon-ch1";
+    setIconChActiveModel(next);
+  });
+
+  dom.iconCh2EnableBtn?.addEventListener("click", () => {
+    const next = app.iconChActiveModel === "icon-ch2" ? null : "icon-ch2";
+    setIconChActiveModel(next);
   });
 
   dom.glideConesSettingsBtn?.addEventListener("click", () => {
-    setGlideSettingsOpen(!app.glideSettingsOpen);
+    const open = !app.glideSettingsOpen;
+    if (open) {
+      app.iconChSettingsOpen = false;
+    }
+    setGlideSettingsOpen(open);
   });
 
-  dom.iconCh1SettingsBtn?.addEventListener("click", () => {
-    const open = !app.iconCh1SettingsOpen;
-    setIconCh1SettingsOpen(open);
+  dom.iconChSettingsBtn?.addEventListener("click", () => {
+    const open = !app.iconChSettingsOpen;
     if (open) {
+      app.glideSettingsOpen = false;
       hooks.refreshIconCh1Settings?.();
     }
+    setIconChSettingsOpen(open);
   });
 
   syncAppMenuUi();
@@ -55,7 +66,11 @@ export function isGlideConesEnabled() {
 }
 
 export function isIconCh1Enabled() {
-  return app.iconCh1Enabled;
+  return Boolean(app.iconChActiveModel);
+}
+
+export function getIconChActiveModel() {
+  return app.iconChActiveModel;
 }
 
 export function openAppMenu() {
@@ -65,6 +80,8 @@ export function openAppMenu() {
   if (hooks.getManualAirportSelectMode?.()) {
     hooks.exitManualAirportSelectMode(false);
   }
+  app.glideSettingsOpen = false;
+  app.iconChSettingsOpen = false;
   app.appMenuOpen = true;
   syncAppMenuUi();
 }
@@ -75,6 +92,7 @@ export function closeAppMenu() {
 }
 
 export function openGlideSettings() {
+  app.iconChSettingsOpen = false;
   app.glideSettingsOpen = true;
   openAppMenu();
   syncAppMenuUi();
@@ -85,8 +103,8 @@ export function setGlideSettingsOpen(open) {
   syncAppMenuUi();
 }
 
-export function setIconCh1SettingsOpen(open) {
-  app.iconCh1SettingsOpen = open;
+export function setIconChSettingsOpen(open) {
+  app.iconChSettingsOpen = open;
   syncAppMenuUi();
 }
 
@@ -112,14 +130,16 @@ export function setGlideConesEnabled(enabled) {
   syncAppMenuUi();
 }
 
-export function setIconCh1Enabled(enabled) {
-  if (app.iconCh1Enabled === enabled) {
+export function setIconChActiveModel(modelId) {
+  if (app.iconChActiveModel === modelId) {
     return;
   }
-  app.iconCh1Enabled = enabled;
-  if (enabled) {
+  const wasEnabled = Boolean(app.iconChActiveModel);
+  app.iconChActiveModel = modelId;
+  if (modelId) {
+    hooks.setActiveIconChModel?.(modelId);
     hooks.startIconCh1?.();
-  } else {
+  } else if (wasEnabled) {
     hooks.stopIconCh1?.();
   }
   syncAppMenuUi();
@@ -128,7 +148,7 @@ export function setIconCh1Enabled(enabled) {
 function syncAppMenuUi() {
   document.body.classList.toggle("app-menu-open", app.appMenuOpen);
   document.body.classList.toggle("glidecones-disabled", !app.glideConesEnabled);
-  document.body.classList.toggle("iconch1-enabled", app.iconCh1Enabled);
+  document.body.classList.toggle("iconch1-enabled", Boolean(app.iconChActiveModel));
 
   if (dom.appMenuBtn) {
     dom.appMenuBtn.setAttribute("aria-expanded", String(app.appMenuOpen));
@@ -143,8 +163,10 @@ function syncAppMenuUi() {
   dom.glideConesEnableBtn?.classList.toggle("is-active", app.glideConesEnabled);
   dom.glideConesEnableBtn?.setAttribute("aria-pressed", String(app.glideConesEnabled));
 
-  dom.iconCh1EnableBtn?.classList.toggle("is-active", app.iconCh1Enabled);
-  dom.iconCh1EnableBtn?.setAttribute("aria-pressed", String(app.iconCh1Enabled));
+  dom.iconCh1EnableBtn?.classList.toggle("is-active", app.iconChActiveModel === "icon-ch1");
+  dom.iconCh1EnableBtn?.setAttribute("aria-pressed", String(app.iconChActiveModel === "icon-ch1"));
+  dom.iconCh2EnableBtn?.classList.toggle("is-active", app.iconChActiveModel === "icon-ch2");
+  dom.iconCh2EnableBtn?.setAttribute("aria-pressed", String(app.iconChActiveModel === "icon-ch2"));
 
   dom.glideconesSection?.classList.toggle("glide-settings-open", app.glideSettingsOpen);
   if (dom.glideConesSettings) {
@@ -152,12 +174,12 @@ function syncAppMenuUi() {
   }
   dom.glideConesSettingsBtn?.setAttribute("aria-expanded", String(app.glideSettingsOpen));
 
-  if (dom.iconCh1Settings) {
-    dom.iconCh1Settings.hidden = !app.iconCh1SettingsOpen;
+  if (dom.iconChSettings) {
+    dom.iconChSettings.hidden = !app.iconChSettingsOpen;
   }
-  dom.iconCh1SettingsBtn?.setAttribute("aria-expanded", String(app.iconCh1SettingsOpen));
+  dom.iconChSettingsBtn?.setAttribute("aria-expanded", String(app.iconChSettingsOpen));
 
   if (dom.iconCh1Chrome) {
-    dom.iconCh1Chrome.hidden = !app.iconCh1Enabled;
+    dom.iconCh1Chrome.hidden = !app.iconChActiveModel;
   }
 }

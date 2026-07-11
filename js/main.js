@@ -112,6 +112,7 @@ import {
   initAppMenu,
   isGlideConesEnabled,
   isIconCh1Enabled,
+  getIconChActiveModel,
   openAppMenu,
   openGlideSettings,
   closeAppMenu,
@@ -410,6 +411,7 @@ const sharedHooks = {
   closeAppMenu,
   isGlideConesEnabled,
   isIconCh1Enabled,
+  getIconChActiveModel,
   raiseIconCh1Layer,
   computeContextBarEl,
   clearCellInspect,
@@ -576,6 +578,8 @@ app.map = new maplibregl.Map({
     ],
   },
 });
+
+app.map.keyboard.disable();
 
 app.mapReady = new Promise((resolve) => {
   if (app.map.loaded()) {

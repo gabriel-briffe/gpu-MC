@@ -56,9 +56,9 @@ export function createApp() {
     touchGestureWasPan: false,
     appMenuOpen: false,
     glideConesEnabled: true,
-    iconCh1Enabled: false,
+    iconChActiveModel: null,
     glideSettingsOpen: false,
-    iconCh1SettingsOpen: false,
+    iconChSettingsOpen: false,
     selectedCacheCells: new Set(),
     cacheDataWarnings: [],
     interaction: {

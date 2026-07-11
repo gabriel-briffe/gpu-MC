@@ -2,6 +2,7 @@ import initIdwRegrid, {
   apply_idw_weight_table as wasmApplyIdwWeightTable,
   build_sector_geojson_from_field_grib as wasmBuildSectorGeojsonFromFieldGrib,
   build_sector_geojson_json as wasmBuildSectorGeojsonJson,
+  clear_idw_weight_table as wasmClearIdwWeightTable,
   install_idw_weight_table as wasmInstallIdwWeightTable,
 } from "./pkg/idw-regrid/idw_regrid.js";
 import { assetUrl } from "../asset-url.js";
@@ -311,4 +312,17 @@ export function buildSectorGeoJsonWasm(field, values) {
     values
   );
   return JSON.parse(json);
+}
+
+export function clearIdwPipeline() {
+  pipelineInstalled = false;
+  if (wasmEnabled) {
+    wasmClearIdwWeightTable();
+  }
+}
+
+export function invalidateIdwWeightTable(grid) {
+  if (grid?.idwWeightTable) {
+    delete grid.idwWeightTable;
+  }
 }
