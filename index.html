@@ -34,6 +34,57 @@
       </div>
     </div>
 
+    <div id="cache-clear-dialog" class="cache-clear-dialog" hidden>
+      <div class="cache-clear-dialog-backdrop" id="cache-clear-dialog-backdrop"></div>
+      <div
+        class="cache-clear-dialog-panel"
+        role="dialog"
+        aria-labelledby="cache-clear-dialog-title"
+        aria-modal="true"
+      >
+        <h2 id="cache-clear-dialog-title" class="cache-clear-dialog-title">Clear cache</h2>
+        <div class="cache-clear-section">
+          <p id="cache-clear-openaip-desc" class="cache-clear-desc">OpenAIP data: …</p>
+          <button type="button" class="action-btn btn-red" id="cache-clear-openaip-btn">
+            Clear airports and prohibited airspace
+          </button>
+        </div>
+        <div class="cache-clear-section">
+          <p id="cache-clear-terrain-desc" class="cache-clear-desc">Mapterhorn terrain tiles: …</p>
+          <button type="button" class="action-btn btn-red" id="cache-clear-terrain-btn">
+            Clear terrain tiles
+          </button>
+        </div>
+        <div class="cache-clear-section">
+          <p id="cache-clear-cells-desc" class="cache-clear-desc">Selected cells: …</p>
+          <button type="button" class="action-btn btn-red" id="cache-clear-cells-btn">
+            Clear selected cells
+          </button>
+        </div>
+        <button type="button" class="action-btn" id="cache-clear-cancel-btn">Cancel</button>
+      </div>
+    </div>
+
+    <div id="openaip-expiry-dialog" class="cache-clear-dialog" hidden>
+      <div class="cache-clear-dialog-backdrop" id="openaip-expiry-dialog-backdrop"></div>
+      <div
+        class="cache-clear-dialog-panel"
+        role="dialog"
+        aria-labelledby="openaip-expiry-dialog-title"
+        aria-modal="true"
+      >
+        <h2 id="openaip-expiry-dialog-title" class="cache-clear-dialog-title">OpenAIP data</h2>
+        <p id="openaip-expiry-message" class="cache-clear-desc"></p>
+        <p id="openaip-expiry-cells-updated" class="openaip-expiry-cells-updated" hidden></p>
+        <p id="openaip-expiry-status" class="map-select-status openaip-expiry-status"></p>
+        <div id="openaip-expiry-warnings" class="openaip-expiry-warnings" hidden></div>
+        <button type="button" class="action-btn btn-green" id="openaip-expiry-update-btn">
+          Update OpenAIP data
+        </button>
+        <button type="button" class="action-btn" id="openaip-expiry-later-btn">Later</button>
+      </div>
+    </div>
+
     <div id="manual-airport-select-bar" class="map-select-bar" hidden>
       <p id="manual-airport-select-status" class="map-select-status">
         Click the map to place an airport.

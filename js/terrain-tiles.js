@@ -146,13 +146,84 @@ export async function fetchTerrainTileDecoded(z, x, y) {
 export async function clearTerrainTileCache() {
   decodedMemory.clear();
   if (typeof caches === "undefined") {
-    return;
+    return { removed: 0, bytesFreed: 0 };
   }
   try {
+    const cache = await openTerrainCache();
+    let removed = 0;
+    let bytesFreed = 0;
+    if (cache) {
+      const keys = await cache.keys();
+      removed = keys.length;
+      for (const request of keys) {
+        const match = await cache.match(request);
+        if (match) {
+          bytesFreed += (await match.blob()).size;
+        }
+      }
+    }
     await caches.delete(TERRAIN_TILE_CACHE_NAME);
+    return { removed, bytesFreed };
   } catch {
-    // Ignore quota / private-mode failures.
+    return { removed: 0, bytesFreed: 0 };
   }
+}
+
+function parseTerrainTileKeyFromUrl(url) {
+  const match = String(url).match(/\/(\d+)\/(\d+)\/(\d+)\.webp$/);
+  if (!match) {
+    return null;
+  }
+  return terrainTileKey(Number(match[1]), Number(match[2]), Number(match[3]));
+}
+
+/** Total byte size of terrarium tiles stored in the Cache API. */
+export async function estimateTerrainCacheBytes() {
+  const cache = await openTerrainCache();
+  if (!cache) {
+    return 0;
+  }
+  let bytes = 0;
+  for (const request of await cache.keys()) {
+    const response = await cache.match(request);
+    if (response) {
+      bytes += (await response.blob()).size;
+    }
+  }
+  return bytes;
+}
+
+/** Drop cached terrain tiles that are not required by the given job list. */
+export async function pruneTerrainTileCache(keepJobs) {
+  const keep = new Set(keepJobs.map(({ z, x, y }) => terrainTileKey(z, x, y)));
+  decodedMemory.forEach((_value, key) => {
+    if (!keep.has(key)) {
+      decodedMemory.delete(key);
+    }
+  });
+
+  const cache = await openTerrainCache();
+  if (!cache) {
+    return { removed: 0, bytesFreed: 0 };
+  }
+
+  let removed = 0;
+  let bytesFreed = 0;
+  for (const request of await cache.keys()) {
+    const key = parseTerrainTileKeyFromUrl(request.url);
+    if (!key || keep.has(key)) {
+      continue;
+    }
+    const response = await cache.match(request);
+    if (response) {
+      bytesFreed += (await response.blob()).size;
+    }
+    await cache.delete(request);
+    decodedMemory.delete(key);
+    removed += 1;
+  }
+
+  return { removed, bytesFreed };
 }
 
 export function registerTerrainTileProtocol() {

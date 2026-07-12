@@ -32,6 +32,7 @@ export function createApp() {
     cacheSelectMode: false,
     cacheDownloadInProgress: false,
     cacheClearInProgress: false,
+    openAipExpiryUpdateInProgress: false,
     pathLayerReady: false,
     contourLayersReady: false,
     sectorBorderLayersReady: false,

@@ -190,6 +190,23 @@ const {
   runCacheDownloadBtn,
   clearCacheDataBtn,
   finishCacheSelectBtn,
+  cacheClearDialog,
+  cacheClearDialogBackdrop,
+  cacheClearOpenAipDesc,
+  cacheClearTerrainDesc,
+  cacheClearCellsDesc,
+  cacheClearOpenAipBtn,
+  cacheClearTerrainBtn,
+  cacheClearCellsBtn,
+  cacheClearCancelBtn,
+  openAipExpiryDialog,
+  openAipExpiryDialogBackdrop,
+  openAipExpiryMessageEl,
+  openAipExpiryCellsUpdatedEl,
+  openAipExpiryStatusEl,
+  openAipExpiryWarningsEl,
+  openAipExpiryUpdateBtn,
+  openAipExpiryLaterBtn,
 } = dom;
 
 function detectInteractionMode() {
@@ -637,6 +654,23 @@ app.hooks = {
   runCacheDownloadBtn,
   clearCacheDataBtn,
   finishCacheSelectBtn,
+  cacheClearDialog,
+  cacheClearDialogBackdrop,
+  cacheClearOpenAipDesc,
+  cacheClearTerrainDesc,
+  cacheClearCellsDesc,
+  cacheClearOpenAipBtn,
+  cacheClearTerrainBtn,
+  cacheClearCellsBtn,
+  cacheClearCancelBtn,
+  openAipExpiryDialog,
+  openAipExpiryDialogBackdrop,
+  openAipExpiryMessageEl,
+  openAipExpiryCellsUpdatedEl,
+  openAipExpiryStatusEl,
+  openAipExpiryWarningsEl,
+  openAipExpiryUpdateBtn,
+  openAipExpiryLaterBtn,
   setOverlaysHiddenForCacheSelect,
   setOverlaysHiddenForManualAirportSelect,
   refreshCacheSelectOverlays,
@@ -1195,8 +1229,16 @@ app.map.on("load", async () => {
   if (needsStartupCacheMode()) {
     setParamsMode("single", { initial: true });
     app.hooks.enterCacheSelectMode?.();
-  } else if (openAipConfigured(app.openAipConfig) && isAutoParamsMode() && isGlideConesEnabled()) {
-    scheduleAutoCompute({ refreshAirports: true });
+  } else {
+    const showedOpenAipExpiryDialog = app.hooks.maybeShowOpenAipExpiryDialog?.() ?? false;
+    if (
+      !showedOpenAipExpiryDialog &&
+      openAipConfigured(app.openAipConfig) &&
+      isAutoParamsMode() &&
+      isGlideConesEnabled()
+    ) {
+      scheduleAutoCompute({ refreshAirports: true });
+    }
   }
 
   try {

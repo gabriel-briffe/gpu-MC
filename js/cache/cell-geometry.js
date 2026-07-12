@@ -106,3 +106,25 @@ export function terrariumTileIndicesForBounds(west, south, east, north, z) {
 
   return tiles;
 }
+
+/** Unique terrarium tile jobs (z/x/y) needed to cover each 1° cell at z3–z9. */
+export function terrariumTileJobsForCellKeys(cellKeys) {
+  const seen = new Set();
+  const jobs = [];
+
+  for (const cellKey of cellKeys) {
+    const { west, south, east, north } = cacheCellBounds(cellKey);
+    for (let z = CACHE_TERRAIN_Z_MIN; z <= CACHE_TERRAIN_Z_MAX; z += 1) {
+      for (const tile of terrariumTileIndicesForBounds(west, south, east, north, z)) {
+        const key = `${tile.z}/${tile.x}/${tile.y}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        jobs.push(tile);
+      }
+    }
+  }
+
+  return jobs;
+}

@@ -15,6 +15,8 @@ export const INITIAL_TERRAIN_Z = pickTerrainZoom(MAP_CENTER.lat);
 export const MAP_MAX_ZOOM = 22;
 
 export const MANUAL_INSPECT_MS = 5000;
+export const OPENAIP_EXPIRY_WARN_DAYS = 6;
+export const OPENAIP_UPDATE_OK_COUNTDOWN_STEP_MS = 1000;
 
 export const MISSING_TERRAIN_CACHE_MSG =
   'No terrain has been cached for this location — open the menu and use Add data';

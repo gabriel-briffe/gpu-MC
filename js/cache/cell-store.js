@@ -123,4 +123,96 @@ export function getCachedCellKeys() {
   return [...cellCache.keys()];
 }
 
+/** Estimated JSON size of airports + airspace payloads across fresh cell entries. */
+export function estimateOpenAipCacheBytes() {
+  let bytes = 0;
+  const now = Date.now();
+  for (const entry of cellCache.values()) {
+    if (!isCellCacheFresh(entry, now)) {
+      continue;
+    }
+    bytes += new Blob([
+      JSON.stringify(entry.airports ?? []),
+      JSON.stringify(entry.airspaces ?? []),
+    ]).size;
+  }
+  return bytes;
+}
+
+/** Minimum whole days until the earliest fresh OpenAIP entry expires. */
+export function daysUntilOpenAipExpiry(now = Date.now()) {
+  let minRemainingMs = null;
+  for (const entry of cellCache.values()) {
+    if (!isCellCacheFresh(entry, now)) {
+      continue;
+    }
+    const remaining = CACHE_CELL_TTL_MS - (now - entry.fetchedAt);
+    if (minRemainingMs === null || remaining < minRemainingMs) {
+      minRemainingMs = remaining;
+    }
+  }
+  if (minRemainingMs === null) {
+    return null;
+  }
+  return Math.max(0, Math.ceil(minRemainingMs / (24 * 60 * 60 * 1000)));
+}
+
+export function hasOpenAipCacheData() {
+  const now = Date.now();
+  for (const entry of cellCache.values()) {
+    if (isCellCacheFresh(entry, now)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True when cached OpenAIP data expires within warnDays (default 6). */
+export function shouldWarnOpenAipExpiry(warnDays = 6, now = Date.now()) {
+  const days = daysUntilOpenAipExpiry(now);
+  return days !== null && days < warnDays;
+}
+
+/** Drop OpenAIP payloads; keeps lastCachedCellKeys for re-selection. */
+export function clearAllOpenAipData() {
+  cellCache.clear();
+  persistCellCache();
+}
+
+/** Remove cached entries not in the current selection. */
+export function purgeCellCacheExcept(keepCellKeys) {
+  const keep = new Set(keepCellKeys);
+  let changed = false;
+  for (const cellKey of [...cellCache.keys()]) {
+    if (!keep.has(cellKey)) {
+      cellCache.delete(cellKey);
+      changed = true;
+    }
+  }
+  if (changed) {
+    persistCellCache();
+  }
+}
+
+/** Remove specific cells from cache and last-cached selection list. */
+export function removeCellKeysFromCache(cellKeys) {
+  const remove = new Set(cellKeys);
+  if (!remove.size) {
+    return false;
+  }
+  let changed = false;
+  for (const cellKey of remove) {
+    if (cellCache.delete(cellKey)) {
+      changed = true;
+    }
+  }
+  const before = lastCachedCellKeys.length;
+  lastCachedCellKeys = lastCachedCellKeys.filter((cellKey) => !remove.has(cellKey));
+  if (changed || lastCachedCellKeys.length !== before) {
+    persistCellCache();
+    return true;
+  }
+  return false;
+}
+
 initCellCacheFromStorage();

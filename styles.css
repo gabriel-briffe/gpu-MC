@@ -158,6 +158,118 @@
         z-index: 5;
       }
 
+      .cache-clear-dialog {
+        position: fixed;
+        inset: 0;
+        z-index: 6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+      }
+
+      .cache-clear-dialog[hidden] {
+        display: none;
+      }
+
+      .cache-clear-dialog-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+      }
+
+      .cache-clear-dialog-panel {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        width: min(92vw, 24rem);
+        max-height: min(85dvh, calc(100dvh - 2rem));
+        overflow-y: auto;
+        padding: 0.85rem 0.95rem;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        background: rgba(18, 22, 28, 0.96);
+        color: #f5f7fa;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(8px);
+      }
+
+      .cache-clear-dialog-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        text-align: center;
+      }
+
+      .cache-clear-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      .cache-clear-desc {
+        margin: 0;
+        font-size: 0.78rem;
+        line-height: 1.4;
+        color: #c8d3e0;
+        text-align: center;
+      }
+
+      .cache-clear-section .action-btn {
+        width: 100%;
+      }
+
+      #cache-clear-cancel-btn {
+        margin-top: 0.15rem;
+        width: 100%;
+      }
+
+      .openaip-expiry-cells-updated {
+        margin: 0.35rem 0 0.15rem;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #b8f0c8;
+        text-align: center;
+      }
+
+      .openaip-expiry-cells-updated[hidden] {
+        display: none;
+      }
+
+      .openaip-expiry-status {
+        min-height: 1.35rem;
+      }
+
+      .openaip-expiry-warnings {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        max-height: 8rem;
+        overflow-y: auto;
+        text-align: left;
+      }
+
+      .openaip-expiry-warnings[hidden] {
+        display: none;
+      }
+
+      .openaip-expiry-warnings .cache-data-warning {
+        margin: 0;
+        padding: 0.35rem 0.45rem;
+        border-radius: 0.35rem;
+        background: rgba(255, 120, 80, 0.12);
+        border: 1px solid rgba(255, 140, 80, 0.35);
+        color: #ffd8c8;
+        font-size: 0.74rem;
+        line-height: 1.35;
+      }
+
+      #openaip-expiry-dialog button.action-btn {
+        width: 100%;
+      }
+
       .app-menu-section {
         display: flex;
         flex-direction: column;
@@ -1056,6 +1168,8 @@
       .map-select-bar button.action-btn.btn-blue,
       .map-select-bar button.action-btn.btn-blue,
       #cache-select-bar button.action-btn.btn-blue,
+      #cache-clear-dialog button.action-btn.btn-blue,
+      #openaip-expiry-dialog button.action-btn.btn-blue,
       #iconch-settings button.action-btn.btn-blue {
         border-color: rgba(90, 159, 255, 0.55);
         background: rgba(90, 159, 255, 0.2);
@@ -1065,6 +1179,8 @@
       #params-shell button.action-btn.btn-blue:hover:not(:disabled),
       .map-select-bar button.action-btn.btn-blue:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-blue:hover:not(:disabled),
+      #cache-clear-dialog button.action-btn.btn-blue:hover:not(:disabled),
+      #openaip-expiry-dialog button.action-btn.btn-blue:hover:not(:disabled),
       #iconch-settings button.action-btn.btn-blue:hover:not(:disabled) {
         background: rgba(90, 159, 255, 0.32);
       }
@@ -1072,6 +1188,8 @@
       #params-shell button.action-btn.btn-green,
       .map-select-bar button.action-btn.btn-green,
       #cache-select-bar button.action-btn.btn-green,
+      #cache-clear-dialog button.action-btn.btn-green,
+      #openaip-expiry-dialog button.action-btn.btn-green,
       #iconch-settings button.action-btn.btn-green {
         border-color: rgba(100, 210, 120, 0.6);
         background: rgba(70, 190, 100, 0.22);
@@ -1081,6 +1199,8 @@
       #params-shell button.action-btn.btn-green:hover:not(:disabled),
       .map-select-bar button.action-btn.btn-green:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-green:hover:not(:disabled),
+      #cache-clear-dialog button.action-btn.btn-green:hover:not(:disabled),
+      #openaip-expiry-dialog button.action-btn.btn-green:hover:not(:disabled),
       #iconch-settings button.action-btn.btn-green:hover:not(:disabled) {
         background: rgba(70, 190, 100, 0.36);
       }
@@ -1088,6 +1208,8 @@
       #params-shell button.action-btn.btn-red,
       .map-select-bar button.action-btn.btn-red,
       #cache-select-bar button.action-btn.btn-red,
+      #cache-clear-dialog button.action-btn.btn-red,
+      #openaip-expiry-dialog button.action-btn.btn-red,
       #iconch-settings button.action-btn.btn-red {
         border-color: rgba(255, 120, 120, 0.55);
         background: rgba(255, 80, 80, 0.18);
@@ -1097,6 +1219,8 @@
       #params-shell button.action-btn.btn-red:hover:not(:disabled),
       .map-select-bar button.action-btn.btn-red:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-red:hover:not(:disabled),
+      #cache-clear-dialog button.action-btn.btn-red:hover:not(:disabled),
+      #openaip-expiry-dialog button.action-btn.btn-red:hover:not(:disabled),
       #iconch-settings button.action-btn.btn-red:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.32);
       }
@@ -1202,6 +1326,8 @@
       #params-shell button.action-btn,
       .map-select-bar button.action-btn,
       #cache-select-bar button.action-btn,
+      #cache-clear-dialog button.action-btn,
+      #openaip-expiry-dialog button.action-btn,
       #iconch-settings button.action-btn {
         padding: 0.45rem 0.75rem;
         border: 1px solid rgba(255, 120, 120, 0.45);
@@ -1216,6 +1342,8 @@
       #params-shell button.action-btn:hover:not(:disabled),
       .map-select-bar button.action-btn:hover:not(:disabled),
       #cache-select-bar button.action-btn:hover:not(:disabled),
+      #cache-clear-dialog button.action-btn:hover:not(:disabled),
+      #openaip-expiry-dialog button.action-btn:hover:not(:disabled),
       #iconch-settings button.action-btn:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.24);
       }
@@ -1223,6 +1351,8 @@
       #params-shell button.action-btn:disabled,
       .map-select-bar button.action-btn:disabled,
       #cache-select-bar button.action-btn:disabled,
+      #cache-clear-dialog button.action-btn:disabled,
+      #openaip-expiry-dialog button.action-btn:disabled,
       #iconch-settings button.action-btn:disabled {
         opacity: 0.55;
         cursor: wait;
