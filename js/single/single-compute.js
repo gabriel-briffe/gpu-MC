@@ -95,6 +95,10 @@ async function runSingleAirportCompute(pick) {
 
   const isManual =
     source === "manual" || String(id ?? "").startsWith(MANUAL_AIRPORT_ID_PREFIX);
+  if (hooks.isDisableImportedAirportsEnabled?.() && !isManual) {
+    hooks.setStatus("Imported airports disabled — select a manual airport");
+    return false;
+  }
   if (isManual && !isLngLatInCachedCell(lng, lat)) {
     hooks.showComputeStopBarMessage?.(MISSING_TERRAIN_CACHE_MSG);
     return false;

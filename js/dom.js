@@ -57,6 +57,8 @@ export const dom = {
   includeAirspaceInput: document.getElementById("include-airspace"),
   includeManualAirportsInput: document.getElementById("include-manual-airports"),
   includeManualAirportsFieldEl: document.getElementById("include-manual-airports-field"),
+  disableImportedAirportsInput: document.getElementById("disable-imported-airports"),
+  disableImportedAirportsFieldEl: document.getElementById("disable-imported-airports-field"),
   paramHelpPopover: document.getElementById("param-help-popover"),
   downloadContoursBtn: document.getElementById("download-contours"),
   stopComputeBtn: document.getElementById("stop-compute"),

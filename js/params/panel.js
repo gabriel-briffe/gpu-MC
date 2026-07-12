@@ -258,6 +258,15 @@ export function initParamsPanel(appState, domRefs) {
     }
   });
 
+  dom.disableImportedAirportsInput?.addEventListener("change", () => {
+    app.hooks.refreshCachedAirportMapLayer?.();
+    if (isAutoParamsMode()) {
+      app.hooks.scheduleAutoCompute({ debounce: false, refreshAirports: true });
+    } else if (isSingleParamsMode()) {
+      app.hooks.scheduleSingleAirportCompute(undefined, { debounce: false });
+    }
+  });
+
   for (const button of document.querySelectorAll(".param-help")) {
     button.addEventListener("click", (event) => {
       event.preventDefault();

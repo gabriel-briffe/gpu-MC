@@ -84,6 +84,18 @@ export function syncAutoWindowSizeUi() {
 }
 
 function collectAirportsInWindow(bounds) {
+  if (hooks.isDisableImportedAirportsEnabled?.()) {
+    if (!hooks.isIncludeManualAirportsEnabled?.()) {
+      return [];
+    }
+    return getManualAirportsInBounds(
+      bounds.west,
+      bounds.south,
+      bounds.east,
+      bounds.north
+    );
+  }
+
   const airports = getCachedAirportsInBounds(
     bounds.west,
     bounds.south,

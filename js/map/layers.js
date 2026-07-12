@@ -371,12 +371,21 @@ function shouldIncludeManualAirportsOnMap() {
   );
 }
 
+function shouldHideImportedAirportsOnMap() {
+  if (hooks.getManualAirportSelectMode?.() || hooks.getCacheSelectMode?.()) {
+    return false;
+  }
+  return hooks.isDisableImportedAirportsEnabled?.() ?? false;
+}
+
 function mergeAirportFeaturesForMap(west, south, east, north, { allManual = false } = {}) {
   const byId = new Map();
-  for (const feature of cachedAirportsToGeoJsonFeatures(west, south, east, north)) {
-    const id = feature.properties?.airport_id;
-    if (id) {
-      byId.set(String(id), feature);
+  if (!shouldHideImportedAirportsOnMap()) {
+    for (const feature of cachedAirportsToGeoJsonFeatures(west, south, east, north)) {
+      const id = feature.properties?.airport_id;
+      if (id) {
+        byId.set(String(id), feature);
+      }
     }
   }
   if (shouldIncludeManualAirportsOnMap()) {

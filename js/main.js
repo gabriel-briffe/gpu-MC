@@ -154,6 +154,8 @@ const {
   includeAirspaceInput,
   includeManualAirportsInput,
   includeManualAirportsFieldEl,
+  disableImportedAirportsInput,
+  disableImportedAirportsFieldEl,
   paramHelpPopover,
   downloadContoursBtn,
   stopComputeBtn,
@@ -281,13 +283,33 @@ function setIncludeManualAirports(enabled) {
   app.hooks.schedulePersistParamsState?.();
 }
 
+function isDisableImportedAirportsEnabled() {
+  return disableImportedAirportsInput?.checked ?? false;
+}
+
 function syncIncludeManualAirportsUi() {
   const count = getManualAirportCount();
+  const hasManualAirports = count > 0;
   if (includeManualAirportsFieldEl) {
-    includeManualAirportsFieldEl.hidden = count === 0;
+    includeManualAirportsFieldEl.hidden = !hasManualAirports;
   }
   if (includeManualAirportsInput) {
-    includeManualAirportsInput.disabled = count === 0;
+    includeManualAirportsInput.disabled = !hasManualAirports;
+  }
+  if (disableImportedAirportsFieldEl) {
+    disableImportedAirportsFieldEl.hidden = !hasManualAirports;
+  }
+  if (disableImportedAirportsInput) {
+    disableImportedAirportsInput.disabled = !hasManualAirports;
+    if (!hasManualAirports && disableImportedAirportsInput.checked) {
+      disableImportedAirportsInput.checked = false;
+      app.hooks.refreshCachedAirportMapLayer?.();
+      if (isAutoParamsMode()) {
+        app.hooks.scheduleAutoCompute?.({ debounce: false, refreshAirports: true });
+      } else if (isSingleParamsMode()) {
+        app.hooks.scheduleSingleAirportCompute?.(undefined, { debounce: false });
+      }
+    }
   }
 }
 
@@ -514,6 +536,7 @@ app.hooks = {
   isGeoTrackingOn,
   areOpenAipAirportsAvailable,
   isIncludeManualAirportsEnabled,
+  isDisableImportedAirportsEnabled,
   setIncludeManualAirports,
   syncIncludeManualAirportsUi,
   addManualAirportsToStore,
@@ -602,6 +625,8 @@ app.hooks = {
   finishManualAirportBtn,
   includeManualAirportsInput,
   includeManualAirportsFieldEl,
+  disableImportedAirportsInput,
+  disableImportedAirportsFieldEl,
   autoWindowSizeInput,
   autoWindowFromGlideInput,
   autoWindowSizeFieldEl,
