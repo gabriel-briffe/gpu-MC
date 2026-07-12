@@ -50,6 +50,7 @@ import {
   refreshCacheSelectOverlays,
   clearCacheGridLayers,
   setOverlaysHiddenForCacheSelect,
+  setOverlaysHiddenForManualAirportSelect,
   syncContourLabelSpacing,
   updateCacheGridData,
 } from "./map/layers.js";
@@ -553,6 +554,7 @@ app.hooks = {
   updateAirspaceInfo,
   isIncludeAirspaceEnabled,
   refreshCachedAirportMapLayer,
+  ensureCachedAirportMapLayers,
   refreshRestAirspaceLayerData,
   clearAllGlidePaths,
   pathScreenBounds,
@@ -598,6 +600,7 @@ app.hooks = {
   clearCacheDataBtn,
   finishCacheSelectBtn,
   setOverlaysHiddenForCacheSelect,
+  setOverlaysHiddenForManualAirportSelect,
   refreshCacheSelectOverlays,
   reloadHillshadeSource,
   clearCacheGridLayers,

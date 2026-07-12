@@ -7,6 +7,7 @@ import {
   GLIDE_PATH_GROUND_LAYOUT,
   glidePathLayerFilter,
   CACHE_HIDDEN_LAYER_IDS,
+  MANUAL_AIRPORT_SELECT_HIDDEN_LAYER_IDS,
   AIRPORT_PICK_HIT_PX,
 } from "../constants.js";
 import {
@@ -360,7 +361,17 @@ export function ensureCachedAirportMapLayers() {
   raisePathLayer();
 }
 
-function mergeAirportFeaturesForMap(west, south, east, north) {
+function shouldIncludeManualAirportsOnMap() {
+  if (hooks.getManualAirportSelectMode?.()) {
+    return true;
+  }
+  return (
+    hooks.isIncludeManualAirportsEnabled?.() &&
+    (isAutoParamsMode() || isSingleParamsMode())
+  );
+}
+
+function mergeAirportFeaturesForMap(west, south, east, north, { allManual = false } = {}) {
   const byId = new Map();
   for (const feature of cachedAirportsToGeoJsonFeatures(west, south, east, north)) {
     const id = feature.properties?.airport_id;
@@ -368,17 +379,29 @@ function mergeAirportFeaturesForMap(west, south, east, north) {
       byId.set(String(id), feature);
     }
   }
-  if (isAutoParamsMode() || isSingleParamsMode() || hooks.getManualAirportSelectMode?.()) {
-    for (const feature of manualAirportsToGeoJsonFeatures(west, south, east, north)) {
+  if (shouldIncludeManualAirportsOnMap()) {
+    const manualWest = allManual ? -180 : west;
+    const manualSouth = allManual ? -85 : south;
+    const manualEast = allManual ? 180 : east;
+    const manualNorth = allManual ? 85 : north;
+    for (const feature of manualAirportsToGeoJsonFeatures(
+      manualWest,
+      manualSouth,
+      manualEast,
+      manualNorth
+    )) {
       const id = feature.properties?.airport_id;
       if (id && !byId.has(String(id))) {
         byId.set(String(id), feature);
       }
     }
   }
+  const applyDisabled = !hooks.getManualAirportSelectMode?.();
   return [...byId.values()].map((feature) => {
     const props = feature.properties ?? {};
-    const disabled = hooks.isAirportDisabledById?.(props.airport_id) ?? false;
+    const disabled = applyDisabled
+      ? (hooks.isAirportDisabledById?.(props.airport_id) ?? false)
+      : false;
     return {
       ...feature,
       properties: {
@@ -394,10 +417,12 @@ function syncAirportPickLayerVisibility() {
   if (!map?.getLayer("airports-cached-hit")) {
     return;
   }
+  const pickVisible =
+    !hooks.getCacheSelectMode() && !hooks.getManualAirportSelectMode?.();
   map.setLayoutProperty(
     "airports-cached-hit",
     "visibility",
-    hooks.getCacheSelectMode() ? "none" : "visible"
+    pickVisible ? "visible" : "none"
   );
 }
 
@@ -410,6 +435,15 @@ export function refreshCachedAirportMapLayer() {
   let features;
   if (hooks.getCacheSelectMode()) {
     features = mergedCachedAirportsToGeoJsonFeatures();
+  } else if (hooks.getManualAirportSelectMode?.()) {
+    const bounds = map.getBounds();
+    features = mergeAirportFeaturesForMap(
+      bounds.getWest(),
+      bounds.getSouth(),
+      bounds.getEast(),
+      bounds.getNorth(),
+      { allManual: true }
+    );
   } else {
     const bounds = map.getBounds();
     features = mergeAirportFeaturesForMap(
@@ -612,4 +646,44 @@ export function setOverlaysHiddenForCacheSelect(hidden) {
     app.overlayVisibilityBeforeCache = null;
   }
   hooks.syncAirspaceUi();
+}
+
+export function setOverlaysHiddenForManualAirportSelect(hidden) {
+  const map = hooks.getMap();
+  if (!map) {
+    return;
+  }
+
+  if (hidden) {
+    app.overlayVisibilityBeforeManualAirport = new Map();
+    for (const layerId of MANUAL_AIRPORT_SELECT_HIDDEN_LAYER_IDS) {
+      if (!map.getLayer(layerId)) {
+        continue;
+      }
+      app.overlayVisibilityBeforeManualAirport.set(
+        layerId,
+        map.getLayoutProperty(layerId, "visibility") ?? "visible"
+      );
+      map.setLayoutProperty(layerId, "visibility", "none");
+    }
+    hooks.clearCellInspect();
+    hooks.clearAllGlidePaths?.();
+    if (hooks.computeContextBarEl) {
+      hooks.computeContextBarEl.hidden = true;
+    }
+    document.body.classList.remove("has-compute-context");
+    syncAirportPickLayerVisibility();
+    return;
+  }
+
+  if (app.overlayVisibilityBeforeManualAirport) {
+    for (const [layerId, visibility] of app.overlayVisibilityBeforeManualAirport) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, "visibility", visibility);
+      }
+    }
+    app.overlayVisibilityBeforeManualAirport = null;
+  }
+  hooks.syncComputeContextBar?.();
+  syncAirportPickLayerVisibility();
 }

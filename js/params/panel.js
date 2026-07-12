@@ -250,8 +250,11 @@ export function initParamsPanel(appState, domRefs) {
 
   dom.includeManualAirportsInput?.addEventListener("change", () => {
     app.hooks.schedulePersistParamsState?.();
+    app.hooks.refreshCachedAirportMapLayer?.();
     if (isAutoParamsMode()) {
       app.hooks.scheduleAutoCompute({ debounce: false, refreshAirports: true });
+    } else if (isSingleParamsMode()) {
+      app.hooks.scheduleSingleAirportCompute(undefined, { debounce: false });
     }
   });
 

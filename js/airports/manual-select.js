@@ -5,7 +5,7 @@ import {
   manualAirportAlreadyStored,
   manualAirportToSeed,
 } from "./manual-airports.js";
-import { isAutoParamsMode } from "../params/panel.js";
+import { isAutoParamsMode, isSingleParamsMode } from "../params/panel.js";
 
 let hooks;
 let app;
@@ -172,9 +172,14 @@ export function enterManualAirportSelectMode() {
     return;
   }
   app.manualAirportSelectMode = true;
+  hooks.clearComputeResults?.();
+  hooks.setOverlaysHiddenForManualAirportSelect?.(true);
   updateManualAirportList();
   hooks.closeAppMenu?.();
   ensurePendingManualAirportLayer();
+  hooks.ensureCachedAirportMapLayers?.();
+  hooks.refreshCachedAirportMapLayer?.();
+  hooks.syncIncludeManualAirportsUi?.();
   syncManualAirportSelectUi();
   const count = hooks.getManualAirportCount?.() ?? 0;
   hooks.setStatus(
@@ -187,7 +192,9 @@ export function enterManualAirportSelectMode() {
 export function exitManualAirportSelectMode(reopenParams = false) {
   app.manualAirportSelectMode = false;
   clearPendingManualAirport();
+  hooks.setOverlaysHiddenForManualAirportSelect?.(false);
   updateManualAirportList();
+  hooks.refreshCachedAirportMapLayer?.();
   syncManualAirportSelectUi();
   if (reopenParams) {
     hooks.openGlideSettings?.();
@@ -245,7 +252,6 @@ function updateManualAirportList() {
 }
 
 function refreshManualAirportsOnMap() {
-  hooks.setIncludeManualAirports?.(true);
   hooks.syncIncludeManualAirportsUi?.();
   hooks.refreshCachedAirportMapLayer?.();
 }
@@ -260,16 +266,12 @@ function removeStoredManualAirport(id) {
   }
   updateManualAirportList();
   refreshManualAirportsOnMap();
-  hooks.syncIncludeManualAirportsUi?.();
   const count = hooks.getManualAirportCount?.() ?? 0;
   hooks.setStatus(
     count > 0
       ? `${count} manual airport${count === 1 ? "" : "s"} saved`
       : "All manual airports removed"
   );
-  if (isAutoParamsMode()) {
-    hooks.scheduleAutoCompute?.({ debounce: false, refreshAirports: true });
-  }
 }
 
 function commitPendingManualAirport() {
@@ -303,16 +305,24 @@ function commitPendingManualAirport() {
   refreshManualAirportsOnMap();
   const count = hooks.getManualAirportCount?.() ?? 0;
   hooks.setStatus(
-    `Saved airport — ${count} manual airport${count === 1 ? "" : "s"} total`
+    `Saved airport — ${count} manual airport${count === 1 ? "" : "s"} total. Click the map to add another, or Done when finished.`
   );
-  if (isAutoParamsMode()) {
-    hooks.scheduleAutoCompute?.({ debounce: false, refreshAirports: true });
-  }
 }
 
 function finishManualAirportSelection() {
   if (hooks.isComputing()) {
     return;
   }
+  const count = hooks.getManualAirportCount?.() ?? 0;
   exitManualAirportSelectMode(true);
+  if (count > 0) {
+    hooks.setIncludeManualAirports?.(true);
+    hooks.syncIncludeManualAirportsUi?.();
+    hooks.refreshCachedAirportMapLayer?.();
+  }
+  if (isAutoParamsMode()) {
+    hooks.scheduleAutoCompute?.({ debounce: false, refreshAirports: true });
+  } else if (isSingleParamsMode()) {
+    hooks.scheduleSingleAirportCompute?.(undefined, { debounce: false });
+  }
 }

@@ -37,6 +37,18 @@ export const EMPTY_PATH = {
   properties: {},
 };
 
+export const MANUAL_AIRPORT_SELECT_HIDDEN_LAYER_IDS = [
+  "glide-cone",
+  "glide-contours-line",
+  "glide-contours-label",
+  "glide-sectors-line",
+  "airports-cached-hit",
+  "glide-path",
+  "glide-path-ground",
+  "glide-path-geo",
+  "glide-path-geo-ground",
+];
+
 export const CACHE_HIDDEN_LAYER_IDS = [
   "glide-cone",
   "glide-contours-line",
