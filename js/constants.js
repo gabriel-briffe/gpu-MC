@@ -1,5 +1,5 @@
 import { pickTerrainZoom } from "./geo.js";
-import { OPENAIP_AIRSPACE_LAYER } from "./openaip-tiles.js";
+import { OPENAIP_VECTOR_LAYER_IDS } from "./openaip-tiles.js";
 
 export const DEFAULT_MAX_ALTITUDE = 4050;
 export const MIN_SEEDS = 1;
@@ -55,7 +55,7 @@ export const CACHE_HIDDEN_LAYER_IDS = [
   "glide-contours-label",
   "glide-sectors-line",
   "airports-cached-hit",
-  OPENAIP_AIRSPACE_LAYER,
+  ...OPENAIP_VECTOR_LAYER_IDS,
   "pending-manual-airport-circle",
   "glide-path",
   "glide-path-ground",

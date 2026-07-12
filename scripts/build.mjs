@@ -26,6 +26,10 @@ const PRECACHE_URLS = [
   "vendor/maplibre-gl/maplibre-gl-csp-worker.js",
   "vendor/gribinfo/gribinfo_bg.wasm",
   "vendor/idw-regrid/idw_regrid_bg.wasm",
+  "sprites/sprite.json",
+  "sprites/sprite.png",
+  "sprites/sprite@2x.json",
+  "sprites/sprite@2x.png",
 ];
 
 const MANIFEST = {

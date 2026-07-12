@@ -1,0 +1,408 @@
+{
+  "apt-large": {
+    "width": 76,
+    "height": 76,
+    "x": 1,
+    "y": 1,
+    "pixelRatio": 2
+  },
+  "apt_mil_civil-large": {
+    "width": 76,
+    "height": 76,
+    "x": 79,
+    "y": 1,
+    "pixelRatio": 2
+  },
+  "runway_paved-large": {
+    "width": 14,
+    "height": 76,
+    "x": 157,
+    "y": 1,
+    "pixelRatio": 2
+  },
+  "runway_unpaved-large": {
+    "width": 20,
+    "height": 76,
+    "x": 173,
+    "y": 1,
+    "pixelRatio": 2
+  },
+  "runway_paved-medium": {
+    "width": 12,
+    "height": 68,
+    "x": 195,
+    "y": 1,
+    "pixelRatio": 2
+  },
+  "runway_unpaved-medium": {
+    "width": 18,
+    "height": 68,
+    "x": 209,
+    "y": 1,
+    "pixelRatio": 2
+  },
+  "apt-medium": {
+    "width": 60,
+    "height": 60,
+    "x": 229,
+    "y": 1,
+    "pixelRatio": 2
+  },
+  "ad_closed-large": {
+    "width": 60,
+    "height": 60,
+    "x": 291,
+    "y": 1,
+    "pixelRatio": 2
+  },
+  "ad_mil-large": {
+    "width": 60,
+    "height": 60,
+    "x": 1,
+    "y": 79,
+    "pixelRatio": 2
+  },
+  "af_civil-large": {
+    "width": 60,
+    "height": 60,
+    "x": 63,
+    "y": 79,
+    "pixelRatio": 2
+  },
+  "af_water-large": {
+    "width": 60,
+    "height": 60,
+    "x": 125,
+    "y": 79,
+    "pixelRatio": 2
+  },
+  "apt_mil_civil-medium": {
+    "width": 60,
+    "height": 60,
+    "x": 187,
+    "y": 79,
+    "pixelRatio": 2
+  },
+  "gliding-large": {
+    "width": 76,
+    "height": 60,
+    "x": 249,
+    "y": 79,
+    "pixelRatio": 2
+  },
+  "gliding_winch-large": {
+    "width": 74,
+    "height": 60,
+    "x": 1,
+    "y": 141,
+    "pixelRatio": 2
+  },
+  "heli_civil-large": {
+    "width": 60,
+    "height": 60,
+    "x": 77,
+    "y": 141,
+    "pixelRatio": 2
+  },
+  "heli_mil-large": {
+    "width": 60,
+    "height": 60,
+    "x": 139,
+    "y": 141,
+    "pixelRatio": 2
+  },
+  "light_aircraft-large": {
+    "width": 78,
+    "height": 60,
+    "x": 201,
+    "y": 141,
+    "pixelRatio": 2
+  },
+  "ls_agri-large": {
+    "width": 60,
+    "height": 60,
+    "x": 281,
+    "y": 141,
+    "pixelRatio": 2
+  },
+  "ls_alti-large": {
+    "width": 60,
+    "height": 60,
+    "x": 1,
+    "y": 203,
+    "pixelRatio": 2
+  },
+  "runway_paved-small": {
+    "width": 10,
+    "height": 52,
+    "x": 63,
+    "y": 203,
+    "pixelRatio": 2
+  },
+  "runway_unpaved-small": {
+    "width": 14,
+    "height": 52,
+    "x": 75,
+    "y": 203,
+    "pixelRatio": 2
+  },
+  "ad_closed-medium": {
+    "width": 48,
+    "height": 48,
+    "x": 91,
+    "y": 203,
+    "pixelRatio": 2
+  },
+  "ad_mil-medium": {
+    "width": 48,
+    "height": 48,
+    "x": 141,
+    "y": 203,
+    "pixelRatio": 2
+  },
+  "af_civil-medium": {
+    "width": 48,
+    "height": 48,
+    "x": 191,
+    "y": 203,
+    "pixelRatio": 2
+  },
+  "af_water-medium": {
+    "width": 48,
+    "height": 48,
+    "x": 241,
+    "y": 203,
+    "pixelRatio": 2
+  },
+  "gliding-medium": {
+    "width": 60,
+    "height": 48,
+    "x": 291,
+    "y": 203,
+    "pixelRatio": 2
+  },
+  "gliding_winch-medium": {
+    "width": 58,
+    "height": 48,
+    "x": 1,
+    "y": 265,
+    "pixelRatio": 2
+  },
+  "heli_civil-medium": {
+    "width": 48,
+    "height": 48,
+    "x": 61,
+    "y": 265,
+    "pixelRatio": 2
+  },
+  "heli_mil-medium": {
+    "width": 48,
+    "height": 48,
+    "x": 111,
+    "y": 265,
+    "pixelRatio": 2
+  },
+  "light_aircraft-medium": {
+    "width": 62,
+    "height": 48,
+    "x": 161,
+    "y": 265,
+    "pixelRatio": 2
+  },
+  "ls-medium": {
+    "width": 48,
+    "height": 48,
+    "x": 225,
+    "y": 265,
+    "pixelRatio": 2
+  },
+  "ls_agri-medium": {
+    "width": 48,
+    "height": 48,
+    "x": 275,
+    "y": 265,
+    "pixelRatio": 2
+  },
+  "ls_alti-medium": {
+    "width": 48,
+    "height": 48,
+    "x": 325,
+    "y": 265,
+    "pixelRatio": 2
+  },
+  "parachute-large": {
+    "width": 30,
+    "height": 46,
+    "x": 343,
+    "y": 141,
+    "pixelRatio": 2
+  },
+  "apt-small": {
+    "width": 44,
+    "height": 44,
+    "x": 327,
+    "y": 79,
+    "pixelRatio": 2
+  },
+  "apt_mil_civil-small": {
+    "width": 44,
+    "height": 44,
+    "x": 1,
+    "y": 315,
+    "pixelRatio": 2
+  },
+  "reporting_point_compulsory-medium": {
+    "width": 38,
+    "height": 38,
+    "x": 47,
+    "y": 315,
+    "pixelRatio": 2
+  },
+  "reporting_point_request-medium": {
+    "width": 38,
+    "height": 38,
+    "x": 87,
+    "y": 315,
+    "pixelRatio": 2
+  },
+  "ad_closed-small": {
+    "width": 36,
+    "height": 36,
+    "x": 127,
+    "y": 315,
+    "pixelRatio": 2
+  },
+  "ad_mil-small": {
+    "width": 36,
+    "height": 36,
+    "x": 165,
+    "y": 315,
+    "pixelRatio": 2
+  },
+  "af_civil-small": {
+    "width": 36,
+    "height": 36,
+    "x": 203,
+    "y": 315,
+    "pixelRatio": 2
+  },
+  "af_water-small": {
+    "width": 36,
+    "height": 36,
+    "x": 241,
+    "y": 315,
+    "pixelRatio": 2
+  },
+  "gliding-small": {
+    "width": 46,
+    "height": 36,
+    "x": 279,
+    "y": 315,
+    "pixelRatio": 2
+  },
+  "gliding_winch-small": {
+    "width": 46,
+    "height": 36,
+    "x": 327,
+    "y": 315,
+    "pixelRatio": 2
+  },
+  "heli_civil-small": {
+    "width": 36,
+    "height": 36,
+    "x": 1,
+    "y": 361,
+    "pixelRatio": 2
+  },
+  "heli_mil-small": {
+    "width": 36,
+    "height": 36,
+    "x": 39,
+    "y": 361,
+    "pixelRatio": 2
+  },
+  "light_aircraft-small": {
+    "width": 48,
+    "height": 36,
+    "x": 77,
+    "y": 361,
+    "pixelRatio": 2
+  },
+  "ls-small": {
+    "width": 36,
+    "height": 36,
+    "x": 127,
+    "y": 361,
+    "pixelRatio": 2
+  },
+  "ls_agri-small": {
+    "width": 36,
+    "height": 36,
+    "x": 165,
+    "y": 361,
+    "pixelRatio": 2
+  },
+  "ls_alti-small": {
+    "width": 36,
+    "height": 36,
+    "x": 203,
+    "y": 361,
+    "pixelRatio": 2
+  },
+  "parachute-small": {
+    "width": 22,
+    "height": 34,
+    "x": 241,
+    "y": 361,
+    "pixelRatio": 2
+  },
+  "obstacle_building": {
+    "width": 30,
+    "height": 30,
+    "x": 265,
+    "y": 361,
+    "pixelRatio": 2
+  },
+  "apt-dot": {
+    "width": 28,
+    "height": 28,
+    "x": 297,
+    "y": 361,
+    "pixelRatio": 2
+  },
+  "apt-tiny": {
+    "width": 28,
+    "height": 28,
+    "x": 327,
+    "y": 361,
+    "pixelRatio": 2
+  },
+  "obstacle_chimney": {
+    "width": 28,
+    "height": 28,
+    "x": 353,
+    "y": 203,
+    "pixelRatio": 2
+  },
+  "obstacle_obstacle": {
+    "width": 28,
+    "height": 28,
+    "x": 353,
+    "y": 1,
+    "pixelRatio": 2
+  },
+  "obstacle_tower": {
+    "width": 28,
+    "height": 28,
+    "x": 353,
+    "y": 31,
+    "pixelRatio": 2
+  },
+  "obstacle_wind_turbine": {
+    "width": 28,
+    "height": 28,
+    "x": 1,
+    "y": 399,
+    "pixelRatio": 2
+  }
+}

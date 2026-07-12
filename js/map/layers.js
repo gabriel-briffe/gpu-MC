@@ -14,7 +14,7 @@ import {
   OPENAIP_AIRPORT_MIN_ZOOM,
   OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
   OPENAIP_AIRPORT_CIRCLE_RADIUS,
-  OPENAIP_AIRSPACE_LAYER,
+  OPENAIP_VECTOR_LAYER_IDS,
 } from "../openaip-tiles.js";
 import {
   AIRSPACE_TYPE_ADVISORY,
@@ -50,7 +50,7 @@ const MAP_LAYER_ORDER = [
   "glide-contours-line",
   "glide-contours-label",
   REST_AIRSPACE_LINE_LAYER,
-  OPENAIP_AIRSPACE_LAYER,
+  ...OPENAIP_VECTOR_LAYER_IDS,
   "fake-geo-position",
   "glide-path-geo",
   "glide-path-geo-ground",

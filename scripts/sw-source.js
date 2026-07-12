@@ -34,7 +34,7 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
 
-  if (url.hostname === "demotiles.maplibre.org") {
+  if (url.hostname === "demotiles.maplibre.org" || url.hostname === "protomaps.github.io") {
     event.respondWith(cacheGlyphRequest(request));
     return;
   }

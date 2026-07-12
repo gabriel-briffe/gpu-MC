@@ -17,6 +17,7 @@ import {
   BASE_MAP_TERRAIN_MAX_ZOOM,
 } from "./terrain-tiles.js";
 import { assetUrl } from "./asset-url.js";
+import { MAP_GLYPHS_URL, MAP_SPRITE_URL } from "./map-fonts.js";
 import { dom } from "./dom.js";
 import {
   DEFAULT_MAX_ALTITUDE,
@@ -649,7 +650,8 @@ app.map = new maplibregl.Map({
   center: [MAP_CENTER.lng, MAP_CENTER.lat],
   style: {
     version: 8,
-    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    glyphs: MAP_GLYPHS_URL,
+    sprite: assetUrl(MAP_SPRITE_URL),
     sources: {
       hillshadeSource: {
         type: "raster-dem",
