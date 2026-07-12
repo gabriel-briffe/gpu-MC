@@ -76,7 +76,6 @@ export const dom = {
   computeContextReqLdReadingEl: document.getElementById("compute-context-reqld-reading"),
   computeContextParamsEl: document.getElementById("compute-context-params"),
   paramsFooterEl: document.getElementById("params-footer"),
-  paramsFooterInfoEl: document.getElementById("params-footer-info"),
   paramsShell: document.getElementById("params-shell"),
   paramsModeSingleBtn: document.getElementById("params-mode-single"),
   paramsModeAutoBtn: document.getElementById("params-mode-auto"),

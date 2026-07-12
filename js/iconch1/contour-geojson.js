@@ -374,7 +374,3 @@ export function buildSectorGeoJson(field, values) {
   }
   return buildSectorGeoJsonJs(field, values);
 }
-
-export async function ensureSectorContourWasm() {
-  return ensureRegridWasm();
-}

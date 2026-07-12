@@ -1,7 +1,7 @@
-export const OSM_SOURCE_ID = "osm-raster";
-export const OSM_LAYER_ID = "osm-raster-layer";
-export const SATELLITE_SOURCE_ID = "satellite-raster";
-export const SATELLITE_LAYER_ID = "satellite-raster-layer";
+const OSM_SOURCE_ID = "osm-raster";
+const OSM_LAYER_ID = "osm-raster-layer";
+const SATELLITE_SOURCE_ID = "satellite-raster";
+const SATELLITE_LAYER_ID = "satellite-raster-layer";
 const HILLSHADE_LAYER_ID = "hillshade";
 
 const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";

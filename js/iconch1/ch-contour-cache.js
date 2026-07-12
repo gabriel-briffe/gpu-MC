@@ -322,14 +322,6 @@ export function formatUtcHourLabel(date) {
   return `${String(date.getUTCHours()).padStart(2, "0")}Z`;
 }
 
-export function hourlyUtcSlotsForDay(dayKey, fromHour, toHour) {
-  const slots = [];
-  for (let hour = fromHour; hour <= toHour; hour += 1) {
-    slots.push(new Date(`${dayKey}T${String(hour).padStart(2, "0")}:00:00.000Z`));
-  }
-  return slots;
-}
-
 export function snapToNearestTime(targetMs, candidates) {
   if (!candidates.length) return null;
   let best = candidates[0];

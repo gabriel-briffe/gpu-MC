@@ -7,15 +7,7 @@ export const AUTO_WINDOW_SIZE_DEFAULT_KM = 100;
 export const AUTO_WINDOW_GLIDE_FACTOR = 1.25;
 export const AUTO_MAX_OFFSET_FROM_CENTER = 0.25;
 export const AUTO_COMPUTE_DEBOUNCE_MS = 400;
-export const AIRPORT_RECT_MIN_DEG = 1e-5;
-export const AIRPORT_HANDLE_HIT_PX = 12;
 export const AIRPORT_PICK_HIT_PX = 14;
-export const AIRPORT_HANDLE_CURSORS = {
-  nw: "nwse-resize",
-  se: "nwse-resize",
-  ne: "nesw-resize",
-  sw: "nesw-resize",
-};
 export const MAP_CENTER = { lng: 10.13, lat: 45.77 };
 export const MAP_INITIAL_ZOOM = 5.69;
 export const CACHE_SELECT_ZOOM = 5;
@@ -54,17 +46,11 @@ export const CACHE_HIDDEN_LAYER_IDS = [
   "airports-cached-labels",
   "airports-cached-hit",
   OPENAIP_AIRSPACE_LAYER,
-  "seeds-circle",
-  "seeds-label",
-  "seeds-hit",
   "pending-manual-airport-circle",
   "glide-path",
   "glide-path-ground",
   "glide-path-geo",
   "glide-path-geo-ground",
-  "airport-select-areas-fill",
-  "airport-select-areas-line",
-  "airport-select-handles",
 ];
 
 export const COMPUTE_DONE_STATUS_CLEAR_MS = 2000;

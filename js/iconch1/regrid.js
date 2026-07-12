@@ -288,11 +288,6 @@ export function applyIdwWeightTable(table, values) {
   return applyIdwWeightTableJs(table, values);
 }
 
-export async function regridIdw(lats, lons, values, spacingDeg) {
-  const table = await buildIdwWeightTable(lats, lons, spacingDeg);
-  return applyIdwWeightTable(table, values);
-}
-
 export function buildSectorGeoJsonFromFieldGrib(fieldGrib) {
   const json = wasmBuildSectorGeojsonFromFieldGrib(fieldGrib);
   return JSON.parse(json);

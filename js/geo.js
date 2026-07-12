@@ -64,12 +64,6 @@ export function gridBoundsLngLat(gx0, gy0, width, height, zoom) {
   return [nw, ne, se, sw];
 }
 
-export function formatCoord(value, isLat) {
-  const abs = Math.abs(value).toFixed(5);
-  const dir = isLat ? (value >= 0 ? "N" : "S") : value >= 0 ? "E" : "W";
-  return `${abs}° ${dir}`;
-}
-
 export function terrariumElevation(r, g, b) {
   return r * 256 + g + b / 256 - 32768;
 }

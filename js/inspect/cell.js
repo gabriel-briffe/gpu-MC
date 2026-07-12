@@ -23,10 +23,6 @@ export function getLastInspectCell() {
   return app.lastInspectCell;
 }
 
-export function getLastPathScreenBounds() {
-  return app.lastPathScreenBounds;
-}
-
 export function setLastPathScreenBounds(bounds) {
   app.lastPathScreenBounds = bounds;
 }

@@ -65,16 +65,8 @@ export function initAppMenu(h, domRefs) {
   syncAppMenuUi();
 }
 
-export function isAppMenuOpen() {
-  return app.appMenuOpen;
-}
-
 export function isGlideConesEnabled() {
   return app.glideConesEnabled;
-}
-
-export function getBaseMapRaster() {
-  return app.baseMapRaster;
 }
 
 export function setBaseMapRaster(mode) {
@@ -136,7 +128,6 @@ export function setGlideConesEnabled(enabled) {
     }
     clearAllOverlays();
     hooks.syncComputeContextBar?.();
-    hooks.syncSeedLayerVisibility?.();
   } else if (isAutoParamsMode()) {
     hooks.scheduleAutoCompute?.({ refreshAirports: true });
   } else if (isSingleParamsMode() && app.singleLastPick?.id) {

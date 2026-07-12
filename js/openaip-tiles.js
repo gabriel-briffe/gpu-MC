@@ -1,8 +1,5 @@
 import { pointInGeoJson } from "./airspace.js";
 import { openAipConfigured, openAipTileUrls } from "./openaip-client.js";
-import { isIncludedOpenAipAirportType } from "./openaip-airport-types.js";
-
-export { OPENAIP_AIRPORT_FILTER } from "./openaip-airport-types.js";
 
 const AIRSPACE_TYPE_COLOR = [
   "match",
@@ -36,7 +33,6 @@ const AIRSPACE_TYPE_COLOR = [
 
 export const OPENAIP_AIRPORT_MIN_ZOOM = 5;
 export const OPENAIP_AIRPORT_LABEL_MIN_ZOOM = 7;
-export const OPENAIP_AIRPORT_LAYERS = ["openaip-airports", "openaip-airport-labels"];
 export const OPENAIP_AIRSPACE_LAYER = "openaip-airspaces-line";
 export const OPENAIP_AIRSPACE_LAYERS = [OPENAIP_AIRSPACE_LAYER];
 
@@ -58,29 +54,6 @@ export const OPENAIP_AIRPORT_CIRCLE_RADIUS = [
   15,
   10,
 ];
-
-/** Selected seed markers — slightly larger than cached airports. */
-export const OPENAIP_SEED_CIRCLE_RADIUS = [
-  "interpolate",
-  ["linear"],
-  ["zoom"],
-  5,
-  4,
-  7,
-  6,
-  8,
-  7.5,
-  10,
-  8.5,
-  13,
-  9.5,
-  15,
-  11,
-];
-
-export function isIncludedAirportType(type) {
-  return isIncludedOpenAipAirportType(type);
-}
 
 export function openAipAirportKey(properties, lng, lat) {
   const { source_id: sourceId, icao_code: icaoCode, name } = properties ?? {};

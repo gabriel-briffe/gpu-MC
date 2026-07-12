@@ -341,10 +341,6 @@ export function clearAllGlidePaths() {
   clearInspectPath();
 }
 
-export function updateGlidePath(pathData) {
-  setPathSourceData("glide-path", pathData);
-}
-
 export function clearGlidePath() {
   clearAllGlidePaths();
 }

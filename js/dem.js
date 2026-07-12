@@ -3,7 +3,6 @@ import {
   lngLatToGlobalPixel,
   metersPerPixel,
   clampTerrainZoom,
-  pickTerrainZoom,
   globalPixelToLngLat,
 } from "./geo.js";
 import { applyAirspaceToDem, demBbox } from "./airspace.js";
@@ -247,15 +246,4 @@ export async function buildDemGrid(seeds, params) {
   }
 
   return dem;
-}
-
-export async function sampleElevationAt(lng, lat) {
-  const z = pickTerrainZoom(lat);
-  const { gx, gy } = lngLatToGlobalPixel(lng, lat, z);
-  const tileX = Math.floor(gx / TILE_SIZE);
-  const tileY = Math.floor(gy / TILE_SIZE);
-  const tile = await fetchTerrainTileDecoded(z, tileX, tileY);
-  const localX = Math.floor(gx) - tileX * TILE_SIZE;
-  const localY = Math.floor(gy) - tileY * TILE_SIZE;
-  return tile.elevation[localY * TILE_SIZE + localX];
 }

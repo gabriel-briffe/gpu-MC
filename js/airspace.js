@@ -9,15 +9,6 @@ export const OVERLAY_AIRSPACE_TYPES = new Set([
   AIRSPACE_TYPE_ADVISORY,
 ]);
 
-/** Vector-tile `type` strings for {@link OVERLAY_AIRSPACE_TYPES} (3 prohibited, 29 advisory). */
-export const OVERLAY_AIRSPACE_TILE_TYPES = ["prohibited", "overflight_restriction"];
-
-const TYPE_PREFIX = {
-  [AIRSPACE_TYPE_PROHIBITED]: "P",
-  [AIRSPACE_TYPE_ADVISORY]: "A",
-};
-
-
 const FT_TO_M = 0.3048;
 const FL_TO_M = 30.48;
 
@@ -276,61 +267,6 @@ export function airspaceContainsPoint(airspace, lng, lat) {
     return false;
   }
   return pointInPolygonRings(lng, lat, airspace.rings);
-}
-
-export function airspacesAtPoint(airspaces, lng, lat, terrainMsl = 0) {
-  const matches = [];
-  for (const airspace of airspaces) {
-    if (!airspaceContainsPoint(airspace, lng, lat)) {
-      continue;
-    }
-    matches.push({
-      ...airspace,
-      upperMsl: limitToMsl(airspace.upperLimit, terrainMsl),
-      lowerMsl: terrainMsl,
-    });
-  }
-  matches.sort((a, b) => {
-    const typeOrder = (a.type === AIRSPACE_TYPE_PROHIBITED ? 0 : 1) -
-      (b.type === AIRSPACE_TYPE_PROHIBITED ? 0 : 1);
-    if (typeOrder !== 0) {
-      return typeOrder;
-    }
-    return a.name.localeCompare(b.name);
-  });
-  return matches;
-}
-
-function formatOverlayAirspaceBand(item) {
-  const upper = formatAirspaceLimit(item.upperLimit);
-  return `GND → ${upper}`;
-}
-
-export function formatAirspaceList(matches) {
-  if (!matches.length) {
-    return "—";
-  }
-  return matches
-    .map((item) => {
-      const prefix = TYPE_PREFIX[item.type] ?? "?";
-      const band = formatOverlayAirspaceBand(item);
-      return `${prefix} ${item.name}  ${band}`;
-    })
-    .join("\n");
-}
-
-export function formatAirspaceListHtml(matches) {
-  if (!matches.length) {
-    return "—";
-  }
-  return matches
-    .map((item) => {
-      const prefix = TYPE_PREFIX[item.type] ?? "?";
-      const cls = item.type === AIRSPACE_TYPE_PROHIBITED ? "airspace-p" : "airspace-a";
-      const band = formatOverlayAirspaceBand(item);
-      return `<span class="${cls}">${prefix} ${item.name}  ${band}</span>`;
-    })
-    .join("\n");
 }
 
 export function demBbox(dem) {

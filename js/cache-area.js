@@ -127,10 +127,6 @@ export function getCachedCellKeys() {
   return [...cellCache.keys()];
 }
 
-export function getCachedCellEntry(cellKey) {
-  return cellCache.get(cellKey) ?? null;
-}
-
 export function isCellCacheFresh(entry, now = Date.now()) {
   return entry != null && now - entry.fetchedAt < CACHE_CELL_TTL_MS;
 }

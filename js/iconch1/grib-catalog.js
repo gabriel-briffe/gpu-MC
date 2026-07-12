@@ -85,15 +85,6 @@ export function forecastDateFromRun(dateStamp, forecastHour) {
   return new Date(Date.UTC(y, m, d, h + Number(forecastHour), 0, 0));
 }
 
-export function formatForecastDate(dateStamp, forecastHour) {
-  const date = forecastDateFromRun(dateStamp, forecastHour);
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(date.getUTCDate()).padStart(2, "0");
-  const h = String(date.getUTCHours()).padStart(2, "0");
-  return `${y}-${m}-${d} ${h}Z`;
-}
-
 export function pickLatestRunCandidates(modelId = "icon-d2", now = new Date()) {
   const model = GRIB_MODELS[modelId];
   const runHours = model?.runHours ?? RUN_HOURS;
@@ -128,24 +119,6 @@ export function buildGribUrl(modelId, runHour, dateStamp, forecastHour, level) {
   const fff = String(forecastHour).padStart(3, "0");
   const filename = `${modelId}_${model.domain}_regular-lat-lon_model-level_${dateStamp}_${fff}_${level}_${model.suffix}.grib2.bz2`;
   return `${DWD_BASE}/${modelId}/grib/${runHour}/w/${filename}`;
-}
-
-export function buildHhlUrl(modelId, runHour, dateStamp, level) {
-  const model = GRIB_MODELS[modelId];
-  if (modelId === "icon-d2") {
-    const filename = `${modelId}_${model.domain}_regular-lat-lon_time-invariant_${dateStamp}_000_${level}_hhl.grib2.bz2`;
-    return `${DWD_BASE}/${modelId}/grib/${runHour}/hhl/${filename}`;
-  }
-  const filename = `${modelId}_${model.domain}_regular-lat-lon_time-invariant_${dateStamp}_${level}_HHL.grib2.bz2`;
-  return `${DWD_BASE}/${modelId}/grib/${runHour}/hhl/${filename}`;
-}
-
-export function formatLevelHeight(meters) {
-  if (!Number.isFinite(meters)) return null;
-  const abs = Math.abs(meters);
-  if (abs >= 10000) return `${(meters / 1000).toFixed(1)} km`;
-  if (abs >= 1000) return `${(meters / 1000).toFixed(2)} km`;
-  return `${Math.round(meters)} m`;
 }
 
 /** Nearest 1000 m for UI (2966 → 3000). */
@@ -254,10 +227,4 @@ export function pickDefaultSelection(modelId, entries, dateStamp, previous = {},
       : levelOpts.levels[0];
 
   return { forecastHour, level };
-}
-
-export function gribFilenameFromUrl(url) {
-  if (!url) return "";
-  const parts = url.split("/");
-  return parts[parts.length - 1] ?? url;
 }

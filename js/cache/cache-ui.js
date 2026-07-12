@@ -117,9 +117,6 @@ export function enterCacheSelectMode({ focusMap = false } = {}) {
   if (hooks.getManualAirportSelectMode?.()) {
     hooks.exitManualAirportSelectMode(false);
   }
-  if (hooks.getAirportAreaSelectMode?.()) {
-    hooks.exitAirportAreaSelectMode(false);
-  }
 
   hooks.cancelPendingAutoCompute?.();
   app.cacheSelectMode = true;

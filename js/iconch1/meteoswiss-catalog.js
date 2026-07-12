@@ -45,10 +45,6 @@ export function horizonFromStepHours(hours) {
   return `P${days}DT${String(rem).padStart(2, "0")}H00M00S`;
 }
 
-export function formatHorizonStep(hours) {
-  return `+${hours}h`;
-}
-
 export function generateRunCandidates(modelId, now = new Date()) {
   const runHours = (METEOSWISS_RUN_HOURS[modelId] ?? [])
     .map(Number)

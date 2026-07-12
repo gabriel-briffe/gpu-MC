@@ -176,7 +176,6 @@ export function setParamsMode(mode, { initial = false } = {}) {
     }
   }
 
-  app.hooks.syncSeedLayerVisibility();
   app.hooks.persistParamsState?.();
   app.hooks.updateParamsFooter?.();
 }

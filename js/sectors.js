@@ -1,6 +1,5 @@
 import { globalPixelToLngLat } from "./geo.js";
-
-export const SECTOR_ORIGIN_RESOLVE_PASSES = 16;
+import { SECTOR_ORIGIN_RESOLVE_PASSES } from "./glidecone/shaders.js";
 
 function isAirSectorCell(idx, ground, originX, altitudes, maxAltitude) {
   if (ground[idx] === 1) {

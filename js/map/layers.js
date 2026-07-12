@@ -14,7 +14,6 @@ import {
   OPENAIP_AIRPORT_MIN_ZOOM,
   OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
   OPENAIP_AIRPORT_CIRCLE_RADIUS,
-  OPENAIP_SEED_CIRCLE_RADIUS,
   OPENAIP_AIRSPACE_LAYER,
 } from "../openaip-tiles.js";
 import {
@@ -42,18 +41,6 @@ export function getPathLayerReady() {
   return app.pathLayerReady;
 }
 
-export function getSeedLayersReady() {
-  return app.seedLayersReady;
-}
-
-export function getContourLayersReady() {
-  return app.contourLayersReady;
-}
-
-export function getSectorBorderLayersReady() {
-  return app.sectorBorderLayersReady;
-}
-
 /** Bottom-to-top overlay stack (OSM + hillshade basemap stay below). Labels sit above their layer. */
 const MAP_LAYER_ORDER = [
   "glide-cone",
@@ -65,9 +52,6 @@ const MAP_LAYER_ORDER = [
   "airports-cached-hit",
   "cache-airports",
   "cache-airport-labels",
-  "seeds-circle",
-  "seeds-label",
-  "seeds-hit",
   "pending-manual-airport-circle",
   "glide-contours-line",
   "glide-contours-label",
@@ -80,9 +64,6 @@ const MAP_LAYER_ORDER = [
   "glide-path-ground",
   "cache-grid-fill",
   "cache-grid-line",
-  "airport-select-areas-fill",
-  "airport-select-areas-line",
-  "airport-select-handles",
 ];
 
 export function syncMapLayerOrder() {
@@ -134,75 +115,6 @@ export function ensurePathLayer() {
   }
 
   app.pathLayerReady = true;
-  raisePathLayer();
-}
-
-export function ensureSeedLayers() {
-  const map = hooks.getMap();
-  if (!map) {
-    return;
-  }
-
-  if (!map.getSource("seeds")) {
-    map.addSource("seeds", {
-      type: "geojson",
-      data: { type: "FeatureCollection", features: [] },
-    });
-  }
-
-  if (!map.getLayer("seeds-circle")) {
-    map.addLayer({
-      id: "seeds-circle",
-      type: "circle",
-      source: "seeds",
-      paint: {
-        "circle-radius": OPENAIP_SEED_CIRCLE_RADIUS,
-        "circle-color": "#ffcc00",
-        "circle-stroke-width": 2,
-        "circle-stroke-color": "#ffffff",
-      },
-    });
-  }
-
-  if (!map.getLayer("seeds-label")) {
-    map.addLayer({
-      id: "seeds-label",
-      type: "symbol",
-      source: "seeds",
-      minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-      layout: {
-        "text-field": ["get", "label"],
-        "text-font": ["Noto Sans Regular"],
-        "text-size": 11,
-        "text-offset": [0, -1.35],
-        "text-anchor": "bottom",
-        "text-max-width": 14,
-        "symbol-sort-key": 200,
-        "text-optional": false,
-      },
-      paint: {
-        "text-color": "#ffe066",
-        "text-halo-color": "rgba(18, 22, 28, 0.92)",
-        "text-halo-width": 2,
-      },
-    });
-  }
-
-  if (!map.getLayer("seeds-hit")) {
-    map.addLayer({
-      id: "seeds-hit",
-      type: "circle",
-      source: "seeds",
-      paint: {
-        "circle-radius": AIRPORT_PICK_HIT_PX,
-        "circle-opacity": 0,
-        "circle-stroke-width": 0,
-      },
-    });
-  }
-
-  app.seedLayersReady = true;
-  hooks.syncSeedLayerVisibility();
   raisePathLayer();
 }
 

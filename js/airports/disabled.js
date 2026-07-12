@@ -1,8 +1,6 @@
 import { isAutoParamsMode } from "../params/panel.js";
 import {
-  airportIdFromOpenAip,
   airportIdFromManualPlacement,
-  airportIdFromSeed,
   airportIdFromStoredAirport,
 } from "./airport-id.js";
 
@@ -86,7 +84,6 @@ function loadDisabledAirportsFromStorage() {
 
 export function initDisabledAirports(h) {
   hooks = h;
-  hooks.isAirportDisabled = isAirportDisabled;
   hooks.isAirportDisabledById = isAirportDisabledById;
   hooks.filterDisabledAirports = filterDisabledAirports;
   hooks.toggleDisabledAirportAt = toggleDisabledAirportAt;
@@ -95,18 +92,6 @@ export function initDisabledAirports(h) {
 
 export function isAirportDisabledById(id) {
   return id ? disabledAirports.has(String(id)) : false;
-}
-
-export function isAirportDisabled(lng, lat, properties = null) {
-  const id =
-    properties?.airport_id != null
-      ? String(properties.airport_id)
-      : properties?.source === "manual"
-        ? airportIdFromManualPlacement(lng, lat)
-        : properties != null
-          ? airportIdFromOpenAip(properties, lng, lat)
-          : airportIdFromManualPlacement(lng, lat);
-  return isAirportDisabledById(id);
 }
 
 export function filterDisabledAirports(airports) {

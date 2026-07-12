@@ -39,7 +39,6 @@ import {
 import {
   initMapLayers,
   ensurePathLayer,
-  ensureSeedLayers,
   raisePathLayer,
   ensureCachedAirportMapLayers,
   refreshCachedAirportMapLayer,
@@ -95,7 +94,6 @@ import {
 import {
   initSeeds,
   updateSeedMarkers,
-  syncSeedLayerVisibility,
 } from "./airports/seeds.js";
 import { initDisabledAirports } from "./airports/disabled.js";
 import {
@@ -125,7 +123,7 @@ import {
 } from "./app-menu.js";
 import { initIconCh1 } from "./iconch1/iconch1-app.js";
 import { raiseIconCh1Layer } from "./map/layers.js";
-import { ensureRasterBasemapLayers, setBaseMapRasterMode } from "./map/osm-basemap.js";
+import { ensureRasterBasemapLayers, setBaseMapRasterMode } from "./map/raster-basemap.js";
 import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
@@ -173,9 +171,7 @@ const {
   computeContextDeltaReadingEl,
   computeContextReqLdReadingEl,
   computeContextParamsEl,
-  seedListEl,
   paramsFooterEl,
-  paramsFooterInfoEl,
   paramsShell,
   paramsModeSingleBtn,
   paramsModeAutoBtn,
@@ -620,7 +616,6 @@ app.hooks = {
   scheduleAutoCompute,
   scheduleSingleAirportCompute,
   getParamsMode,
-  syncSeedLayerVisibility,
   syncDownloadContoursButton,
   showCellInspect,
   setStatus,
@@ -1204,7 +1199,6 @@ app.map.on("load", async () => {
     scheduleAutoCompute({ refreshAirports: true });
   }
 
-  ensureSeedLayers();
   updateSeedMarkers();
   try {
     await ensureEngine();

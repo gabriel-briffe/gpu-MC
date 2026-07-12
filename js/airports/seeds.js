@@ -1,4 +1,3 @@
-import { MIN_SEEDS } from "../constants.js";
 import { formatAirportLabel } from "../airport-label.js";
 import { isAutoParamsMode, isSingleParamsMode } from "../params/panel.js";
 import {
@@ -18,9 +17,7 @@ export function initSeeds(h) {
   app = h.app;
   hooks.getPendingSeeds = getPendingSeeds;
   hooks.updateSeedMarkers = updateSeedMarkers;
-  hooks.syncSeedLayerVisibility = syncSeedLayerVisibility;
   hooks.setPendingSeedsFromAirports = setPendingSeedsFromAirports;
-  hooks.clearPendingSeeds = clearPendingSeeds;
   hooks.clearPendingSeedsSelection = clearPendingSeedsSelection;
   hooks.airportIdFromSeed = airportIdFromSeed;
   hooks.pickAirportAtMapPoint = pickAirportAtMapPoint;
@@ -145,10 +142,6 @@ export function setPendingSeedsFromAirports(airports) {
   updateSeedMarkers();
 }
 
-export function syncSeedLayerVisibility() {
-  // Seeds map layer unused — manual airports render on airports-cached.
-}
-
 export function updateSeedMarkers() {
   hooks.schedulePersistParamsState?.();
 }
@@ -156,15 +149,4 @@ export function updateSeedMarkers() {
 export function clearPendingSeedsSelection() {
   app.pendingSeeds = [];
   updateSeedMarkers();
-}
-
-export function clearPendingSeeds() {
-  if (hooks.getManualAirportSelectMode?.()) {
-    hooks.exitManualAirportSelectMode(false);
-  }
-  app.pendingSeeds = [];
-  hooks.clearPendingManualAirport?.();
-  hooks.clearComputeResults();
-  updateSeedMarkers();
-  hooks.setStatus("Airports cleared");
 }
