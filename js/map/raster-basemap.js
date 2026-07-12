@@ -15,6 +15,21 @@ const GRADIENT_SOURCE_ID = "terrain-gradient-raster";
 const GRADIENT_LAYER_ID = "terrain-gradient-raster-layer";
 const HILLSHADE_LAYER_ID = "hillshade";
 
+const HILLSHADE_PAINT_DEFAULT = {
+  "hillshade-shadow-color": "#473b24",
+  "hillshade-highlight-color": "#ffffff",
+  "hillshade-accent-color": "#5c4a2f",
+  "hillshade-exaggeration": 0.5,
+};
+
+/** Subtle relief overlay so OSM labels and roads stay readable underneath. */
+const HILLSHADE_PAINT_OSM = {
+  "hillshade-shadow-color": "rgba(25, 20, 12, 0.5)",
+  "hillshade-highlight-color": "rgba(255, 255, 255, 0.3)",
+  "hillshade-accent-color": "rgba(60, 48, 30, 0.32)",
+  "hillshade-exaggeration": 0.48,
+};
+
 const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const SATELLITE_TILE_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -33,6 +48,16 @@ function moveBasemapLayers(map, layerIds, beforeId) {
       continue;
     }
     map.moveLayer(layerId, beforeId);
+  }
+}
+
+function syncHillshadePaint(map, mode) {
+  if (!map?.getLayer(HILLSHADE_LAYER_ID)) {
+    return;
+  }
+  const paint = mode === "osm" ? HILLSHADE_PAINT_OSM : HILLSHADE_PAINT_DEFAULT;
+  for (const [key, value] of Object.entries(paint)) {
+    map.setPaintProperty(HILLSHADE_LAYER_ID, key, value);
   }
 }
 
@@ -163,5 +188,6 @@ export function setBaseMapRasterMode(map, mode) {
     map.setLayoutProperty(HILLSHADE_LAYER_ID, "visibility", "visible");
   }
 
+  syncHillshadePaint(map, mode);
   syncBasemapLayerStack(map, mode);
 }
