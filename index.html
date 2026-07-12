@@ -156,6 +156,67 @@
               <button type="button" class="module-enable-btn" id="satellite-enable" aria-pressed="false">
                 Satellite
               </button>
+            </div>
+          </div>
+          <div class="app-menu-section-head basemap-gradient-row">
+            <button type="button" class="module-enable-btn" id="gradient-enable" aria-pressed="false">
+              Gradient
+            </button>
+            <button
+              type="button"
+              class="app-menu-settings-btn"
+              id="gradient-settings-btn"
+              aria-label="Gradient settings"
+              aria-expanded="false"
+            >
+              ⚙
+            </button>
+          </div>
+          <div id="gradient-settings" class="app-menu-subsection" hidden>
+            <div class="params-section">
+              <div class="params-fields">
+                <div class="param-field">
+                  <div class="param-label-row">
+                    <span class="param-label">Maximum gradient altitude</span>
+                  </div>
+                  <div class="param-stepper">
+                    <button
+                      type="button"
+                      class="param-step-btn"
+                      data-step="-1"
+                      aria-label="Decrease maximum gradient altitude"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      id="gradient-max-alt"
+                      min="500"
+                      max="9000"
+                      step="500"
+                      value="5000"
+                    />
+                    <button
+                      type="button"
+                      class="param-step-btn"
+                      data-step="1"
+                      aria-label="Increase maximum gradient altitude"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <hr class="app-menu-divider" />
+
+        <section class="app-menu-section" id="airspace-section">
+          <h2 class="app-menu-section-title">Airspace</h2>
+          <div class="app-menu-section-head airspace-section-head">
+            <div class="basemap-raster-buttons">
               <button type="button" class="module-enable-btn" id="openaip-enable" aria-pressed="false">
                 OpenAIP
               </button>

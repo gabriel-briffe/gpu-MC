@@ -16,6 +16,7 @@ import {
   TERRAIN_TILE_URL_TEMPLATE,
   BASE_MAP_TERRAIN_MAX_ZOOM,
 } from "./terrain-tiles.js";
+import { registerTerrainGradientProtocol } from "./map/terrain-gradient.js";
 import { assetUrl } from "./asset-url.js";
 import { MAP_GLYPHS_URL, MAP_SPRITE_URL } from "./map-fonts.js";
 import { dom } from "./dom.js";
@@ -125,7 +126,8 @@ import {
 } from "./app-menu.js";
 import { initIconCh1 } from "./iconch1/iconch1-app.js";
 import { raiseIconCh1Layer } from "./map/layers.js";
-import { ensureRasterBasemapLayers, setBaseMapRasterMode } from "./map/raster-basemap.js";
+import { ensureRasterBasemapLayers, reloadGradientBasemap, setBaseMapRasterMode } from "./map/raster-basemap.js";
+import { setGradientMaxAltitude } from "./map/terrain-gradient.js";
 import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
@@ -412,6 +414,10 @@ function areOpenAipAirportsAvailable() {
   return openAipConfigured(app.openAipConfig);
 }
 
+function isTerrainBasemapMode() {
+  return app.baseMapRaster === "gradient";
+}
+
 function syncOpenAipVectorTiles() {
   if (!app.map) {
     return;
@@ -459,7 +465,10 @@ function syncAirspaceUi() {
 
   syncOpenAipVectorTiles();
 
-  const restEnabled = isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable();
+  const restEnabled =
+    isIncludeAirspaceEnabled() &&
+    areOpenAipAirportsAvailable() &&
+    !isTerrainBasemapMode();
   if (restEnabled) {
     ensureRestAirspaceLayers();
     refreshRestAirspaceLayerData();
@@ -590,6 +599,10 @@ app.hooks = {
   raiseIconCh1Layer,
   setBaseMapRasterMode: (mode) => {
     setBaseMapRasterMode(app.map, mode);
+    raisePathLayer();
+  },
+  reloadGradientBasemap: () => {
+    reloadGradientBasemap(app.map);
   },
   computeContextBarEl,
   clearCellInspect,
@@ -700,6 +713,7 @@ if (typeof maplibregl !== "undefined") {
 }
 
 registerTerrainTileProtocol();
+registerTerrainGradientProtocol();
 
 app.map = new maplibregl.Map({
   container: "map",
@@ -1183,9 +1197,11 @@ function syncOfflineBanner() {
 
 app.map.on("load", async () => {
   syncBaseMapTerrainMaxZoom();
+  setGradientMaxAltitude(app.gradientMaxAltitude);
   ensureRasterBasemapLayers(app.map);
   setBaseMapRasterMode(app.map, app.baseMapRaster);
   ensurePathLayer();
+  setBaseMapRasterMode(app.map, app.baseMapRaster);
   initFakeGeo(app, app.hooks);
   app.map.on("moveend", () => {
     updateTerrainResolutionHint();

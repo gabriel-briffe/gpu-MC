@@ -72,6 +72,19 @@ export function syncMapLayerOrder() {
   }
 }
 
+/** Bottommost overlay layer in MAP_LAYER_ORDER — basemap rasters sit below this. */
+export function getMapBottomOverlayAnchor(map) {
+  if (!map) {
+    return undefined;
+  }
+  for (const layerId of MAP_LAYER_ORDER) {
+    if (map.getLayer(layerId)) {
+      return layerId;
+    }
+  }
+  return undefined;
+}
+
 export function raisePathLayer() {
   syncMapLayerOrder();
 }

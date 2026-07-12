@@ -1,3 +1,5 @@
+import { GRADIENT_MAX_ALT_DEFAULT } from "./constants.js";
+
 export function createApp() {
   return {
     map: null,
@@ -54,6 +56,8 @@ export function createApp() {
     appMenuOpen: false,
     glideConesEnabled: true,
     baseMapRaster: "osm",
+    gradientMaxAltitude: GRADIENT_MAX_ALT_DEFAULT,
+    gradientSettingsOpen: false,
     openAipVectorEnabled: false,
     iconChActiveModel: null,
     glideSettingsOpen: false,

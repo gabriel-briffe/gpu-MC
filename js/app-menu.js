@@ -3,6 +3,9 @@ import {
   isAutoParamsMode,
   isSingleParamsMode,
 } from "./params/panel.js";
+import { initParamSteppers } from "./params/steppers.js";
+import { setGradientMaxAltitude as applyGradientMaxAltitude } from "./map/terrain-gradient.js";
+import { loadGradientState, saveGradientMaxAltitude } from "./map/gradient-persist.js";
 
 let hooks;
 let app;
@@ -12,6 +15,8 @@ export function initAppMenu(h, domRefs) {
   hooks = h;
   app = h.app;
   dom = domRefs;
+
+  restoreGradientState(loadGradientState());
 
   dom.appMenuBtn?.addEventListener("click", () => {
     if (app.appMenuOpen) {
@@ -31,7 +36,26 @@ export function initAppMenu(h, domRefs) {
     setBaseMapRaster(app.baseMapRaster === "satellite" ? null : "satellite");
   });
 
-  dom.basemapOpenAipBtn?.addEventListener("click", () => {
+  dom.basemapGradientBtn?.addEventListener("click", () => {
+    setBaseMapRaster(app.baseMapRaster === "gradient" ? null : "gradient");
+  });
+
+  dom.basemapGradientSettingsBtn?.addEventListener("click", () => {
+    const open = !app.gradientSettingsOpen;
+    if (open) {
+      app.glideSettingsOpen = false;
+      app.iconChSettingsOpen = false;
+    }
+    setGradientSettingsOpen(open);
+  });
+
+  dom.gradientMaxAltInput?.addEventListener("input", () => {
+    updateGradientMaxAltitudeFromInput();
+  });
+
+  initParamSteppers(dom.basemapGradientSettings);
+
+  dom.airspaceOpenAipBtn?.addEventListener("click", () => {
     if (!hooks.areOpenAipAirportsAvailable?.()) {
       return;
     }
@@ -56,6 +80,7 @@ export function initAppMenu(h, domRefs) {
     const open = !app.glideSettingsOpen;
     if (open) {
       app.iconChSettingsOpen = false;
+      app.gradientSettingsOpen = false;
     }
     setGlideSettingsOpen(open);
   });
@@ -64,12 +89,40 @@ export function initAppMenu(h, domRefs) {
     const open = !app.iconChSettingsOpen;
     if (open) {
       app.glideSettingsOpen = false;
+      app.gradientSettingsOpen = false;
       hooks.refreshIconCh1Settings?.();
     }
     setIconChSettingsOpen(open);
   });
 
   syncAppMenuUi();
+}
+
+function updateGradientMaxAltitudeFromInput() {
+  const next = applyGradientMaxAltitude(dom.gradientMaxAltInput?.value);
+  if (app.gradientMaxAltitude === next) {
+    if (dom.gradientMaxAltInput) {
+      dom.gradientMaxAltInput.value = String(next);
+    }
+    return;
+  }
+  app.gradientMaxAltitude = next;
+  if (dom.gradientMaxAltInput) {
+    dom.gradientMaxAltInput.value = String(next);
+  }
+  saveGradientMaxAltitude(next);
+  hooks.reloadGradientBasemap?.();
+}
+
+export function restoreGradientState(saved) {
+  if (!saved) {
+    return;
+  }
+  const next = applyGradientMaxAltitude(saved.gradientMaxAltitude);
+  app.gradientMaxAltitude = next;
+  if (dom.gradientMaxAltInput) {
+    dom.gradientMaxAltInput.value = String(next);
+  }
 }
 
 export function isGlideConesEnabled() {
@@ -82,6 +135,7 @@ export function setBaseMapRaster(mode) {
   }
   app.baseMapRaster = mode;
   hooks.setBaseMapRasterMode?.(mode);
+  hooks.syncAirspaceUi?.();
   syncAppMenuUi();
 }
 
@@ -109,6 +163,7 @@ export function getIconChActiveModel() {
 export function openAppMenu() {
   app.glideSettingsOpen = false;
   app.iconChSettingsOpen = false;
+  app.gradientSettingsOpen = false;
   app.appMenuOpen = true;
   syncAppMenuUi();
 }
@@ -120,6 +175,7 @@ export function closeAppMenu() {
 
 export function openGlideSettings() {
   app.iconChSettingsOpen = false;
+  app.gradientSettingsOpen = false;
   app.glideSettingsOpen = true;
   openAppMenu();
   syncAppMenuUi();
@@ -132,6 +188,11 @@ export function setGlideSettingsOpen(open) {
 
 export function setIconChSettingsOpen(open) {
   app.iconChSettingsOpen = open;
+  syncAppMenuUi();
+}
+
+export function setGradientSettingsOpen(open) {
+  app.gradientSettingsOpen = open;
   syncAppMenuUi();
 }
 
@@ -204,18 +265,27 @@ export function syncAppMenuUi() {
   dom.basemapSatelliteBtn?.classList.toggle("is-active", app.baseMapRaster === "satellite");
   dom.basemapSatelliteBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "satellite"));
 
+  dom.basemapGradientBtn?.classList.toggle("is-active", app.baseMapRaster === "gradient");
+  dom.basemapGradientBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "gradient"));
+
   const openAipAvailable = hooks.areOpenAipAirportsAvailable?.() ?? false;
-  if (dom.basemapOpenAipBtn) {
-    dom.basemapOpenAipBtn.disabled = !openAipAvailable;
+  if (dom.airspaceOpenAipBtn) {
+    dom.airspaceOpenAipBtn.disabled = !openAipAvailable;
     const openAipActive = openAipAvailable && app.openAipVectorEnabled;
-    dom.basemapOpenAipBtn.classList.toggle("is-active", openAipActive);
-    dom.basemapOpenAipBtn.setAttribute("aria-pressed", String(openAipActive));
+    dom.airspaceOpenAipBtn.classList.toggle("is-active", openAipActive);
+    dom.airspaceOpenAipBtn.setAttribute("aria-pressed", String(openAipActive));
   }
 
   dom.iconCh1EnableBtn?.classList.toggle("is-active", app.iconChActiveModel === "icon-ch1");
   dom.iconCh1EnableBtn?.setAttribute("aria-pressed", String(app.iconChActiveModel === "icon-ch1"));
   dom.iconCh2EnableBtn?.classList.toggle("is-active", app.iconChActiveModel === "icon-ch2");
   dom.iconCh2EnableBtn?.setAttribute("aria-pressed", String(app.iconChActiveModel === "icon-ch2"));
+
+  dom.basemapSection?.classList.toggle("gradient-settings-open", app.gradientSettingsOpen);
+  if (dom.basemapGradientSettings) {
+    dom.basemapGradientSettings.hidden = !app.gradientSettingsOpen;
+  }
+  dom.basemapGradientSettingsBtn?.setAttribute("aria-expanded", String(app.gradientSettingsOpen));
 
   dom.glideconesSection?.classList.toggle("glide-settings-open", app.glideSettingsOpen);
   if (dom.glideConesSettings) {

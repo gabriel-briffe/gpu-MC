@@ -18,6 +18,12 @@ export const MANUAL_INSPECT_MS = 5000;
 export const OPENAIP_EXPIRY_WARN_DAYS = 6;
 export const OPENAIP_UPDATE_OK_COUNTDOWN_STEP_MS = 1000;
 
+export const GRADIENT_MAX_ALT_MIN = 500;
+export const GRADIENT_MAX_ALT_MAX = 9000;
+export const GRADIENT_MAX_ALT_STEP = 500;
+export const GRADIENT_MAX_ALT_DEFAULT = 5000;
+export const GRADIENT_RASTER_OPACITY = 0.6;
+
 export const MISSING_TERRAIN_CACHE_MSG =
   'No terrain has been cached for this location — open the menu and use Add data';
 

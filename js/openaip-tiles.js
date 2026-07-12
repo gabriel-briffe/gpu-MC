@@ -815,6 +815,8 @@ export const OPENAIP_VECTOR_LAYER_IDS = [
   ...FEATURE_LAYER_IDS,
 ];
 
+export const OPENAIP_AIRSPACE_ONLY_LAYER_IDS = AIRSPACE_LAYERS.map((layer) => layer.id);
+
 /** Topmost OpenAIP vector layer — used for legacy layer-order anchor. */
 export const OPENAIP_AIRSPACE_LAYER = OPENAIP_VECTOR_LAYER_IDS.at(-1);
 export const OPENAIP_AIRSPACE_LAYERS = OPENAIP_VECTOR_LAYER_IDS;
@@ -910,6 +912,15 @@ export function removeOpenAipVectorTiles(map) {
       // Ignore teardown races with in-flight vector tiles.
     }
   });
+}
+
+export function setOpenAipAirspaceLayersVisible(map, visible) {
+  const visibility = visible ? "visible" : "none";
+  for (const layerId of OPENAIP_AIRSPACE_ONLY_LAYER_IDS) {
+    if (map.getLayer(layerId)) {
+      map.setLayoutProperty(layerId, "visibility", visibility);
+    }
+  }
 }
 
 export function setOpenAipAirspaceVisible(map, visible) {

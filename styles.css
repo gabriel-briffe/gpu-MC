@@ -67,8 +67,12 @@
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
-        max-height: min(80dvh, calc(100dvh - 2rem));
-        overflow: hidden;
+        padding: 0.65rem 0.75rem 0.75rem;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
       }
 
       .map-select-bar,
@@ -275,6 +279,7 @@
         flex-direction: column;
         gap: 0.35rem;
         min-height: 0;
+        flex-shrink: 0;
       }
 
       .app-menu-section-title {
@@ -286,8 +291,18 @@
         color: #7a8a9e;
       }
 
-      .basemap-section-head {
+      .basemap-section-head,
+      .airspace-section-head {
         gap: 0.35rem;
+      }
+
+      .basemap-gradient-row {
+        margin-top: 0.35rem;
+      }
+
+      .basemap-gradient-row .module-enable-btn {
+        flex: 1;
+        min-width: 0;
       }
 
       .basemap-raster-buttons {
@@ -353,6 +368,7 @@
         border: 0;
         border-top: 1px solid rgba(255, 255, 255, 0.1);
         margin: 0.15rem 0;
+        flex-shrink: 0;
       }
 
       .app-menu-subsection[hidden] {
@@ -363,6 +379,7 @@
         display: flex;
         flex-direction: column;
         min-height: 0;
+        flex-shrink: 0;
         overflow: hidden;
         margin-top: 0.3rem;
         padding: 0.55rem 0.6rem 0.65rem;
@@ -724,19 +741,14 @@
         overflow: hidden;
         display: flex;
         flex-direction: column;
-      }
-
-      .app-menu-popup-inner {
-        padding: 0.65rem 0.75rem 0.75rem;
+        min-height: 0;
       }
 
       #params-scroll {
-        flex: 1 1 auto;
+        flex: 0 0 auto;
         min-height: 0;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        -webkit-overflow-scrolling: touch;
-        max-height: min(50dvh, calc(100dvh - 14rem));
+        overflow: visible;
+        max-height: none;
       }
 
       #glidecones-section:not(.glide-settings-open) .params-mode-bar {
@@ -942,6 +954,14 @@
         width: auto;
         min-width: 0;
         max-width: none;
+        text-align: center;
+      }
+
+      #gradient-settings .param-stepper input[type="number"] {
+        flex: 1 1 0;
+        width: auto;
+        min-width: 0;
+        max-width: 8rem;
         text-align: center;
       }
 
@@ -1266,6 +1286,7 @@
 
       #params input[type="number"],
       #params input[type="text"],
+      #gradient-settings input[type="number"],
       .params-overlay-panel input[type="text"],
       .params-overlay-panel input[type="number"] {
         width: 100%;
@@ -1285,6 +1306,7 @@
 
       #params input[type="number"]:focus,
       #params input[type="text"]:focus,
+      #gradient-settings input[type="number"]:focus,
       .params-overlay-panel input:focus {
         outline: 2px solid rgba(100, 160, 255, 0.55);
         border-color: transparent;
@@ -1677,7 +1699,7 @@
         }
 
         #params-scroll {
-          max-height: min(55dvh, calc(100dvh - 9.5rem));
+          max-height: none;
         }
 
         .params-fields {
@@ -1687,6 +1709,7 @@
         #params input[type="number"],
         #params input[type="text"],
         #params input[type="range"],
+        #gradient-settings input[type="number"],
         #params select,
         #viz-mode,
         .params-overlay-panel input[type="text"],
@@ -1715,6 +1738,17 @@
         #params .param-stepper input[type="number"] {
           -moz-appearance: textfield;
           appearance: textfield;
+        }
+
+        #gradient-settings .param-stepper input[type="number"] {
+          -moz-appearance: textfield;
+          appearance: textfield;
+        }
+
+        #gradient-settings .param-stepper input[type="number"]::-webkit-inner-spin-button,
+        #gradient-settings .param-stepper input[type="number"]::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
         }
 
         #params .param-stepper input[type="number"]::-webkit-inner-spin-button,
