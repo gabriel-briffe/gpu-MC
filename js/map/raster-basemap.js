@@ -51,11 +51,18 @@ function moveBasemapLayers(map, layerIds, beforeId) {
   }
 }
 
+function hillshadePaintForMode(mode) {
+  if (mode === "osm") {
+    return HILLSHADE_PAINT_OSM;
+  }
+  return HILLSHADE_PAINT_DEFAULT;
+}
+
 function syncHillshadePaint(map, mode) {
   if (!map?.getLayer(HILLSHADE_LAYER_ID)) {
     return;
   }
-  const paint = mode === "osm" ? HILLSHADE_PAINT_OSM : HILLSHADE_PAINT_DEFAULT;
+  const paint = hillshadePaintForMode(mode);
   for (const [key, value] of Object.entries(paint)) {
     map.setPaintProperty(HILLSHADE_LAYER_ID, key, value);
   }
@@ -69,8 +76,12 @@ function syncBasemapLayerStack(map, mode) {
     return;
   }
 
-  const baseLayerId =
-    mode === "osm" ? OSM_LAYER_ID : mode === "satellite" ? SATELLITE_LAYER_ID : null;
+  if (mode === "satellite") {
+    moveBasemapLayers(map, [SATELLITE_LAYER_ID], anchor);
+    return;
+  }
+
+  const baseLayerId = mode === "osm" ? OSM_LAYER_ID : null;
   const stack = baseLayerId ? [baseLayerId, HILLSHADE_LAYER_ID] : [HILLSHADE_LAYER_ID];
   moveBasemapLayers(map, stack, anchor);
 }
@@ -185,7 +196,11 @@ export function setBaseMapRasterMode(map, mode) {
     );
   }
   if (map.getLayer(HILLSHADE_LAYER_ID)) {
-    map.setLayoutProperty(HILLSHADE_LAYER_ID, "visibility", "visible");
+    map.setLayoutProperty(
+      HILLSHADE_LAYER_ID,
+      "visibility",
+      mode === "satellite" ? "none" : "visible"
+    );
   }
 
   syncHillshadePaint(map, mode);
