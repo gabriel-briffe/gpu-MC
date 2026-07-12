@@ -39,10 +39,6 @@ export function initCacheUi(h) {
   });
 }
 
-export function getCacheSelectMode() {
-  return app.cacheSelectMode;
-}
-
 function canFinishCacheSelect() {
   if (!app.cacheSelectMode || app.cacheDownloadInProgress) {
     return false;
@@ -110,7 +106,7 @@ function syncCacheSelectBar() {
   hooks.syncComputeContextBar?.();
 }
 
-export function enterCacheSelectMode({ focusMap = false } = {}) {
+function enterCacheSelectMode({ focusMap = false } = {}) {
   if (app.cacheSelectMode || hooks.isComputing()) {
     return;
   }
@@ -144,7 +140,7 @@ export function enterCacheSelectMode({ focusMap = false } = {}) {
   }
 }
 
-export function exitCacheSelectMode() {
+function exitCacheSelectMode() {
   if (!app.cacheSelectMode || !canFinishCacheSelect()) {
     return;
   }
@@ -159,13 +155,12 @@ export function exitCacheSelectMode() {
   hooks.clearCacheAirportLayers();
   hooks.setOverlaysHiddenForCacheSelect(false);
   hooks.refreshCachedAirportMapLayer?.();
-  hooks.updateSeedMarkers?.();
   hooks.setStatus("");
   syncCacheSelectBar();
   syncCacheSelectButtons();
 }
 
-export function toggleCacheCellSelection(lng, lat) {
+function toggleCacheCellSelection(lng, lat) {
   const selected = hooks.getSelectedCacheCells();
   const key = cacheCellKey(lng, lat);
   if (selected.has(key)) {

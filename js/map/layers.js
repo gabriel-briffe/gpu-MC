@@ -37,10 +37,6 @@ export function initMapLayers(h) {
   app = h.app;
 }
 
-export function getPathLayerReady() {
-  return app.pathLayerReady;
-}
-
 /** Bottom-to-top overlay stack (OSM + hillshade basemap stay below). Labels sit above their layer. */
 const MAP_LAYER_ORDER = [
   "glide-cone",

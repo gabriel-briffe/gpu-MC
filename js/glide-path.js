@@ -1,7 +1,12 @@
 import { gridCellDistanceM, gridCellToLngLat } from "./geo.js";
-import { ensurePathLayer, raisePathLayer, getPathLayerReady } from "./map/layers.js";
+import { ensurePathLayer, raisePathLayer } from "./map/layers.js";
 
 let hooks;
+let app;
+
+function isPathLayerReady() {
+  return app.pathLayerReady;
+}
 
 function cellKey(x, y) {
   return `${x},${y}`;
@@ -256,6 +261,7 @@ export function traceGlidePath(gi, gj) {
 
 export function initGlidePath(h) {
   hooks = h;
+  app = h.app;
 }
 
 function setPathSourceData(sourceId, pathData) {
@@ -316,7 +322,7 @@ export function refreshInspectPath(cell) {
 
 export function clearGeoPath() {
   const map = hooks.getMap();
-  if (!getPathLayerReady() || !map?.getSource("glide-path-geo")) {
+  if (!isPathLayerReady() || !map?.getSource("glide-path-geo")) {
     return;
   }
   map.getSource("glide-path-geo").setData({
@@ -327,7 +333,7 @@ export function clearGeoPath() {
 
 export function clearInspectPath() {
   const map = hooks.getMap();
-  if (!getPathLayerReady() || !map?.getSource("glide-path")) {
+  if (!isPathLayerReady() || !map?.getSource("glide-path")) {
     return;
   }
   map.getSource("glide-path").setData({

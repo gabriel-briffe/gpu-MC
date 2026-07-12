@@ -92,15 +92,13 @@ import {
   getWeatherOverlayOpacity,
 } from "./params/panel.js";
 import {
-  initSeeds,
-  updateSeedMarkers,
-} from "./airports/seeds.js";
+  initComputeAirports,
+} from "./airports/compute-airports.js";
 import { initDisabledAirports } from "./airports/disabled.js";
 import {
   addManualAirportsToStore,
   getManualAirportCount,
   getManualAirports,
-  importLegacyPendingSeeds,
   removeManualAirportFromStore,
 } from "./airports/manual-airports.js";
 import {
@@ -109,8 +107,8 @@ import {
   getManualAirportSelectMode,
 } from "./airports/manual-select.js";
 import { initAutoCompute, scheduleAutoCompute, clearAutoComputeScheduling, onAutoModeMapMoveEnd, syncAutoWindowSizeUi } from "./auto/auto-compute.js";
-import { initSingleCompute, clearSingleComputeScheduling, flushSingleAirportCompute, getSingleComputePending, scheduleSingleAirportCompute } from "./single/single-compute.js";
-import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
+import { initSingleCompute, clearSingleComputeScheduling, flushSingleAirportCompute, scheduleSingleAirportCompute } from "./single/single-compute.js";
+import { initCacheUi } from "./cache/cache-ui.js";
 import {
   initAppMenu,
   isGlideConesEnabled,
@@ -221,7 +219,7 @@ function updateGlideSettingsModeHint() {
   if (!glideSettingsModeHintEl) {
     return;
   }
-  if (getCacheSelectMode() || getManualAirportSelectMode()) {
+  if (app.cacheSelectMode || getManualAirportSelectMode()) {
     glideSettingsModeHintEl.hidden = true;
     return;
   }
@@ -243,7 +241,7 @@ function updateGlideSettingsModeHint() {
 }
 
 function getParamsFooterHint() {
-  if (getCacheSelectMode()) {
+  if (app.cacheSelectMode) {
     const selected = app.selectedCacheCells.size;
     if (selected === 0) {
       return CACHE_SELECT_FOOTER_HINT;
@@ -259,7 +257,7 @@ function getParamsFooterHint() {
 }
 
 function activeMapSelectStatusEl() {
-  if (getCacheSelectMode()) {
+  if (app.cacheSelectMode) {
     return dom.cacheSelectStatusEl;
   }
   if (getManualAirportSelectMode()) {
@@ -397,7 +395,7 @@ function isIncludeAirspaceEnabled() {
 }
 
 function syncAirspaceUi() {
-  if (getCacheSelectMode()) {
+  if (app.cacheSelectMode) {
     return;
   }
   const enabled = isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable();
@@ -509,7 +507,6 @@ const sharedHooks = {
   getManualAirportCount,
   getManualAirports,
   removeManualAirportFromStore,
-  importLegacyPendingSeeds,
   setStatus,
   stopComputeBtn,
   downloadContoursBtn,
@@ -588,7 +585,7 @@ const sharedHooks = {
 };
 
 initDisabledAirports(sharedHooks);
-initSeeds(sharedHooks);
+initComputeAirports(sharedHooks);
 initManualSelect(sharedHooks);
 initCacheUi(sharedHooks);
 initAppMenu(sharedHooks, dom);
@@ -610,7 +607,7 @@ app.hooks = {
   clearAutoComputeScheduling,
   clearSingleComputeScheduling,
   flushSingleAirportCompute,
-  getSingleComputePending,
+  getSingleComputePending: () => app.singleComputePending,
   getSingleLastPick: () => app.singleLastPick,
   exitManualAirportSelectMode,
   scheduleAutoCompute,
@@ -642,7 +639,6 @@ app.hooks = {
   isIncludeManualAirportsEnabled,
   setIncludeManualAirports,
   syncIncludeManualAirportsUi,
-  importLegacyPendingSeeds,
   addManualAirportsToStore,
   getManualAirportCount,
   isDebugMode,
@@ -656,7 +652,7 @@ app.hooks = {
   closeAppMenu,
   isGlideConesEnabled,
   isIconCh1Enabled,
-  clearPendingSeedsSelection: () => sharedHooks.clearPendingSeedsSelection?.(),
+  clearComputeAirports: () => sharedHooks.clearComputeAirports?.(),
 };
 initParamsPanel(app, dom);
 sharedHooks.schedulePersistParamsState = () => app.hooks.schedulePersistParamsState?.();
@@ -788,7 +784,7 @@ function setCacheDataWarnings(messages) {
   app.cacheDataWarnings = [...messages];
   if (!messages.length) {
     airspaceInfoEl.textContent = "—";
-    if (!getCacheSelectMode()) {
+    if (!app.cacheSelectMode) {
       syncAirspaceUi();
     }
     return;
@@ -818,13 +814,13 @@ function clearCacheDataWarnings() {
   }
   airspaceInfoEl.replaceChildren();
   airspaceInfoEl.textContent = "—";
-  if (!getCacheSelectMode()) {
+  if (!app.cacheSelectMode) {
     syncAirspaceUi();
   }
 }
 
 function updateAirspaceInfo(lng, lat) {
-  if (app.cacheDataWarnings.length || getCacheSelectMode()) {
+  if (app.cacheDataWarnings.length || app.cacheSelectMode) {
     return;
   }
   if (!isIncludeAirspaceEnabled() || !isDebugMode() || !app.map?.getSource("openaip")) {
@@ -1040,7 +1036,7 @@ function syncComputeContextBar() {
     updateComputeContextBarInset();
     return;
   }
-  if (getCacheSelectMode()) {
+  if (app.cacheSelectMode) {
     computeContextBarEl.hidden = true;
     document.body.classList.remove("has-compute-context");
     updateComputeContextBarInset();
@@ -1160,7 +1156,7 @@ app.map.on("load", async () => {
     }
     refreshCacheGridForViewport();
     refreshCachedAirportMapLayer();
-    if (isIncludeAirspaceEnabled() && !getCacheSelectMode()) {
+    if (isIncludeAirspaceEnabled() && !app.cacheSelectMode) {
       refreshRestAirspaceLayerData();
     }
     sharedHooks.syncFakeGeoFromCamera?.();
@@ -1168,7 +1164,7 @@ app.map.on("load", async () => {
   app.map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);
   window.addEventListener("online", () => {
-    if (!app.computing && !app.cacheDownloadInProgress && !getCacheSelectMode()) {
+    if (!app.computing && !app.cacheDownloadInProgress && !app.cacheSelectMode) {
       setStatus("");
     }
   });
@@ -1183,7 +1179,6 @@ app.map.on("load", async () => {
       refreshCachedAirportMapLayer();
       syncAirspaceUi();
       raisePathLayer();
-      updateSeedMarkers();
     }
   } catch (error) {
     console.warn(
@@ -1199,10 +1194,9 @@ app.map.on("load", async () => {
     scheduleAutoCompute({ refreshAirports: true });
   }
 
-  updateSeedMarkers();
   try {
     await ensureEngine();
-    if (!getCacheSelectMode()) {
+    if (!app.cacheSelectMode) {
       setStatus("");
     }
   } catch (error) {

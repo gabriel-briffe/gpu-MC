@@ -31,10 +31,6 @@ export function initAutoCompute(h) {
   hooks.clearAutoComputeScheduling = clearAutoComputeScheduling;
 }
 
-export function getAutoComputePending() {
-  return app.autoComputePending;
-}
-
 export function clearAutoComputeScheduling() {
   clearTimeout(app.autoComputeDebounceTimer);
   app.autoComputeDebounceTimer = null;
@@ -148,7 +144,7 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
   const airportsInWindow = collectAirportsInWindow(gridBounds);
   const enabledAirports = hooks.filterDisabledAirports(airportsInWindow);
 
-  hooks.setPendingSeedsFromAirports(
+  hooks.setComputeAirports(
     enabledAirports.map((airport) => ({
       ...airport,
       label: airport.label || formatAirportLabel(airport),

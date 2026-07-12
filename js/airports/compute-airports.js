@@ -1,10 +1,10 @@
 import { formatAirportLabel } from "../airport-label.js";
 import { isAutoParamsMode, isSingleParamsMode } from "../params/panel.js";
 import {
+  airportIdFromComputeAirport,
   airportIdFromFeature,
   airportIdFromManualPlacement,
-  airportIdFromSeed,
-  seedFromOpenAipAirport,
+  computeAirportFromOpenAip,
 } from "./airport-id.js";
 
 const AIRPORT_PICK_LAYERS = ["airports-cached-hit"];
@@ -12,21 +12,20 @@ const AIRPORT_PICK_LAYERS = ["airports-cached-hit"];
 let hooks;
 let app;
 
-export function initSeeds(h) {
+export function initComputeAirports(h) {
   hooks = h;
   app = h.app;
-  hooks.getPendingSeeds = getPendingSeeds;
-  hooks.updateSeedMarkers = updateSeedMarkers;
-  hooks.setPendingSeedsFromAirports = setPendingSeedsFromAirports;
-  hooks.clearPendingSeedsSelection = clearPendingSeedsSelection;
-  hooks.airportIdFromSeed = airportIdFromSeed;
+  hooks.getComputeAirports = getComputeAirports;
+  hooks.setComputeAirports = setComputeAirports;
+  hooks.clearComputeAirports = clearComputeAirports;
+  hooks.airportIdFromComputeAirport = airportIdFromComputeAirport;
   hooks.pickAirportAtMapPoint = pickAirportAtMapPoint;
-  hooks.togglePendingSeedAt = togglePendingSeedAt;
+  hooks.toggleComputeAirportAt = toggleComputeAirportAt;
   hooks.isAirportPickMode = isAirportPickMode;
 }
 
-export function getPendingSeeds() {
-  return app.pendingSeeds;
+function getComputeAirports() {
+  return app.computeAirports;
 }
 
 export function isAirportPickMode() {
@@ -97,7 +96,7 @@ export function pickAirportAtMapPoint(point) {
   return pickFromFeature(ranked[0].feature);
 }
 
-export function togglePendingSeedAt(pick) {
+export function toggleComputeAirportAt(pick) {
   if (!isAirportPickMode() || !pick?.id) {
     return false;
   }
@@ -114,8 +113,8 @@ export function togglePendingSeedAt(pick) {
   return false;
 }
 
-export function setPendingSeedsFromAirports(airports) {
-  app.pendingSeeds = airports.map((airport) => {
+function setComputeAirports(airports) {
+  app.computeAirports = airports.map((airport) => {
     if (airport.id) {
       return {
         id: airport.id,
@@ -126,7 +125,7 @@ export function setPendingSeedsFromAirports(airports) {
       };
     }
     if (airport.properties) {
-      return seedFromOpenAipAirport(airport, {
+      return computeAirportFromOpenAip(airport, {
         label: airport.label ?? formatAirportLabel(airport),
         source: airport.properties.source === "manual" ? "manual" : "airport",
       });
@@ -139,14 +138,10 @@ export function setPendingSeedsFromAirports(airports) {
       source: airport.source ?? "airport",
     };
   });
-  updateSeedMarkers();
-}
-
-export function updateSeedMarkers() {
   hooks.schedulePersistParamsState?.();
 }
 
-export function clearPendingSeedsSelection() {
-  app.pendingSeeds = [];
-  updateSeedMarkers();
+function clearComputeAirports() {
+  app.computeAirports = [];
+  hooks.schedulePersistParamsState?.();
 }

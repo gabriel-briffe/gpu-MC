@@ -1,8 +1,8 @@
 export const dom = {
   appMenuBtn: document.getElementById("app-menu-btn"),
   appMenuBackdrop: document.getElementById("app-menu-backdrop"),
-  osmEnableBtn: document.getElementById("osm-enable"),
-  satelliteEnableBtn: document.getElementById("satellite-enable"),
+  basemapOsmBtn: document.getElementById("osm-enable"),
+  basemapSatelliteBtn: document.getElementById("satellite-enable"),
   glideconesSection: document.getElementById("glidecones-section"),
   glideConesEnableBtn: document.getElementById("glidecones-enable"),
   glideConesSettingsBtn: document.getElementById("glidecones-settings-btn"),

@@ -161,7 +161,7 @@ export function setParamsMode(mode, { initial = false } = {}) {
       if (app.hooks.isComputing()) {
         app.hooks.setComputeShouldStop(true);
       }
-      app.hooks.clearPendingSeedsSelection?.();
+      app.hooks.clearComputeAirports?.();
       app.hooks.clearComputeResults();
       app.hooks.syncComputeContextBar?.();
       app.hooks.refreshCachedAirportMapLayer?.();
@@ -232,7 +232,6 @@ export function initParamsPanel(appState, domRefs) {
   syncParamVisibility();
   syncWeatherOpacityUi();
   setParamsMode(saved?.mode ?? "auto", { initial: true });
-  app.hooks.importLegacyPendingSeeds?.(saved?.legacyPendingSeeds ?? []);
   app.hooks.syncIncludeManualAirportsUi?.();
   app.hooks.updateGridRadiusHint();
   app.hooks.updateTerrainResolutionHint();

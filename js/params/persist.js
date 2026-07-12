@@ -75,11 +75,10 @@ export function loadParamsState() {
     if (data.version !== 1) {
       return null;
     }
-    const mode = data.mode === "manual" ? "auto" : VALID_MODES.has(data.mode) ? data.mode : "auto";
+    const mode = VALID_MODES.has(data.mode) ? data.mode : "auto";
     return {
       mode,
       form: data.form ?? null,
-      legacyPendingSeeds: Array.isArray(data.pendingSeeds) ? data.pendingSeeds : [],
     };
   } catch (error) {
     console.warn("Failed to load saved parameters", error);

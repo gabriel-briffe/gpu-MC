@@ -139,15 +139,4 @@ export function manualAirportsToGeoJsonFeatures(west, south, east, north) {
   }));
 }
 
-export function importLegacyPendingSeeds(pendingSeeds) {
-  if (!Array.isArray(pendingSeeds) || pendingSeeds.length === 0) {
-    return 0;
-  }
-  const manualOnly = pendingSeeds.filter((seed) => {
-    const id = seed.id ?? airportIdFromManualPlacement(seed.lng, seed.lat);
-    return String(id).startsWith("manual:");
-  });
-  return addManualAirportsToStore(manualOnly);
-}
-
 loadManualAirportsFromStorage();

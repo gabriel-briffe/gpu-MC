@@ -149,7 +149,7 @@ export function bindMapEvents(app, hooks) {
       }
       clearMapTap(app);
       const picked = hooks.pickAirportAtMapPoint?.(event.point);
-      if (picked && hooks.togglePendingSeedAt?.(picked)) {
+      if (picked && hooks.toggleComputeAirportAt?.(picked)) {
         markTouchHandled(app);
       }
     }
@@ -188,7 +188,7 @@ export function bindMapEvents(app, hooks) {
 
     if (hooks.isAirportPickMode?.()) {
       const picked = hooks.pickAirportAtMapPoint?.(event.point);
-      if (picked && hooks.togglePendingSeedAt?.(picked)) {
+      if (picked && hooks.toggleComputeAirportAt?.(picked)) {
         return;
       }
     }

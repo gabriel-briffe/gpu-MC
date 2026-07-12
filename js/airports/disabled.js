@@ -59,24 +59,6 @@ function loadDisabledAirportsFromStorage() {
       }
       return;
     }
-
-    const legacyRaw = localStorage.getItem("gpu-mc-disabled-airports-v1");
-    if (!legacyRaw) {
-      return;
-    }
-    const legacy = JSON.parse(legacyRaw);
-    for (const entry of legacy.airports ?? []) {
-      if (!Number.isFinite(entry.lng) || !Number.isFinite(entry.lat)) {
-        continue;
-      }
-      registerDisabledAirport({
-        id: airportIdFromManualPlacement(entry.lng, entry.lat),
-        lng: entry.lng,
-        lat: entry.lat,
-        label: entry.label,
-      });
-    }
-    persistDisabledAirports();
   } catch (error) {
     console.warn("Failed to load disabled airports", error);
   }

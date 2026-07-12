@@ -24,7 +24,7 @@ export function createApp() {
     singleComputePending: null,
     singleComputeDebounceTimer: null,
     singleLastPick: null,
-    pendingSeeds: [],
+    computeAirports: [],
     manualAirportSelectMode: false,
     manualStagingAirports: [],
     pendingManualAirport: null,

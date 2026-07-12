@@ -225,16 +225,16 @@ function updateManualAirportList() {
   manualAirportListEl.hidden = false;
   for (const seed of entries) {
     const row = document.createElement("div");
-    row.className = "seed-list-item";
+    row.className = "manual-airport-list-item";
 
     const label = document.createElement("span");
-    label.className = "seed-list-label";
+    label.className = "manual-airport-list-label";
     label.textContent = seedDisplayLabel(seed);
     label.title = seedDisplayLabel(seed);
 
     const del = document.createElement("button");
     del.type = "button";
-    del.className = "seed-list-delete";
+    del.className = "manual-airport-list-delete";
     del.setAttribute("aria-label", `Remove ${seedDisplayLabel(seed)}`);
     del.textContent = "×";
     del.addEventListener("click", () => removeStoredManualAirport(seed.id));

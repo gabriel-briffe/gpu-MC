@@ -29,7 +29,7 @@ export function endComputeSession() {
   hooks.stopComputeBtn.hidden = true;
   hooks.stopComputeBtn.disabled = false;
   hooks.syncComputeStopBar?.();
-  hooks.updateSeedMarkers();
+  hooks.schedulePersistParamsState?.();
   if (hooks.isAutoParamsMode() && hooks.getAutoComputePending()) {
     void hooks.flushAutoCompute();
   } else if (hooks.isSingleParamsMode?.() && hooks.getSingleComputePending?.()) {
@@ -69,9 +69,9 @@ export async function runComputation(seedsOverride = null, { gridBounds = null }
     return;
   }
 
-  const pendingSeeds = hooks.getPendingSeeds();
+  const computeAirports = hooks.getComputeAirports();
   const seeds =
-    seedsOverride ?? pendingSeeds.map((seed) => ({ lng: seed.lng, lat: seed.lat }));
+    seedsOverride ?? computeAirports.map((airport) => ({ lng: airport.lng, lat: airport.lat }));
 
   if (seeds.length < MIN_SEEDS) {
     hooks.setStatus(`Place at least ${MIN_SEEDS} airport on the map before running`);

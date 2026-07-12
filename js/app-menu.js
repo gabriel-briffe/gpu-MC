@@ -23,11 +23,11 @@ export function initAppMenu(h, domRefs) {
 
   dom.appMenuBackdrop?.addEventListener("click", closeAppMenu);
 
-  dom.osmEnableBtn?.addEventListener("click", () => {
+  dom.basemapOsmBtn?.addEventListener("click", () => {
     setBaseMapRaster(app.baseMapRaster === "osm" ? null : "osm");
   });
 
-  dom.satelliteEnableBtn?.addEventListener("click", () => {
+  dom.basemapSatelliteBtn?.addEventListener("click", () => {
     setBaseMapRaster(app.baseMapRaster === "satellite" ? null : "satellite");
   });
 
@@ -178,11 +178,11 @@ function syncAppMenuUi() {
   dom.glideConesEnableBtn?.classList.toggle("is-active", app.glideConesEnabled);
   dom.glideConesEnableBtn?.setAttribute("aria-pressed", String(app.glideConesEnabled));
 
-  dom.osmEnableBtn?.classList.toggle("is-active", app.baseMapRaster === "osm");
-  dom.osmEnableBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "osm"));
+  dom.basemapOsmBtn?.classList.toggle("is-active", app.baseMapRaster === "osm");
+  dom.basemapOsmBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "osm"));
 
-  dom.satelliteEnableBtn?.classList.toggle("is-active", app.baseMapRaster === "satellite");
-  dom.satelliteEnableBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "satellite"));
+  dom.basemapSatelliteBtn?.classList.toggle("is-active", app.baseMapRaster === "satellite");
+  dom.basemapSatelliteBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "satellite"));
 
   dom.iconCh1EnableBtn?.classList.toggle("is-active", app.iconChActiveModel === "icon-ch1");
   dom.iconCh1EnableBtn?.setAttribute("aria-pressed", String(app.iconChActiveModel === "icon-ch1"));

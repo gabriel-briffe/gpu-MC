@@ -18,7 +18,7 @@ export function initSingleCompute(h) {
   hooks.scheduleSingleAirportCompute = scheduleSingleAirportCompute;
   hooks.flushSingleAirportCompute = flushSingleAirportCompute;
   hooks.clearSingleComputeScheduling = clearSingleComputeScheduling;
-  hooks.getSingleComputePending = getSingleComputePending;
+  hooks.getSingleComputePending = () => app.singleComputePending;
   hooks.getSingleLastPick = () => app.singleLastPick;
 }
 
@@ -27,10 +27,6 @@ export function clearSingleComputeScheduling() {
   app.singleComputeDebounceTimer = null;
   app.singleComputePending = null;
   hooks.updateParamsFooter?.();
-}
-
-export function getSingleComputePending() {
-  return app.singleComputePending;
 }
 
 export function scheduleSingleAirportCompute(pick, { debounce = false } = {}) {
@@ -109,7 +105,7 @@ async function runSingleAirportCompute(pick) {
     hooks.refreshRestAirspaceLayerData?.();
   }
 
-  hooks.setPendingSeedsFromAirports([
+  hooks.setComputeAirports([
     {
       id,
       lng,

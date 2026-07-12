@@ -12,14 +12,14 @@ export function airportIdFromManualPlacement(lng, lat) {
   return `${MANUAL_AIRPORT_ID_PREFIX}${lng.toFixed(5)},${lat.toFixed(5)}`;
 }
 
-export function airportIdFromSeed(seed) {
-  if (seed.id) {
-    return String(seed.id);
+export function airportIdFromComputeAirport(airport) {
+  if (airport.id) {
+    return String(airport.id);
   }
-  if (seed.properties) {
-    return airportIdFromOpenAip(seed.properties, seed.lng, seed.lat);
+  if (airport.properties) {
+    return airportIdFromOpenAip(airport.properties, airport.lng, airport.lat);
   }
-  return airportIdFromManualPlacement(seed.lng, seed.lat);
+  return airportIdFromManualPlacement(airport.lng, airport.lat);
 }
 
 export function airportIdFromFeature(feature) {
@@ -53,12 +53,12 @@ export function airportPropertiesWithId(properties, lng, lat) {
   };
 }
 
-export function seedFromOpenAipAirport(airport, { label, source = "airport" } = {}) {
+export function computeAirportFromOpenAip(airport, { label, source = "airport" } = {}) {
   const { lng, lat, properties = {} } = airport;
   const id = airportIdFromOpenAip(properties, lng, lat);
-  const seed = { id, lng, lat, source };
+  const entry = { id, lng, lat, source };
   if (label) {
-    seed.label = label;
+    entry.label = label;
   }
-  return seed;
+  return entry;
 }
