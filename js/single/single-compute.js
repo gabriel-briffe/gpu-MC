@@ -2,10 +2,12 @@ import { kmBoxAroundLngLat } from "../geo.js";
 import {
   MISSING_CACHED_AIRSPACE_MSG,
   resolveComputeGridBounds,
+  isLngLatInCachedCell,
 } from "../cache-area.js";
-import { AUTO_COMPUTE_DEBOUNCE_MS } from "../constants.js";
+import { AUTO_COMPUTE_DEBOUNCE_MS, MISSING_TERRAIN_CACHE_MSG } from "../constants.js";
 import { isSingleParamsMode } from "../params/panel.js";
 import { getAutoWindowSizeKm } from "../auto/auto-compute.js";
+import { MANUAL_AIRPORT_ID_PREFIX } from "../airports/airport-id.js";
 
 let hooks;
 let app;
@@ -79,7 +81,8 @@ export async function flushSingleAirportCompute() {
   await runSingleAirportCompute(pick);
 }
 
-async function runSingleAirportCompute({ id, lng, lat, label }) {
+async function runSingleAirportCompute(pick) {
+  const { id, lng, lat, label, source } = pick;
   if (!hooks.areOpenAipAirportsAvailable()) {
     hooks.setStatus("Single mode needs OpenAIP — check configuration");
     return false;
@@ -94,6 +97,13 @@ async function runSingleAirportCompute({ id, lng, lat, label }) {
     return false;
   }
 
+  const isManual =
+    source === "manual" || String(id ?? "").startsWith(MANUAL_AIRPORT_ID_PREFIX);
+  if (isManual && !isLngLatInCachedCell(lng, lat)) {
+    hooks.showComputeStopBarMessage?.(MISSING_TERRAIN_CACHE_MSG);
+    return false;
+  }
+
   hooks.refreshCachedAirportMapLayer?.();
   if (requireCachedAirspace) {
     hooks.refreshRestAirspaceLayerData?.();
@@ -105,7 +115,7 @@ async function runSingleAirportCompute({ id, lng, lat, label }) {
       lng,
       lat,
       label,
-      source: "airport",
+      source: source ?? "airport",
     },
   ]);
 

@@ -11,6 +11,8 @@ import {
   MISSING_CACHED_AIRSPACE_MSG,
   resolveComputeGridBounds,
 } from "../cache-area.js";
+import { getManualAirportsInBounds } from "../airports/manual-airports.js";
+import { airportIdFromStoredAirport } from "../airports/airport-id.js";
 import { formatAirportLabel } from "../airport-label.js";
 import { isAutoParamsMode } from "../params/panel.js";
 
@@ -85,6 +87,31 @@ export function syncAutoWindowSizeUi() {
   }
 }
 
+function collectAirportsInWindow(bounds) {
+  const airports = getCachedAirportsInBounds(
+    bounds.west,
+    bounds.south,
+    bounds.east,
+    bounds.north
+  );
+  if (!hooks.isIncludeManualAirportsEnabled?.()) {
+    return airports;
+  }
+  const byId = new Map(airports.map((airport) => [airportIdFromStoredAirport(airport), airport]));
+  for (const manual of getManualAirportsInBounds(
+    bounds.west,
+    bounds.south,
+    bounds.east,
+    bounds.north
+  )) {
+    const id = airportIdFromStoredAirport(manual);
+    if (!byId.has(id)) {
+      byId.set(id, manual);
+    }
+  }
+  return [...byId.values()];
+}
+
 async function runAutoComputation({ refreshAirports = false } = {}) {
   if (!isAutoParamsMode() || hooks.getCacheSelectMode() || !hooks.areOpenAipAirportsAvailable()) {
     if (isAutoParamsMode()) {
@@ -118,19 +145,14 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
   }
 
   hooks.setStatus(`Finding airports in ${windowSizeKm * 2} km window…`);
-  const airportsInWindow = getCachedAirportsInBounds(
-    gridBounds.west,
-    gridBounds.south,
-    gridBounds.east,
-    gridBounds.north
-  );
+  const airportsInWindow = collectAirportsInWindow(gridBounds);
   const enabledAirports = hooks.filterDisabledAirports(airportsInWindow);
 
   hooks.setPendingSeedsFromAirports(
     enabledAirports.map((airport) => ({
       ...airport,
-      label: formatAirportLabel(airport),
-      source: "airport",
+      label: airport.label || formatAirportLabel(airport),
+      source: airport.properties?.source === "manual" ? "manual" : "airport",
     }))
   );
 

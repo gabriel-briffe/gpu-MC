@@ -19,9 +19,9 @@
     </div>
     <div id="app-menu-backdrop" class="app-menu-backdrop" hidden></div>
 
-    <div id="cache-select-bar" hidden>
-      <p id="cache-select-status" class="cache-select-status"></p>
-      <div class="cache-select-actions">
+    <div id="cache-select-bar" class="map-select-bar" hidden>
+      <p id="cache-select-status" class="map-select-status"></p>
+      <div class="map-select-actions">
         <button type="button" class="action-btn btn-green" id="run-cache-download" disabled>
           Cache
         </button>
@@ -32,6 +32,42 @@
           Done
         </button>
       </div>
+    </div>
+
+    <div id="manual-airport-select-bar" class="map-select-bar" hidden>
+      <p id="manual-airport-select-status" class="map-select-status">
+        Click the map to place an airport.
+      </p>
+      <label class="map-select-field-label" for="manual-airport-name">Name (optional)</label>
+      <input
+        type="text"
+        id="manual-airport-name"
+        class="map-select-text-input"
+        placeholder="e.g. EGLL — London Heathrow"
+        autocomplete="off"
+      />
+      <div id="manual-airport-list" class="seed-list map-select-seed-list" hidden aria-label="Saved manual airports"></div>
+      <div class="map-select-actions">
+        <button type="button" class="action-btn btn-blue" id="add-manual-airport" disabled>
+          Add airport
+        </button>
+      </div>
+      <div class="map-select-actions">
+        <button type="button" class="action-btn btn-red" id="clear-manual-airport" disabled>
+          Clear
+        </button>
+        <button type="button" class="action-btn btn-red" id="cancel-manual-airport-select">
+          Cancel
+        </button>
+        <button type="button" class="action-btn btn-green" id="finish-manual-airport" hidden>
+          Done
+        </button>
+      </div>
+    </div>
+
+    <div id="compute-stop-bar" class="map-select-bar map-select-bar--compact" hidden>
+      <p id="compute-stop-message" class="map-select-status compute-stop-message" hidden></p>
+      <button type="button" id="stop-compute" hidden>Stop</button>
     </div>
 
     <div id="iconch1-chrome" hidden>
@@ -59,7 +95,24 @@
     <div id="params-shell" class="params-mode-auto app-menu-popup" hidden>
       <div class="app-menu-popup-inner">
 
+        <section class="app-menu-section" id="basemap-section">
+          <h2 class="app-menu-section-title">Base Map</h2>
+          <div class="app-menu-section-head basemap-section-head">
+            <div class="basemap-raster-buttons">
+              <button type="button" class="module-enable-btn is-active" id="osm-enable" aria-pressed="true">
+                OSM
+              </button>
+              <button type="button" class="module-enable-btn" id="satellite-enable" aria-pressed="false">
+                Satellite
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <hr class="app-menu-divider" />
+
         <section class="app-menu-section" id="glidecones-section">
+          <h2 class="app-menu-section-title">Glide Cones</h2>
           <div class="app-menu-section-head">
             <button type="button" class="module-enable-btn is-active" id="glidecones-enable" aria-pressed="true">
               Glide cones
@@ -81,11 +134,9 @@
         <button type="button" class="params-mode-btn" id="params-mode-auto" aria-pressed="true">
           Auto
         </button>
-        <button type="button" class="params-mode-btn" id="params-mode-manual" aria-pressed="false">
-          Manual
-        </button>
       </div>
           <div id="glidecones-settings" class="app-menu-subsection" hidden>
+            <p class="glide-settings-mode-hint" id="glide-settings-mode-hint" hidden></p>
       <div id="params-scroll">
         <form id="params" aria-label="Glide parameters">
           <div class="params-section">
@@ -282,50 +333,18 @@
             </div>
           </div>
 
-          <div class="params-section params-manual-only">
-            <div class="params-section-title">Display</div>
-            <div class="params-fields">
-              <div class="param-field" id="preview-field">
-                <div class="param-label-row">
-                  <span class="param-label">Preview interval (ms)</span>
-                  <button type="button" class="param-help" data-help="preview" aria-label="Help: preview interval">ⓘ</button>
-                </div>
-                <input id="update-map" type="number" min="0" step="50" value="100" />
-              </div>
-            </div>
-            <div class="params-section-actions">
-              <button type="button" class="action-btn btn-red" id="clear-overlay">Clear overlay</button>
-            </div>
-          </div>
-
-          <div class="params-section params-manual-only" id="seeds-section">
-            <div class="params-section-title">Airports</div>
-            <p class="param-section-desc">
-              Click airports on the map to toggle them, or use Manual selection / Draw airport areas.
-            </p>
-            <div class="params-section-actions">
-              <button type="button" class="action-btn btn-blue" id="toggle-manual-airport-select">
-                Manual selection
-              </button>
-              <button type="button" class="action-btn btn-blue" id="toggle-airport-area-select" disabled>
-                Draw airport areas
-              </button>
-              <button type="button" class="action-btn btn-red" id="clear-all-seeds">Clear all airports</button>
-            </div>
-            <div id="seed-list" class="seed-list" aria-label="Selected airports"></div>
-          </div>
-
           <div class="params-section">
             <div class="params-fields">
+              <input id="update-map" type="hidden" value="100" />
               <div class="param-field param-field-full">
                 <div class="param-label-row">
                   <span class="param-label">Overlay</span>
                   <button type="button" class="param-help" data-help="viz-mode" aria-label="Help: overlay mode">ⓘ</button>
                 </div>
                 <select id="viz-mode">
-                  <option value="contours" selected>Contours</option>
                   <option value="path-only">Path only</option>
                   <option value="sectors">Sectors</option>
+                  <option value="contours" selected>Contours</option>
                   <option value="contours-sectors">Contours + sectors</option>
                   <option value="stripes" class="viz-mode-debug-only" hidden disabled>Stripes</option>
                   <option value="raw" class="viz-mode-debug-only" hidden disabled>Raw raster</option>
@@ -349,12 +368,6 @@
               </div>
               <p class="param-section-desc param-field-full" id="path-input-hint"></p>
             </div>
-          </div>
-
-          <div class="params-section params-manual-only">
-            <div class="params-section-actions">
-              <button type="button" class="action-btn btn-green" id="run-compute" disabled>Run</button>
-            </div>
             <div class="params-section-actions params-section-actions-secondary">
               <button type="button" class="action-btn btn-green" id="download-contours" hidden disabled>
                 Download contours
@@ -362,7 +375,24 @@
             </div>
           </div>
 
-          <div class="params-section params-single-manual-only">
+          <div class="params-section">
+            <div class="params-section-actions">
+              <button type="button" class="action-btn btn-blue" id="add-manual-airports">
+                Add manual airports
+              </button>
+            </div>
+            <div class="include-manual-airports-row" id="include-manual-airports-field" hidden>
+              <label class="param-check" for="include-manual-airports">
+                <input id="include-manual-airports" type="checkbox" />
+                <span>Include manual airports</span>
+              </label>
+            </div>
+            <div class="params-section-actions">
+              <button type="button" class="action-btn btn-blue" id="open-cache-data">
+                Add data
+              </button>
+            </div>
+            <hr class="params-section-divider" />
             <div class="params-fields">
               <div class="param-field param-field-full" id="debug-mode-field">
                 <label class="param-check" for="debug-mode">
@@ -372,69 +402,12 @@
               </div>
             </div>
           </div>
-
-          <div class="params-section">
-            <div class="params-section-actions">
-              <button type="button" class="action-btn btn-blue" id="open-cache-data">
-                Add data
-              </button>
-            </div>
-          </div>
         </form>
         </div>
-      <div id="manual-airport-select-panel" class="params-overlay-panel" hidden>
-        <div class="params-section-title">Manual selection</div>
-        <p class="param-section-desc">Click the map to place an airport.</p>
-        <div class="params-fields">
-          <div class="param-field param-field-full">
-            <div class="param-label-row">
-              <label class="param-label" for="manual-airport-name">Name</label>
-            </div>
-            <input
-              type="text"
-              id="manual-airport-name"
-              placeholder="e.g. EGLL — London Heathrow"
-              autocomplete="off"
-            />
-          </div>
-        </div>
-        <div id="manual-airport-list" class="seed-list" hidden aria-label="Picked airports"></div>
-        <div class="params-section-actions">
-          <button type="button" class="action-btn btn-blue" id="add-manual-airport" disabled>
-            Add airport
-          </button>
-        </div>
-        <div class="params-section-actions">
-          <button type="button" class="action-btn btn-red" id="clear-manual-airport" disabled>
-            Clear
-          </button>
-          <button type="button" class="action-btn btn-green" id="finish-manual-airport" hidden>
-            Finished
-          </button>
-        </div>
-      </div>
-      <div id="airport-area-select-panel" class="params-overlay-panel" hidden>
-        <div class="params-section-title">Draw airport areas</div>
-        <p class="param-section-desc">
-          Drag to draw the first area, then pan/zoom freely. Use Add new area to draw more, or drag corner handles to resize.
-        </p>
-        <div class="params-section-actions">
-          <button type="button" class="action-btn btn-blue" id="add-airport-area" disabled>
-            Add new area
-          </button>
-          <button type="button" class="action-btn btn-red" id="clear-airport-areas" disabled>
-            Clear areas
-          </button>
-          <button type="button" class="action-btn btn-green" id="add-airports-from-areas" disabled>
-            Add airports from areas
-          </button>
-        </div>
-      </div>
       <div id="params-footer">
         <div id="params-footer-info">
           <div id="status">Loading WebGPU…</div>
         </div>
-        <button type="button" id="stop-compute" hidden>Stop</button>
       </div>
           </div>
         </section>
@@ -442,6 +415,7 @@
         <hr class="app-menu-divider" />
 
         <section class="app-menu-section" id="iconch1-section">
+          <h2 class="app-menu-section-title">Vertical Velocity</h2>
           <div class="app-menu-section-head iconch-section-head">
             <div class="iconch-model-buttons">
               <button type="button" class="module-enable-btn" id="iconch1-enable" aria-pressed="false">
@@ -463,6 +437,20 @@
           </div>
           <div id="iconch-settings" class="app-menu-subsection" hidden>
             <div class="iconch1-settings-panel">
+              <div class="param-field param-field-full" id="weather-opacity-field">
+                <div class="param-label-row">
+                  <label class="param-label" for="weather-opacity">Weather opacity</label>
+                </div>
+                <input
+                  type="range"
+                  id="weather-opacity"
+                  min="50"
+                  max="100"
+                  step="5"
+                  value="70"
+                />
+                <span class="param-hint" id="weather-opacity-hint">70%</span>
+              </div>
               <section class="iconch1-settings-cache">
                 <h3>Cache forecast</h3>
                 <div class="iconch-settings-model-slider">
@@ -495,7 +483,7 @@
                   <select id="iconch1-cache-to" aria-label="Cache end time UTC"></select>
                 </label>
                 <p class="iconch1-cache-estimate" id="iconch1-cache-estimate">
-                  One hour forecast for CH1: 177MB
+                  One hour forecast for CH1: 177MB before processing, ensure good network
                 </p>
                 <button type="button" class="action-btn btn-green" id="iconch-cache-run">Cache CH1</button>
                 <progress class="iconch1-progress" id="iconch1-cache-progress" value="0" max="100" hidden></progress>

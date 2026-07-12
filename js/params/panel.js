@@ -19,10 +19,6 @@ function isAutoParamsMode() {
   return paramsMode === "auto";
 }
 
-function isManualParamsMode() {
-  return paramsMode === "manual";
-}
-
 function isSingleParamsMode() {
   return paramsMode === "single";
 }
@@ -59,14 +55,18 @@ function getSectorsOverlayOpacity() {
   return Math.max(0, Math.min(100, value)) / 100;
 }
 
-export { getSectorsOverlayOpacity };
+function getWeatherOverlayOpacity() {
+  const value = Number.parseInt(dom.weatherOpacityInput?.value ?? "70", 10);
+  if (!Number.isFinite(value)) {
+    return 0.7;
+  }
+  return Math.max(50, Math.min(100, value)) / 100;
+}
+
+export { getSectorsOverlayOpacity, getWeatherOverlayOpacity };
 
 export function syncParamVisibility() {
   const { mode } = parseVizMode();
-  if (dom.previewFieldEl) {
-    dom.previewFieldEl.hidden =
-      mode === "contours" || mode === "path-only" || mode === "modified-cells";
-  }
   if (dom.vizHintEl) {
     dom.vizHintEl.textContent = VIZ_HINTS[mode] ?? "";
   }
@@ -84,6 +84,18 @@ export function syncSectorsOpacityUi() {
   }
 }
 
+export function syncWeatherOpacityUi() {
+  if (dom.weatherOpacityInput) {
+    const value = Number.parseInt(dom.weatherOpacityInput.value, 10);
+    if (Number.isFinite(value) && value < 50) {
+      dom.weatherOpacityInput.value = "50";
+    }
+  }
+  if (dom.weatherOpacityHintEl && dom.weatherOpacityInput) {
+    dom.weatherOpacityHintEl.textContent = `${dom.weatherOpacityInput.value}%`;
+  }
+}
+
 export function applySectorsOverlayOpacity() {
   const map = app.hooks.getMap();
   if (!parseVizMode().sectors || !map) {
@@ -96,6 +108,14 @@ export function applySectorsOverlayOpacity() {
   if (map.getLayer("glide-sectors-line")) {
     map.setPaintProperty("glide-sectors-line", "line-opacity", opacity);
   }
+}
+
+export function applyWeatherOverlayOpacity() {
+  const map = app.hooks.getMap();
+  if (!map?.getLayer("ch1-sectors-layer")) {
+    return;
+  }
+  map.setPaintProperty("ch1-sectors-layer", "fill-opacity", getWeatherOverlayOpacity());
 }
 
 export function syncVizModeDebugOptions() {
@@ -112,34 +132,26 @@ export function syncVizModeDebugOptions() {
     dom.vizModeSelect.value = "contours";
     syncParamVisibility();
     if (app.hooks.getConeState() && !app.hooks.isComputing()) {
-      app.hooks.setStatus("Overlay type changed — click Run to refresh");
+      if (isAutoParamsMode()) {
+        app.hooks.scheduleAutoCompute({ debounce: false });
+      } else if (isSingleParamsMode()) {
+        app.hooks.scheduleSingleAirportCompute?.(undefined, { debounce: false });
+      }
     }
   }
 }
 
 export function setParamsMode(mode, { initial = false } = {}) {
   paramsMode = mode;
-  for (const name of ["single", "auto", "manual"]) {
+  for (const name of ["single", "auto"]) {
     dom.paramsShell?.classList.toggle(`params-mode-${name}`, mode === name);
   }
   dom.paramsModeSingleBtn?.setAttribute("aria-pressed", String(mode === "single"));
   dom.paramsModeAutoBtn?.setAttribute("aria-pressed", String(mode === "auto"));
-  dom.paramsModeManualBtn?.setAttribute("aria-pressed", String(mode === "manual"));
 
   if (!initial) {
-    if (mode !== "manual") {
-      if (app.hooks.getManualAirportSelectMode()) {
-        app.hooks.exitManualAirportSelectMode(true);
-      }
-      if (app.hooks.getAirportAreaSelectMode()) {
-        app.hooks.exitAirportAreaSelectMode(true);
-      }
-      if (app.openParamHelpButton?.dataset.help) {
-        const manualOnlyHelp = new Set(["preview"]);
-        if (manualOnlyHelp.has(app.openParamHelpButton.dataset.help)) {
-          closeParamHelp();
-        }
-      }
+    if (app.hooks.getManualAirportSelectMode()) {
+      app.hooks.exitManualAirportSelectMode(false);
     }
 
     app.hooks.clearAutoComputeScheduling();
@@ -152,12 +164,14 @@ export function setParamsMode(mode, { initial = false } = {}) {
       app.hooks.clearPendingSeedsSelection?.();
       app.hooks.clearComputeResults();
       app.hooks.syncComputeContextBar?.();
+      app.hooks.refreshCachedAirportMapLayer?.();
       if (app.singleLastPick?.id) {
         app.hooks.scheduleSingleAirportCompute?.(undefined, { debounce: false });
       } else {
         app.hooks.setStatus("");
       }
     } else if (mode === "auto") {
+      app.hooks.refreshCachedAirportMapLayer?.();
       app.hooks.scheduleAutoCompute({ refreshAirports: true });
     }
   }
@@ -217,21 +231,31 @@ export function initParamsPanel(appState, domRefs) {
   restoreParamsState(dom, app, saved);
 
   syncParamVisibility();
+  syncWeatherOpacityUi();
   setParamsMode(saved?.mode ?? "auto", { initial: true });
+  app.hooks.importLegacyPendingSeeds?.(saved?.legacyPendingSeeds ?? []);
+  app.hooks.syncIncludeManualAirportsUi?.();
   app.hooks.updateGridRadiusHint();
   app.hooks.updateTerrainResolutionHint();
   app.hooks.syncAutoWindowSizeUi();
   app.hooks.syncAirspaceUi?.();
+  applyWeatherOverlayOpacity();
 
   dom.paramsModeSingleBtn?.addEventListener("click", () => setParamsMode("single"));
   dom.paramsModeAutoBtn?.addEventListener("click", () => setParamsMode("auto"));
-  dom.paramsModeManualBtn?.addEventListener("click", () => setParamsMode("manual"));
 
   const onParamsEdited = () => {
     app.hooks.schedulePersistParamsState?.();
   };
   dom.paramsForm?.addEventListener("input", onParamsEdited);
   dom.paramsForm?.addEventListener("change", onParamsEdited);
+
+  dom.includeManualAirportsInput?.addEventListener("change", () => {
+    app.hooks.schedulePersistParamsState?.();
+    if (isAutoParamsMode()) {
+      app.hooks.scheduleAutoCompute({ debounce: false, refreshAirports: true });
+    }
+  });
 
   for (const button of document.querySelectorAll(".param-help")) {
     button.addEventListener("click", (event) => {
@@ -302,6 +326,12 @@ export function initParamsPanel(appState, domRefs) {
     applySectorsOverlayOpacity();
   });
 
+  dom.weatherOpacityInput?.addEventListener("input", () => {
+    syncWeatherOpacityUi();
+    applyWeatherOverlayOpacity();
+    app.hooks.schedulePersistParamsState?.();
+  });
+
   app.hooks.detectInteractionMode();
   for (const query of ["(pointer: coarse)", "(pointer: fine)", "(hover: hover)"]) {
     window.matchMedia(query).addEventListener("change", app.hooks.detectInteractionMode);
@@ -312,14 +342,11 @@ export function initParamsPanel(appState, domRefs) {
   dom.paramsShell?.addEventListener("pointerenter", app.hooks.clearCellInspect);
   dom.paramsShell?.addEventListener("touchstart", app.hooks.clearCellInspect, { passive: true });
 
-  dom.paramsFooterEl?.addEventListener("click", (event) => {
-    if (event.target.closest("#stop-compute")) {
-      return;
-    }
+  dom.paramsFooterEl?.addEventListener("click", () => {
     if (!app.glideSettingsOpen) {
       app.hooks.openGlideSettings?.();
     }
   });
 }
 
-export { isDebugMode, isAutoParamsMode, isManualParamsMode, isSingleParamsMode };
+export { isDebugMode, isAutoParamsMode, isSingleParamsMode };

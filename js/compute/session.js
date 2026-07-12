@@ -1,5 +1,5 @@
 import { buildDemGrid } from "../dem.js";
-import { MIN_SEEDS, COMPUTE_DONE_STATUS_CLEAR_MS } from "../constants.js";
+import { MIN_SEEDS, COMPUTE_DONE_STATUS_CLEAR_MS, MISSING_TERRAIN_CACHE_MSG, isMissingCachedCoverageError } from "../constants.js";
 import { formatComputeDone } from "./format.js";
 import { getGlideParams } from "./params.js";
 import { updateConeVisualization, updateOverlay } from "./visualization.js";
@@ -14,14 +14,10 @@ export function initComputeSession(h) {
 export function startComputeSession() {
   hooks.setComputeShouldStop(false);
   hooks.setComputing(true);
+  hooks.clearComputeStopBarMessage?.();
   hooks.stopComputeBtn.hidden = false;
   hooks.stopComputeBtn.disabled = false;
-  if (hooks.runComputeBtn) {
-    hooks.runComputeBtn.disabled = true;
-  }
-  if (hooks.getAirportAreaSelectMode()) {
-    hooks.exitAirportAreaSelectMode(false);
-  }
+  hooks.syncComputeStopBar?.();
   if (hooks.getManualAirportSelectMode()) {
     hooks.exitManualAirportSelectMode(false);
   }
@@ -32,6 +28,7 @@ export function endComputeSession() {
   hooks.setComputeShouldStop(false);
   hooks.stopComputeBtn.hidden = true;
   hooks.stopComputeBtn.disabled = false;
+  hooks.syncComputeStopBar?.();
   hooks.updateSeedMarkers();
   if (hooks.isAutoParamsMode() && hooks.getAutoComputePending()) {
     void hooks.flushAutoCompute();
@@ -125,8 +122,14 @@ export async function runComputation(seedsOverride = null, { gridBounds = null }
       { clearAfterMs: COMPUTE_DONE_STATUS_CLEAR_MS }
     );
   } catch (error) {
-    hooks.setStatus(`Error: ${error.message}`);
-    console.error(error);
+    const message = error?.message ?? String(error);
+    if (isMissingCachedCoverageError(message)) {
+      hooks.showComputeStopBarMessage?.(MISSING_TERRAIN_CACHE_MSG);
+      hooks.setStatus("");
+    } else {
+      hooks.setStatus(`Error: ${message}`);
+      console.error(error);
+    }
   } finally {
     endComputeSession();
   }

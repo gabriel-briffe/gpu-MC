@@ -24,6 +24,8 @@ import {
   MAP_INITIAL_ZOOM,
   MAP_MAX_ZOOM,
   CACHE_SELECT_FOOTER_HINT,
+  MANUAL_INSPECT_MS,
+  MISSING_TERRAIN_CACHE_MSG,
 } from "./constants.js";
 import { createApp } from "./app-state.js";
 import {
@@ -84,10 +86,11 @@ import {
   syncDebugUi,
   isDebugMode,
   isAutoParamsMode,
-  isManualParamsMode,
   isSingleParamsMode,
   getParamsMode,
   setParamsMode,
+  applyWeatherOverlayOpacity,
+  getWeatherOverlayOpacity,
 } from "./params/panel.js";
 import {
   initSeeds,
@@ -96,15 +99,17 @@ import {
 } from "./airports/seeds.js";
 import { initDisabledAirports } from "./airports/disabled.js";
 import {
+  addManualAirportsToStore,
+  getManualAirportCount,
+  getManualAirports,
+  importLegacyPendingSeeds,
+  removeManualAirportFromStore,
+} from "./airports/manual-airports.js";
+import {
   initManualSelect,
   exitManualAirportSelectMode,
   getManualAirportSelectMode,
 } from "./airports/manual-select.js";
-import {
-  initAreaSelect,
-  exitAirportAreaSelectMode,
-  getAirportAreaSelectMode,
-} from "./airports/area-select.js";
 import { initAutoCompute, scheduleAutoCompute, clearAutoComputeScheduling, onAutoModeMapMoveEnd, syncAutoWindowSizeUi } from "./auto/auto-compute.js";
 import { initSingleCompute, clearSingleComputeScheduling, flushSingleAirportCompute, getSingleComputePending, scheduleSingleAirportCompute } from "./single/single-compute.js";
 import { initCacheUi, getCacheSelectMode } from "./cache/cache-ui.js";
@@ -120,6 +125,7 @@ import {
 } from "./app-menu.js";
 import { initIconCh1 } from "./iconch1/iconch1-app.js";
 import { raiseIconCh1Layer } from "./map/layers.js";
+import { ensureRasterBasemapLayers, setBaseMapRasterMode } from "./map/osm-basemap.js";
 import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
@@ -137,7 +143,6 @@ const {
   sectorsOpacityFieldEl,
   sectorsOpacityInput,
   sectorsOpacityHintEl,
-  previewFieldEl,
   vizHintEl,
   gridRadiusHintEl,
   terrainZoomInput,
@@ -147,20 +152,20 @@ const {
   autoWindowSizeFieldEl,
   autoWindowGlideHintEl,
   includeAirspaceInput,
+  includeManualAirportsInput,
+  includeManualAirportsFieldEl,
   paramHelpPopover,
   downloadContoursBtn,
   stopComputeBtn,
-  runComputeBtn,
-  toggleAirportAreaSelectBtn,
-  toggleManualAirportSelectBtn,
-  addAirportAreaBtn,
-  addAirportsFromAreasBtn,
-  clearAirportAreasBtn,
+  addManualAirportsBtn,
   addManualAirportBtn,
   clearManualAirportBtn,
   finishManualAirportBtn,
   manualAirportNameInput,
   manualAirportListEl,
+  manualAirportSelectBar,
+  manualAirportSelectStatusEl,
+  cancelManualAirportSelectBtn,
   debugModeInput,
   computeContextBarEl,
   computeContextGeoStatsEl,
@@ -174,14 +179,11 @@ const {
   paramsShell,
   paramsModeSingleBtn,
   paramsModeAutoBtn,
-  paramsModeManualBtn,
   paramsScrollEl,
-  seedsSectionEl,
-  airportAreaSelectPanel,
-  manualAirportSelectPanel,
-  clearOverlayBtn,
-  clearAllSeedsBtn,
+  computeStopBar,
+  computeStopMessageEl,
   pathInputHintEl,
+  glideSettingsModeHintEl,
   openCacheDataBtn,
   cacheSelectBar,
   cacheSelectStatusEl,
@@ -219,6 +221,31 @@ function updateInteractionHints() {
   }
 }
 
+function updateGlideSettingsModeHint() {
+  if (!glideSettingsModeHintEl) {
+    return;
+  }
+  if (getCacheSelectMode() || getManualAirportSelectMode()) {
+    glideSettingsModeHintEl.hidden = true;
+    return;
+  }
+  switch (getParamsMode()) {
+    case "single":
+      glideSettingsModeHintEl.hidden = false;
+      glideSettingsModeHintEl.textContent = app.singleLastPick?.id
+        ? "In single mode, click an airport or change params to recompute."
+        : "In single mode, click an airport to compute.";
+      break;
+    case "auto":
+      glideSettingsModeHintEl.hidden = false;
+      glideSettingsModeHintEl.textContent =
+        "In auto mode, click an airport to enable or disable it from compute.";
+      break;
+    default:
+      glideSettingsModeHintEl.hidden = true;
+  }
+}
+
 function getParamsFooterHint() {
   if (getCacheSelectMode()) {
     const selected = app.selectedCacheCells.size;
@@ -228,23 +255,102 @@ function getParamsFooterHint() {
     return `${selected} cell${selected === 1 ? "" : "s"} selected`;
   }
 
-  switch (getParamsMode()) {
-    case "single":
-      if (app.singleLastPick?.id) {
-        return "click an airport or change params to recompute";
+  if (getManualAirportSelectMode()) {
+    return "Click the map to place an airport.";
+  }
+
+  return "";
+}
+
+function activeMapSelectStatusEl() {
+  if (getCacheSelectMode()) {
+    return dom.cacheSelectStatusEl;
+  }
+  if (getManualAirportSelectMode()) {
+    return dom.manualAirportSelectStatusEl;
+  }
+  return null;
+}
+
+function isIncludeManualAirportsEnabled() {
+  return includeManualAirportsInput?.checked ?? false;
+}
+
+function setIncludeManualAirports(enabled) {
+  if (includeManualAirportsInput) {
+    includeManualAirportsInput.checked = enabled;
+  }
+  app.hooks.schedulePersistParamsState?.();
+}
+
+function syncIncludeManualAirportsUi() {
+  const count = getManualAirportCount();
+  if (includeManualAirportsFieldEl) {
+    includeManualAirportsFieldEl.hidden = count === 0;
+  }
+  if (includeManualAirportsInput) {
+    includeManualAirportsInput.disabled = count === 0;
+  }
+}
+
+function clearComputeStopBarMessage() {
+  if (app.computeStopBarClearTimer !== null) {
+    window.clearTimeout(app.computeStopBarClearTimer);
+    app.computeStopBarClearTimer = null;
+  }
+  app.computeStopBarMessage = "";
+  if (computeStopMessageEl) {
+    computeStopMessageEl.hidden = true;
+    computeStopMessageEl.textContent = "";
+  }
+}
+
+function showComputeStopBarMessage(
+  text,
+  { clearAfterMs = MANUAL_INSPECT_MS } = {}
+) {
+  clearComputeStopBarMessage();
+  app.computeStopBarMessage = text;
+  if (computeStopMessageEl) {
+    computeStopMessageEl.textContent = text;
+    computeStopMessageEl.hidden = false;
+  }
+  if (stopComputeBtn) {
+    stopComputeBtn.hidden = true;
+  }
+  syncComputeStopBar();
+  if (clearAfterMs > 0) {
+    const snapshot = text;
+    app.computeStopBarClearTimer = window.setTimeout(() => {
+      app.computeStopBarClearTimer = null;
+      if (app.computeStopBarMessage === snapshot) {
+        clearComputeStopBarMessage();
+        syncComputeStopBar();
       }
-      return "click an airport to compute";
-    case "auto":
-    case "manual":
-    default:
-      return "click airport to enable/disable";
+    }, clearAfterMs);
+  }
+}
+
+function syncComputeStopBar() {
+  const computing = app.computing;
+  const hasMessage = Boolean(app.computeStopBarMessage);
+  if (computeStopBar) {
+    computeStopBar.hidden = !computing && !hasMessage;
+  }
+  if (stopComputeBtn) {
+    stopComputeBtn.hidden = !computing || hasMessage;
+  }
+  if (computeStopMessageEl) {
+    computeStopMessageEl.hidden = !hasMessage || computing;
   }
 }
 
 function updateParamsFooter() {
+  updateGlideSettingsModeHint();
   const text = app.footerStatusText || getParamsFooterHint();
-  if (getCacheSelectMode() && dom.cacheSelectStatusEl) {
-    dom.cacheSelectStatusEl.textContent = text;
+  const mapSelectStatus = activeMapSelectStatusEl();
+  if (mapSelectStatus) {
+    mapSelectStatus.textContent = text;
     return;
   }
   if (!statusEl) {
@@ -275,6 +381,7 @@ function syncOpenAipVectorTiles() {
   }
   if (!isDebugMode()) {
     removeOpenAipVectorTiles(app.map);
+    raisePathLayer();
     return;
   }
   const wantTiles = isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable();
@@ -282,9 +389,11 @@ function syncOpenAipVectorTiles() {
     if (initOpenAipAirspaceTiles(app.map, app.openAipConfig)) {
       setOpenAipAirspaceVisible(app.map, true);
     }
+    raisePathLayer();
     return;
   }
   removeOpenAipVectorTiles(app.map);
+  raisePathLayer();
 }
 
 function isIncludeAirspaceEnabled() {
@@ -318,6 +427,7 @@ function syncAirspaceUi() {
       airspaceInfoEl.textContent = "—";
     }
   }
+  raisePathLayer();
 }
 
 function updateGridRadiusHint() {
@@ -393,15 +503,21 @@ const sharedHooks = {
   runComputation,
   ensureEngine,
   isAutoParamsMode,
-  isManualParamsMode,
   isSingleParamsMode,
   isGeoTrackingOn,
   areOpenAipAirportsAvailable,
+  isIncludeManualAirportsEnabled,
+  setIncludeManualAirports,
+  syncIncludeManualAirportsUi,
+  addManualAirportsToStore,
+  getManualAirportCount,
+  getManualAirports,
+  removeManualAirportFromStore,
+  importLegacyPendingSeeds,
   setStatus,
   stopComputeBtn,
-  runComputeBtn,
   downloadContoursBtn,
-  clearOverlayBtn,
+  addManualAirportsBtn,
   vizModeSelect,
   paramsForm,
   infoEl: info,
@@ -415,6 +531,9 @@ const sharedHooks = {
   getIconChActiveModel,
   toggleIconChActiveModel,
   raiseIconCh1Layer,
+  setBaseMapRasterMode: (mode) => {
+    setBaseMapRasterMode(app.map, mode);
+  },
   computeContextBarEl,
   clearCellInspect,
   clearGlidePath,
@@ -423,6 +542,8 @@ const sharedHooks = {
   ensurePathLayer,
   raisePathLayer,
   syncAirspaceUi,
+  applyWeatherOverlayOpacity,
+  getWeatherOverlayOpacity,
   setCacheDataWarnings,
   clearCacheDataWarnings,
   updateAirspaceInfo,
@@ -434,26 +555,23 @@ const sharedHooks = {
   setLastPathScreenBounds,
   updateCellTooltip,
   updateParamsFooter,
+  syncComputeStopBar,
+  showComputeStopBarMessage,
+  clearComputeStopBarMessage,
   onMapMouseMove,
   onMapMouseLeave,
   onMapClickInspect,
   syncPathsOnMapMove,
-  seedListEl,
-  paramsScrollEl,
-  seedsSectionEl,
-  clearAllSeedsBtn,
-  manualAirportSelectPanel,
+  manualAirportSelectBar,
+  manualAirportSelectStatusEl,
+  cancelManualAirportSelectBtn,
   manualAirportListEl,
   manualAirportNameInput,
   addManualAirportBtn,
   clearManualAirportBtn,
   finishManualAirportBtn,
-  toggleManualAirportSelectBtn,
-  airportAreaSelectPanel,
-  toggleAirportAreaSelectBtn,
-  addAirportAreaBtn,
-  addAirportsFromAreasBtn,
-  clearAirportAreasBtn,
+  includeManualAirportsInput,
+  includeManualAirportsFieldEl,
   autoWindowSizeInput,
   autoWindowFromGlideInput,
   autoWindowSizeFieldEl,
@@ -476,7 +594,6 @@ const sharedHooks = {
 initDisabledAirports(sharedHooks);
 initSeeds(sharedHooks);
 initManualSelect(sharedHooks);
-initAreaSelect(sharedHooks);
 initCacheUi(sharedHooks);
 initAppMenu(sharedHooks, dom);
 initIconCh1(sharedHooks, dom);
@@ -494,14 +611,12 @@ app.hooks = {
   isComputing: () => app.computing,
   getLastInspectCell,
   getManualAirportSelectMode,
-  getAirportAreaSelectMode,
   clearAutoComputeScheduling,
   clearSingleComputeScheduling,
   flushSingleAirportCompute,
   getSingleComputePending,
   getSingleLastPick: () => app.singleLastPick,
   exitManualAirportSelectMode,
-  exitAirportAreaSelectMode,
   scheduleAutoCompute,
   scheduleSingleAirportCompute,
   getParamsMode,
@@ -510,12 +625,17 @@ app.hooks = {
   showCellInspect,
   setStatus,
   syncAirspaceUi,
+  applyWeatherOverlayOpacity,
+  getWeatherOverlayOpacity,
   updateAirspaceInfo,
   refreshInspectPath,
   updateGeoLocationPath,
   isGeoTrackingOn,
   clearCellInspect,
   updateParamsFooter,
+  syncComputeStopBar,
+  showComputeStopBarMessage,
+  clearComputeStopBarMessage,
   detectInteractionMode,
   onTerrainZoomChange,
   syncBaseMapTerrainMaxZoom,
@@ -524,6 +644,12 @@ app.hooks = {
   syncAutoWindowSizeUi,
   updateInteractionHints,
   isIncludeAirspaceEnabled,
+  isIncludeManualAirportsEnabled,
+  setIncludeManualAirports,
+  syncIncludeManualAirportsUi,
+  importLegacyPendingSeeds,
+  addManualAirportsToStore,
+  getManualAirportCount,
   isDebugMode,
   clearComputeResults,
   setComputeShouldStop: (value) => {
@@ -1028,6 +1154,8 @@ function syncOfflineBanner() {
 
 app.map.on("load", async () => {
   syncBaseMapTerrainMaxZoom();
+  ensureRasterBasemapLayers(app.map);
+  setBaseMapRasterMode(app.map, app.baseMapRaster);
   ensurePathLayer();
   initFakeGeo(app, sharedHooks);
   app.map.on("moveend", () => {

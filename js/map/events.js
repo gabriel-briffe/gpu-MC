@@ -3,9 +3,8 @@ import {
   clearRasterOverlay,
   clearContourOverlay,
   clearSectorBorderOverlay,
-  clearAllOverlays,
 } from "../compute/visualization.js";
-import { requestStopCompute, runComputation } from "../compute/session.js";
+import { requestStopCompute } from "../compute/session.js";
 
 const TAP_MOVE_TOLERANCE_SQ = 100;
 
@@ -41,15 +40,6 @@ export function bindMapEvents(app, hooks) {
 
   map.on("mousemove", (event) => {
     maybeUpdateAirspaceInfo(hooks, event.lngLat.lng, event.lngLat.lat);
-
-    if (hooks.getAirportAreaSelectMode()) {
-      if (hooks.hasAirportRectInteraction()) {
-        hooks.updateAirportAreaInteraction(event.lngLat);
-      } else {
-        hooks.syncAreaSelectCursor(event.point);
-      }
-      return;
-    }
 
     if (hooks.getManualAirportSelectMode()) {
       return;
@@ -93,25 +83,7 @@ export function bindMapEvents(app, hooks) {
     }
   });
 
-  map.on("mousedown", (event) => {
-    if (event.originalEvent.button !== 0) {
-      return;
-    }
-    if (!hooks.getAirportAreaSelectMode()) {
-      return;
-    }
-    hooks.beginAirportAreaInteraction(event.lngLat, event.point);
-  });
-
-  map.on("mouseup", (event) => {
-    hooks.finishAirportAreaInteraction(event.lngLat);
-  });
-
   map.on("mouseleave", () => {
-    if (hooks.hasAirportRectInteraction()) {
-      hooks.cancelAirportRectInteraction();
-      hooks.syncAirportAreaSelectUi();
-    }
     if (!app.interaction.hoverPath) {
       return;
     }
@@ -119,10 +91,6 @@ export function bindMapEvents(app, hooks) {
   });
 
   map.on("touchstart", (event) => {
-    if (hooks.getAirportAreaSelectMode() && !hooks.isComputing() && event.points.length === 1) {
-      hooks.beginAirportAreaInteraction(event.lngLat, event.point);
-      return;
-    }
     if (hooks.getManualAirportSelectMode() && !hooks.isComputing() && event.points.length === 1) {
       app.manualTouchStart = event.point;
       return;
@@ -135,11 +103,6 @@ export function bindMapEvents(app, hooks) {
 
   map.on("touchmove", (event) => {
     maybeUpdateAirspaceInfo(hooks, event.lngLat.lng, event.lngLat.lat);
-
-    if (hooks.getAirportAreaSelectMode() && hooks.hasAirportRectInteraction()) {
-      hooks.updateAirportAreaInteraction(event.lngLat);
-      return;
-    }
 
     if (app.manualTouchStart) {
       const dx = event.point.x - app.manualTouchStart.x;
@@ -157,12 +120,6 @@ export function bindMapEvents(app, hooks) {
 
   map.on("touchend", (event) => {
     maybeUpdateAirspaceInfo(hooks, event.lngLat.lng, event.lngLat.lat);
-
-    if (hooks.getAirportAreaSelectMode() && hooks.hasAirportRectInteraction()) {
-      hooks.finishAirportAreaInteraction(event.lngLat);
-      markTouchHandled(app);
-      return;
-    }
 
     if (hooks.getManualAirportSelectMode() && !hooks.isComputing()) {
       if (app.manualTouchStart) {
@@ -202,10 +159,6 @@ export function bindMapEvents(app, hooks) {
     app.manualTouchStart = null;
     clearMapTap(app);
     app.touchGestureWasPan = false;
-    if (hooks.hasAirportRectInteraction()) {
-      hooks.cancelAirportRectInteraction();
-      hooks.syncAirportAreaSelectUi();
-    }
   });
 
   map.on("click", (event) => {
@@ -219,9 +172,7 @@ export function bindMapEvents(app, hooks) {
 
     if (
       app.touchHandledRecently ||
-      app.touchGestureWasPan ||
-      hooks.getAirportAreaSelectMode() ||
-      hooks.hasAirportRectInteraction()
+      app.touchGestureWasPan
     ) {
       app.touchGestureWasPan = false;
       return;
@@ -283,10 +234,6 @@ export function bindUiEvents(app, hooks) {
     }
     if (isSingleParamsMode()) {
       hooks.scheduleSingleAirportCompute?.(undefined, { debounce: false });
-      return;
-    }
-    if (coneState && !hooks.isComputing()) {
-      hooks.setStatus("Overlay type changed — click Run to refresh");
     }
   });
 
@@ -298,14 +245,5 @@ export function bindUiEvents(app, hooks) {
 
   hooks.downloadContoursBtn?.addEventListener("click", () => {
     hooks.downloadContourGeojson();
-  });
-
-  hooks.clearOverlayBtn?.addEventListener("click", () => {
-    clearAllOverlays();
-  });
-
-  hooks.runComputeBtn?.addEventListener("click", () => {
-    hooks.closeAppMenu?.();
-    runComputation();
   });
 }

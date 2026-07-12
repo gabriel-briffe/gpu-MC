@@ -88,11 +88,24 @@ function focusMapForCacheSelect() {
   });
 }
 
+function syncMapDoubleTapZoom() {
+  const map = hooks.getMap?.();
+  if (!map?.doubleClickZoom) {
+    return;
+  }
+  if (app.cacheSelectMode) {
+    map.doubleClickZoom.disable();
+  } else {
+    map.doubleClickZoom.enable();
+  }
+}
+
 function syncCacheSelectBar() {
   if (hooks.cacheSelectBar) {
     hooks.cacheSelectBar.hidden = !app.cacheSelectMode;
   }
   document.body.classList.toggle("cache-select-mode", app.cacheSelectMode);
+  syncMapDoubleTapZoom();
   hooks.updateParamsFooter?.();
   hooks.syncComputeContextBar?.();
 }

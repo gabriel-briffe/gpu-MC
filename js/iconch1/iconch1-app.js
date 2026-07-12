@@ -770,12 +770,13 @@ async function ensureMapLayers() {
         source: ICONCH1_SECTOR_SOURCE_ID,
         paint: {
           "fill-color": ["get", "color"],
-          "fill-opacity": 0.45,
+          "fill-opacity": hooks.getWeatherOverlayOpacity?.() ?? 0.7,
           "fill-outline-color": ["get", "color"],
         },
       });
       debugLog("layer added", { id: ICONCH1_SECTOR_LAYER_ID });
     }
+    hooks.applyWeatherOverlayOpacity?.();
     hooks.raiseIconCh1Layer?.();
     debugLog("ensureMapLayers done", {
       hadSource,
@@ -1061,6 +1062,7 @@ async function displayCurrent() {
     const map = getMap();
     map.setLayoutProperty(ICONCH1_SECTOR_LAYER_ID, "visibility", "visible");
     map.getSource(ICONCH1_SECTOR_SOURCE_ID).setData(geojson);
+    hooks.applyWeatherOverlayOpacity?.();
     hooks.raiseIconCh1Layer?.();
     clearLoadError();
     updateSelectors();
@@ -1166,7 +1168,7 @@ function syncCacheSettingsModelUi() {
   }
   if (ui.cacheEstimate) {
     const mb = ONE_HOUR_FORECAST_MB[cacheSettingsModelId];
-    ui.cacheEstimate.textContent = `One hour forecast for ${short}: ${mb}MB`;
+    ui.cacheEstimate.textContent = `One hour forecast for ${short}: ${mb}MB before processing, ensure good network`;
   }
   if (ui.cacheSettingsCh1) {
     ui.cacheSettingsCh1.classList.toggle("is-selected", cacheSettingsModelId === "icon-ch1");
@@ -1691,6 +1693,11 @@ export function stopIconCh1() {
 }
 
 export function refreshIconCh1Settings() {
-  syncCacheSettingsModelUi();
+  const activeModelId = hooks.getIconChActiveModel?.();
+  if (activeModelId && ICON_CH_MODELS.includes(activeModelId)) {
+    setCacheSettingsModel(activeModelId);
+  } else {
+    syncCacheSettingsModelUi();
+  }
   void updateStoredPackSummary();
 }

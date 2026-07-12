@@ -24,6 +24,17 @@ export const MAP_MAX_ZOOM = 22;
 
 export const MANUAL_INSPECT_MS = 5000;
 
+export const MISSING_TERRAIN_CACHE_MSG =
+  'No terrain has been cached for this location — open the menu and use Add data';
+
+export function isMissingCachedCoverageError(message) {
+  const text = String(message ?? "");
+  return (
+    text === "No airports fall inside the compute grid" ||
+    (text.includes("not cached") && text.toLowerCase().includes("terrain"))
+  );
+}
+
 export const REST_AIRSPACE_SOURCE = "rest-airspaces";
 export const REST_AIRSPACE_FILL_LAYER = "rest-airspaces-fill";
 export const REST_AIRSPACE_LINE_LAYER = "rest-airspaces-line";

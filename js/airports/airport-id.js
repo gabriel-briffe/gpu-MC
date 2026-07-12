@@ -31,7 +31,22 @@ export function airportIdFromFeature(feature) {
   return airportIdFromOpenAip(props, lng, lat);
 }
 
+/** Id for a cached or manual airport record. */
+export function airportIdFromStoredAirport(airport) {
+  const props = airport.properties ?? {};
+  if (props.airport_id) {
+    return String(props.airport_id);
+  }
+  if (props.source === "manual") {
+    return airportIdFromManualPlacement(airport.lng, airport.lat);
+  }
+  return airportIdFromOpenAip(props, airport.lng, airport.lat);
+}
+
 export function airportPropertiesWithId(properties, lng, lat) {
+  if (properties?.source === "manual" && properties.airport_id) {
+    return { ...properties, airport_id: String(properties.airport_id) };
+  }
   return {
     ...properties,
     airport_id: airportIdFromOpenAip(properties, lng, lat),

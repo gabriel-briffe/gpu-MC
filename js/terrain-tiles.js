@@ -1,4 +1,4 @@
-import { TILE_SIZE, terrariumElevation } from "./geo.js";
+import { TILE_SIZE, terrariumElevation, lngLatToGlobalPixel, clampTerrainZoom } from "./geo.js";
 
 export const MAPTERHORN_TILE_BASE = "https://tiles.mapterhorn.com";
 export const TERRAIN_TILE_CACHE_NAME = "gpu-mc-terrain-v1";
@@ -107,6 +107,38 @@ export async function fetchTerrainTileBlobCachedOnly(z, x, y) {
   throw new Error(
     `Terrain tile z${z}/${x}/${y} not cached — select this area in Cache data first`
   );
+}
+
+export async function isTerrainTileCached(z, x, y) {
+  const cache = await openTerrainCache();
+  if (!cache) {
+    return false;
+  }
+  return Boolean(await cache.match(terrainTileUrl(z, x, y)));
+}
+
+/** True when every terrarium tile overlapping bounds is in the Cache API store. */
+export async function areTerrainTilesCachedForLngLatBounds(bounds, terrainZoom) {
+  const z = clampTerrainZoom(terrainZoom);
+  const nw = lngLatToGlobalPixel(bounds.west, bounds.north, z);
+  const se = lngLatToGlobalPixel(bounds.east, bounds.south, z);
+  const gx0 = Math.floor(nw.gx);
+  const gy0 = Math.floor(nw.gy);
+  const width = Math.max(1, Math.ceil(se.gx) - gx0);
+  const height = Math.max(1, Math.ceil(se.gy) - gy0);
+  const minTileX = Math.floor(gx0 / TILE_SIZE);
+  const maxTileX = Math.floor((gx0 + width - 1) / TILE_SIZE);
+  const minTileY = Math.floor(gy0 / TILE_SIZE);
+  const maxTileY = Math.floor((gy0 + height - 1) / TILE_SIZE);
+
+  for (let ty = minTileY; ty <= maxTileY; ty += 1) {
+    for (let tx = minTileX; tx <= maxTileX; tx += 1) {
+      if (!(await isTerrainTileCached(z, tx, ty))) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 /** Session memory + Cache API only (no network). */

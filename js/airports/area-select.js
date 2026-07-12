@@ -56,6 +56,13 @@ export function initAreaSelect(h) {
     clearAirportSelectAreas();
     hooks.setStatus("Airport selection areas cleared");
   });
+
+  hooks.cancelAirportAreaSelectBtn?.addEventListener("click", () => {
+    if (hooks.isComputing()) {
+      return;
+    }
+    exitAirportAreaSelectMode(true);
+  });
 }
 
 export function hasAirportRectInteraction() {
@@ -240,7 +247,7 @@ export function syncAirportAreaSelectUi() {
     addAirportsFromAreasBtn,
     clearAirportAreasBtn,
     addAirportAreaBtn,
-    airportAreaSelectPanel,
+    airportAreaSelectBar,
   } = hooks;
 
   if (toggleAirportAreaSelectBtn) {
@@ -266,9 +273,11 @@ export function syncAirportAreaSelectUi() {
       app.airportAreaDrawMode ||
       app.airportRectInteraction;
   }
-  if (airportAreaSelectPanel) {
-    airportAreaSelectPanel.hidden = !app.airportAreaSelectMode;
+  if (airportAreaSelectBar) {
+    airportAreaSelectBar.hidden = !app.airportAreaSelectMode;
   }
+  document.body.classList.toggle("airport-area-select-mode", app.airportAreaSelectMode);
+  hooks.updateParamsFooter?.();
   hooks.syncManualAirportSelectUi?.();
   const map = hooks.getMap();
   if (map?.getCanvas() && !app.airportAreaSelectMode && !hooks.getManualAirportSelectMode?.()) {
@@ -322,6 +331,7 @@ export function exitAirportAreaSelectMode(reopenParams = false) {
     hooks.openGlideSettings?.();
     window.requestAnimationFrame(() => hooks.scrollToSeedsSection());
   }
+  hooks.setStatus("");
   const map = hooks.getMap();
   if (map?.getCanvas()) {
     map.getCanvas().style.cursor = "";

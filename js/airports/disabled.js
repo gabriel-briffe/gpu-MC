@@ -3,6 +3,7 @@ import {
   airportIdFromOpenAip,
   airportIdFromManualPlacement,
   airportIdFromSeed,
+  airportIdFromStoredAirport,
 } from "./airport-id.js";
 
 const DISABLED_AIRPORTS_STORAGE_KEY = "gpu-mc-disabled-airports-v2";
@@ -98,19 +99,18 @@ export function isAirportDisabledById(id) {
 
 export function isAirportDisabled(lng, lat, properties = null) {
   const id =
-    properties != null
-      ? airportIdFromOpenAip(properties, lng, lat)
-      : airportIdFromManualPlacement(lng, lat);
+    properties?.airport_id != null
+      ? String(properties.airport_id)
+      : properties?.source === "manual"
+        ? airportIdFromManualPlacement(lng, lat)
+        : properties != null
+          ? airportIdFromOpenAip(properties, lng, lat)
+          : airportIdFromManualPlacement(lng, lat);
   return isAirportDisabledById(id);
 }
 
 export function filterDisabledAirports(airports) {
-  return airports.filter(
-    (airport) =>
-      !isAirportDisabledById(
-        airportIdFromOpenAip(airport.properties ?? {}, airport.lng, airport.lat)
-      )
-  );
+  return airports.filter((airport) => !isAirportDisabledById(airportIdFromStoredAirport(airport)));
 }
 
 export function toggleDisabledAirportAt({ id, lng, lat, label } = {}) {

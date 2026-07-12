@@ -53,6 +53,7 @@ function syncFakeGeoMarker(map, lng, lat, visible) {
         "circle-stroke-color": "#ffffff",
       },
     });
+    hooks.raisePathLayer?.();
   }
 
   map.setLayoutProperty(layerId, "visibility", "visible");

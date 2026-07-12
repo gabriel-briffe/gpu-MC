@@ -1,5 +1,5 @@
 const PARAMS_STORAGE_KEY = "gpu-mc-params-v1";
-const VALID_MODES = new Set(["single", "auto", "manual"]);
+const VALID_MODES = new Set(["single", "auto"]);
 
 let saveTimer = null;
 
@@ -33,9 +33,11 @@ function collectFormState(dom) {
     autoWindowFromGlide: readCheckbox(dom.autoWindowFromGlideInput),
     autoWindowSize: readInput(dom.autoWindowSizeInput),
     includeAirspace: readCheckbox(dom.includeAirspaceInput),
+    includeManualAirports: readCheckbox(dom.includeManualAirportsInput),
     updateMap: readInput(document.getElementById("update-map")),
     vizMode: readInput(dom.vizModeSelect),
     sectorsOpacity: readInput(dom.sectorsOpacityInput),
+    weatherOpacity: readInput(dom.weatherOpacityInput),
     debugMode: readCheckbox(dom.debugModeInput),
   };
 }
@@ -52,9 +54,11 @@ function applyFormState(dom, form) {
   writeCheckbox(dom.autoWindowFromGlideInput, form.autoWindowFromGlide);
   writeInput(dom.autoWindowSizeInput, form.autoWindowSize);
   writeCheckbox(dom.includeAirspaceInput, form.includeAirspace);
+  writeCheckbox(dom.includeManualAirportsInput, form.includeManualAirports);
   writeInput(document.getElementById("update-map"), form.updateMap);
   writeInput(dom.vizModeSelect, form.vizMode);
   writeInput(dom.sectorsOpacityInput, form.sectorsOpacity);
+  writeInput(dom.weatherOpacityInput, form.weatherOpacity);
   writeCheckbox(dom.debugModeInput, form.debugMode);
 }
 
@@ -71,11 +75,11 @@ export function loadParamsState() {
     if (data.version !== 1) {
       return null;
     }
-    const mode = VALID_MODES.has(data.mode) ? data.mode : "auto";
+    const mode = data.mode === "manual" ? "auto" : VALID_MODES.has(data.mode) ? data.mode : "auto";
     return {
       mode,
       form: data.form ?? null,
-      pendingSeeds: Array.isArray(data.pendingSeeds) ? data.pendingSeeds : [],
+      legacyPendingSeeds: Array.isArray(data.pendingSeeds) ? data.pendingSeeds : [],
     };
   } catch (error) {
     console.warn("Failed to load saved parameters", error);
@@ -95,7 +99,6 @@ export function saveParamsState(dom, mode, app) {
         version: 1,
         mode: resolvedMode,
         form: collectFormState(dom),
-        pendingSeeds: app.pendingSeeds ?? [],
       })
     );
   } catch (error) {
@@ -126,8 +129,5 @@ export function restoreParamsState(dom, app, saved) {
   }
   if (saved.form) {
     applyFormState(dom, saved.form);
-  }
-  if (saved.pendingSeeds?.length) {
-    app.pendingSeeds = saved.pendingSeeds.map((seed) => ({ ...seed }));
   }
 }

@@ -71,6 +71,7 @@
         overflow: hidden;
       }
 
+      .map-select-bar,
       #cache-select-bar {
         position: fixed;
         top: max(0.75rem, env(safe-area-inset-top));
@@ -92,10 +93,18 @@
         pointer-events: auto;
       }
 
+      .map-select-bar[hidden],
       #cache-select-bar[hidden] {
         display: none;
       }
 
+      .map-select-bar--compact {
+        width: auto;
+        min-width: 8rem;
+        align-items: center;
+      }
+
+      .map-select-status,
       .cache-select-status {
         margin: 0;
         font-size: 0.8rem;
@@ -104,17 +113,48 @@
         color: #c8d3e0;
       }
 
+      .map-select-field-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #9aa8b8;
+      }
+
+      .map-select-text-input {
+        width: 100%;
+        padding: 0.45rem 0.55rem;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 0.4rem;
+        background: rgba(0, 0, 0, 0.25);
+        color: #f5f7fa;
+        font-size: 0.85rem;
+      }
+
+      .map-select-text-input:focus {
+        outline: none;
+        border-color: rgba(120, 180, 255, 0.55);
+      }
+
+      .map-select-seed-list {
+        max-height: 6.5rem;
+        overflow-y: auto;
+      }
+
+      .map-select-actions,
       .cache-select-actions {
         display: flex;
         gap: 0.45rem;
       }
 
+      .map-select-actions .action-btn,
       .cache-select-actions .action-btn {
         flex: 1;
         min-width: 0;
       }
 
-      body.cache-select-mode #app-menu-chrome {
+      body.cache-select-mode #app-menu-chrome,
+      body.manual-airport-select-mode #app-menu-chrome {
         z-index: 5;
       }
 
@@ -123,6 +163,31 @@
         flex-direction: column;
         gap: 0.35rem;
         min-height: 0;
+      }
+
+      .app-menu-section-title {
+        margin: 0;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #7a8a9e;
+      }
+
+      .basemap-section-head {
+        gap: 0.35rem;
+      }
+
+      .basemap-raster-buttons {
+        display: flex;
+        flex: 1;
+        gap: 0.35rem;
+        min-width: 0;
+      }
+
+      .basemap-raster-buttons .module-enable-btn {
+        flex: 1;
+        min-width: 0;
       }
 
       .app-menu-section-head {
@@ -187,6 +252,11 @@
         flex-direction: column;
         min-height: 0;
         overflow: hidden;
+        margin-top: 0.3rem;
+        padding: 0.55rem 0.6rem 0.65rem;
+        border-radius: 0.55rem;
+        background: rgba(32, 38, 46, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.07);
       }
 
       #iconch1-chrome[hidden] {
@@ -327,7 +397,8 @@
         cursor: not-allowed;
       }
 
-      body.iconch1-enabled.cache-select-mode .iconch1-time-header {
+      body.iconch1-enabled.cache-select-mode .iconch1-time-header,
+      body.iconch1-enabled.manual-airport-select-mode .iconch1-time-header {
         top: calc(max(0.75rem, env(safe-area-inset-top)) + 4.5rem);
       }
 
@@ -451,6 +522,13 @@
         font-size: 0.85rem;
       }
 
+      #iconch-settings input[type="range"] {
+        width: 100%;
+        max-width: 14rem;
+        margin: 0.15rem 0 0;
+        accent-color: #5a9fd4;
+      }
+
       .iconch1-cache-intro {
         margin: 0 0 0.5rem;
         font-size: 0.75rem;
@@ -549,12 +627,12 @@
         max-height: min(50dvh, calc(100dvh - 14rem));
       }
 
-      #glidecones-section:not(.glide-settings-open) .params-mode-bar #params-mode-manual {
-        display: none;
-      }
-
       #glidecones-section:not(.glide-settings-open) .params-mode-bar {
         justify-content: center;
+      }
+
+      body.glidecones-disabled #glidecones-section:not(.glide-settings-open) .params-mode-bar {
+        display: none;
       }
 
       .params-overlay-panel {
@@ -611,11 +689,7 @@
         color: #f0f6ff;
       }
 
-      #params-shell:not(.params-mode-manual) .params-manual-only {
-        display: none !important;
-      }
-
-      #params-shell:not(.params-mode-single):not(.params-mode-manual) .params-single-manual-only {
+      #params-shell:not(.params-mode-single) .params-single-only {
         display: none !important;
       }
 
@@ -814,6 +888,20 @@
         justify-content: center;
       }
 
+      .include-manual-airports-row {
+        display: flex;
+        justify-content: center;
+        padding: 0.35rem 0 0.15rem;
+      }
+
+      .include-manual-airports-row[hidden] {
+        display: none;
+      }
+
+      .include-manual-airports-row .param-check {
+        justify-content: center;
+      }
+
       .params-section-actions {
         display: flex;
         flex-wrap: wrap;
@@ -821,6 +909,12 @@
         align-items: center;
         gap: 0.45rem;
         padding-top: 0.75rem;
+      }
+
+      .params-section-divider {
+        border: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        margin: 0.55rem 0 0.45rem;
       }
 
       .params-section-actions-secondary {
@@ -900,7 +994,6 @@
         display: flex;
         align-items: flex-start;
         gap: 0.75rem;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
         padding: 0.45rem 0.75rem;
         flex-shrink: 0;
       }
@@ -971,6 +1064,8 @@
       }
 
       #params-shell button.action-btn.btn-blue,
+      .map-select-bar button.action-btn.btn-blue,
+      .map-select-bar button.action-btn.btn-blue,
       #cache-select-bar button.action-btn.btn-blue,
       #iconch-settings button.action-btn.btn-blue {
         border-color: rgba(90, 159, 255, 0.55);
@@ -979,12 +1074,14 @@
       }
 
       #params-shell button.action-btn.btn-blue:hover:not(:disabled),
+      .map-select-bar button.action-btn.btn-blue:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-blue:hover:not(:disabled),
       #iconch-settings button.action-btn.btn-blue:hover:not(:disabled) {
         background: rgba(90, 159, 255, 0.32);
       }
 
       #params-shell button.action-btn.btn-green,
+      .map-select-bar button.action-btn.btn-green,
       #cache-select-bar button.action-btn.btn-green,
       #iconch-settings button.action-btn.btn-green {
         border-color: rgba(100, 210, 120, 0.6);
@@ -993,12 +1090,14 @@
       }
 
       #params-shell button.action-btn.btn-green:hover:not(:disabled),
+      .map-select-bar button.action-btn.btn-green:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-green:hover:not(:disabled),
       #iconch-settings button.action-btn.btn-green:hover:not(:disabled) {
         background: rgba(70, 190, 100, 0.36);
       }
 
       #params-shell button.action-btn.btn-red,
+      .map-select-bar button.action-btn.btn-red,
       #cache-select-bar button.action-btn.btn-red,
       #iconch-settings button.action-btn.btn-red {
         border-color: rgba(255, 120, 120, 0.55);
@@ -1007,6 +1106,7 @@
       }
 
       #params-shell button.action-btn.btn-red:hover:not(:disabled),
+      .map-select-bar button.action-btn.btn-red:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-red:hover:not(:disabled),
       #iconch-settings button.action-btn.btn-red:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.32);
@@ -1019,6 +1119,17 @@
         line-height: 1.4;
         text-transform: none;
         letter-spacing: normal;
+      }
+
+      .glide-settings-mode-hint {
+        margin: 0 0 0.55rem;
+        color: #9aa8b8;
+        font-size: 0.74rem;
+        line-height: 1.45;
+      }
+
+      .glide-settings-mode-hint[hidden] {
+        display: none;
       }
 
       #param-help-popover {
@@ -1100,6 +1211,7 @@
       }
 
       #params-shell button.action-btn,
+      .map-select-bar button.action-btn,
       #cache-select-bar button.action-btn,
       #iconch-settings button.action-btn {
         padding: 0.45rem 0.75rem;
@@ -1113,12 +1225,14 @@
       }
 
       #params-shell button.action-btn:hover:not(:disabled),
+      .map-select-bar button.action-btn:hover:not(:disabled),
       #cache-select-bar button.action-btn:hover:not(:disabled),
       #iconch-settings button.action-btn:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.24);
       }
 
       #params-shell button.action-btn:disabled,
+      .map-select-bar button.action-btn:disabled,
       #cache-select-bar button.action-btn:disabled,
       #iconch-settings button.action-btn:disabled {
         opacity: 0.55;
@@ -1126,13 +1240,15 @@
       }
 
       #params-shell button.action-btn[hidden],
+      .map-select-bar button.action-btn[hidden],
       #cache-select-bar button.action-btn[hidden] {
         display: none;
       }
 
-      #stop-compute {
-        margin-left: auto;
-        padding: 0.35rem 0.65rem;
+      #compute-stop-bar #stop-compute {
+        width: 100%;
+        margin: 0;
+        padding: 0.45rem 0.85rem;
         border: 1px solid rgba(255, 140, 80, 0.55);
         border-radius: 0.4rem;
         background: rgba(255, 120, 60, 0.18);
@@ -1142,16 +1258,24 @@
         white-space: nowrap;
       }
 
-      #stop-compute:hover:not(:disabled) {
+      #compute-stop-bar #stop-compute:hover:not(:disabled) {
         background: rgba(255, 120, 60, 0.3);
       }
 
-      #stop-compute:disabled {
+      #compute-stop-bar #stop-compute:disabled {
         opacity: 0.55;
         cursor: wait;
       }
 
-      #stop-compute[hidden] {
+      #compute-stop-bar #stop-compute[hidden] {
+        display: none;
+      }
+
+      #compute-stop-bar .compute-stop-message[hidden] {
+        display: none;
+      }
+
+      #compute-stop-bar[hidden] {
         display: none;
       }
 

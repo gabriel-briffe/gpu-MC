@@ -1,6 +1,11 @@
-import { OPENAIP_SEED_CIRCLE_RADIUS } from "../openaip-tiles.js";
+import { OPENAIP_AIRPORT_CIRCLE_RADIUS } from "../openaip-tiles.js";
 import { seedDisplayLabel } from "../airport-label.js";
-import { airportIdFromManualPlacement, airportIdFromSeed } from "./airport-id.js";
+import { airportIdFromManualPlacement } from "./airport-id.js";
+import {
+  manualAirportAlreadyStored,
+  manualAirportToSeed,
+} from "./manual-airports.js";
+import { isAutoParamsMode } from "../params/panel.js";
 
 let hooks;
 let app;
@@ -9,14 +14,13 @@ export function initManualSelect(h) {
   hooks = h;
   app = h.app;
   hooks.getManualAirportSelectMode = () => app.manualAirportSelectMode;
-  hooks.getManualStagingAirports = () => app.manualStagingAirports;
   hooks.getPendingManualAirportLayerReady = () => app.pendingManualAirportLayerReady;
   hooks.exitManualAirportSelectMode = exitManualAirportSelectMode;
   hooks.setPendingManualAirport = setPendingManualAirport;
   hooks.clearPendingManualAirport = clearPendingManualAirport;
   hooks.syncManualAirportSelectUi = syncManualAirportSelectUi;
 
-  hooks.toggleManualAirportSelectBtn?.addEventListener("click", () => {
+  hooks.addManualAirportsBtn?.addEventListener("click", () => {
     if (hooks.isComputing()) {
       return;
     }
@@ -47,6 +51,13 @@ export function initManualSelect(h) {
     }
     finishManualAirportSelection();
   });
+
+  hooks.cancelManualAirportSelectBtn?.addEventListener("click", () => {
+    if (hooks.isComputing()) {
+      return;
+    }
+    exitManualAirportSelectMode(true);
+  });
 }
 
 export function getManualAirportSelectMode() {
@@ -69,15 +80,16 @@ function ensurePendingManualAirportLayer() {
     type: "circle",
     source: "pending-manual-airport",
     paint: {
-      "circle-radius": OPENAIP_SEED_CIRCLE_RADIUS,
-      "circle-color": "#ffcc00",
-      "circle-stroke-width": 3,
-      "circle-stroke-color": "#4da3ff",
-      "circle-opacity": 0.85,
+      "circle-radius": OPENAIP_AIRPORT_CIRCLE_RADIUS,
+      "circle-color": "#2d8a4e",
+      "circle-stroke-width": 1,
+      "circle-stroke-color": "#ffffff",
+      "circle-opacity": 0.9,
     },
   });
 
   app.pendingManualAirportLayerReady = true;
+  hooks.raisePathLayer?.();
 }
 
 function updatePendingManualAirportLayer() {
@@ -107,18 +119,19 @@ function updatePendingManualAirportLayer() {
 
 export function syncManualAirportSelectUi() {
   const {
-    manualAirportSelectPanel,
+    manualAirportSelectBar,
     addManualAirportBtn,
     clearManualAirportBtn,
     finishManualAirportBtn,
     manualAirportNameInput,
   } = hooks;
 
-  if (manualAirportSelectPanel) {
-    manualAirportSelectPanel.hidden = !app.manualAirportSelectMode;
+  if (manualAirportSelectBar) {
+    manualAirportSelectBar.hidden = !app.manualAirportSelectMode;
   }
+  document.body.classList.toggle("manual-airport-select-mode", app.manualAirportSelectMode);
+  hooks.updateParamsFooter?.();
   const hasPending = app.pendingManualAirport !== null;
-  const hasStaging = app.manualStagingAirports.length > 0;
   if (addManualAirportBtn) {
     addManualAirportBtn.disabled =
       hooks.isComputing() || !app.manualAirportSelectMode || !hasPending;
@@ -128,7 +141,7 @@ export function syncManualAirportSelectUi() {
       hooks.isComputing() || !app.manualAirportSelectMode || !hasPending;
   }
   if (finishManualAirportBtn) {
-    finishManualAirportBtn.hidden = !app.manualAirportSelectMode || !hasStaging;
+    finishManualAirportBtn.hidden = !app.manualAirportSelectMode;
     finishManualAirportBtn.disabled = hooks.isComputing();
   }
   if (manualAirportNameInput) {
@@ -158,60 +171,59 @@ export function enterManualAirportSelectMode() {
   if (hooks.isComputing()) {
     return;
   }
-  if (hooks.getAirportAreaSelectMode?.()) {
-    hooks.exitAirportAreaSelectMode(false);
-  }
   app.manualAirportSelectMode = true;
-  app.manualStagingAirports = [];
-  updateManualStagingList();
+  updateManualAirportList();
   hooks.closeAppMenu?.();
   ensurePendingManualAirportLayer();
-  hooks.updateSeedMarkers();
   syncManualAirportSelectUi();
-  hooks.setStatus("Click the map to place an airport.");
+  const count = hooks.getManualAirportCount?.() ?? 0;
+  hooks.setStatus(
+    count > 0
+      ? "Click the map to add another airport, or remove saved airports below."
+      : "Click the map to place an airport."
+  );
 }
 
 export function exitManualAirportSelectMode(reopenParams = false) {
   app.manualAirportSelectMode = false;
-  app.manualStagingAirports = [];
   clearPendingManualAirport();
-  updateManualStagingList();
-  hooks.updateSeedMarkers();
+  updateManualAirportList();
   syncManualAirportSelectUi();
   if (reopenParams) {
     hooks.openGlideSettings?.();
-    window.requestAnimationFrame(() => hooks.scrollToSeedsSection());
   }
+  hooks.setStatus("");
   const map = hooks.getMap();
   if (map?.getCanvas()) {
     map.getCanvas().style.cursor = "";
   }
 }
 
-function sortedManualStagingEntries() {
-  return app.manualStagingAirports
-    .map((seed, index) => ({ seed, index }))
+function sortedManualAirportEntries() {
+  return (hooks.getManualAirports?.() ?? [])
+    .map((entry) => manualAirportToSeed(entry))
     .sort((a, b) =>
-      seedDisplayLabel(a.seed).localeCompare(seedDisplayLabel(b.seed), undefined, {
+      seedDisplayLabel(a).localeCompare(seedDisplayLabel(b), undefined, {
         sensitivity: "base",
       })
     );
 }
 
-function updateManualStagingList() {
+function updateManualAirportList() {
   const { manualAirportListEl } = hooks;
   if (!manualAirportListEl) {
     return;
   }
   manualAirportListEl.replaceChildren();
 
-  if (app.manualStagingAirports.length === 0) {
+  const entries = sortedManualAirportEntries();
+  if (entries.length === 0) {
     manualAirportListEl.hidden = true;
     return;
   }
 
   manualAirportListEl.hidden = false;
-  for (const { seed, index } of sortedManualStagingEntries()) {
+  for (const seed of entries) {
     const row = document.createElement("div");
     row.className = "seed-list-item";
 
@@ -225,27 +237,38 @@ function updateManualStagingList() {
     del.className = "seed-list-delete";
     del.setAttribute("aria-label", `Remove ${seedDisplayLabel(seed)}`);
     del.textContent = "×";
-    del.addEventListener("click", () => removeManualStagingAirport(index));
+    del.addEventListener("click", () => removeStoredManualAirport(seed.id));
 
     row.append(label, del);
     manualAirportListEl.append(row);
   }
 }
 
-function removeManualStagingAirport(index) {
-  if (hooks.isComputing() || index < 0 || index >= app.manualStagingAirports.length) {
+function refreshManualAirportsOnMap() {
+  hooks.setIncludeManualAirports?.(true);
+  hooks.syncIncludeManualAirportsUi?.();
+  hooks.refreshCachedAirportMapLayer?.();
+}
+
+function removeStoredManualAirport(id) {
+  if (hooks.isComputing()) {
     return;
   }
-  app.manualStagingAirports.splice(index, 1);
-  updateManualStagingList();
-  hooks.updateSeedMarkers();
-  syncManualAirportSelectUi();
-  if (app.manualStagingAirports.length === 0) {
-    hooks.setStatus("Click the map to place an airport.");
-  } else {
-    hooks.setStatus(
-      `${app.manualStagingAirports.length} airport${app.manualStagingAirports.length === 1 ? "" : "s"} picked — click Finished when done`
-    );
+  const removed = hooks.removeManualAirportFromStore?.(id) ?? false;
+  if (!removed) {
+    return;
+  }
+  updateManualAirportList();
+  refreshManualAirportsOnMap();
+  hooks.syncIncludeManualAirportsUi?.();
+  const count = hooks.getManualAirportCount?.() ?? 0;
+  hooks.setStatus(
+    count > 0
+      ? `${count} manual airport${count === 1 ? "" : "s"} saved`
+      : "All manual airports removed"
+  );
+  if (isAutoParamsMode()) {
+    hooks.scheduleAutoCompute?.({ debounce: false, refreshAirports: true });
   }
 }
 
@@ -257,66 +280,39 @@ function commitPendingManualAirport() {
   const { lng, lat } = app.pendingManualAirport;
   const name = hooks.manualAirportNameInput?.value.trim() ?? "";
   const id = airportIdFromManualPlacement(lng, lat);
-  const pendingSeeds = hooks.getPendingSeeds();
-  if (
-    pendingSeeds.some((seed) => airportIdFromSeed(seed) === id) ||
-    app.manualStagingAirports.some((seed) => airportIdFromSeed(seed) === id)
-  ) {
-    hooks.setStatus("Airport already in list");
+  if (manualAirportAlreadyStored(id)) {
+    hooks.setStatus("Airport already saved");
     return;
   }
 
-  const seed = { id, lng, lat, source: "map" };
+  const seed = { id, lng, lat, source: "manual" };
   if (name) {
     seed.label = name;
   }
-  app.manualStagingAirports.push(seed);
+  const added = hooks.addManualAirportsToStore?.([seed]) ?? 0;
+  if (added === 0) {
+    hooks.setStatus("Airport already saved");
+    return;
+  }
 
   if (hooks.manualAirportNameInput) {
     hooks.manualAirportNameInput.value = "";
   }
   clearPendingManualAirport();
-  updateManualStagingList();
-  hooks.updateSeedMarkers();
-  syncManualAirportSelectUi();
+  updateManualAirportList();
+  refreshManualAirportsOnMap();
+  const count = hooks.getManualAirportCount?.() ?? 0;
   hooks.setStatus(
-    `${app.manualStagingAirports.length} airport${app.manualStagingAirports.length === 1 ? "" : "s"} picked — click Finished when done`
+    `Saved airport — ${count} manual airport${count === 1 ? "" : "s"} total`
   );
+  if (isAutoParamsMode()) {
+    hooks.scheduleAutoCompute?.({ debounce: false, refreshAirports: true });
+  }
 }
 
 function finishManualAirportSelection() {
-  if (app.manualStagingAirports.length === 0 || hooks.isComputing()) {
+  if (hooks.isComputing()) {
     return;
   }
-
-  const pendingSeeds = hooks.getPendingSeeds();
-  const existing = new Set(pendingSeeds.map((seed) => airportIdFromSeed(seed)));
-  let added = 0;
-  for (const seed of app.manualStagingAirports) {
-    const id = airportIdFromSeed(seed);
-    if (existing.has(id)) {
-      continue;
-    }
-    existing.add(id);
-    pendingSeeds.push({ ...seed, id });
-    added += 1;
-  }
-
-  const pickedCount = app.manualStagingAirports.length;
-  app.manualStagingAirports = [];
-  updateManualStagingList();
-  hooks.updateSeedMarkers();
   exitManualAirportSelectMode(true);
-
-  if (added === 0) {
-    hooks.setStatus("All picked airports are already in the list");
-  } else if (added < pickedCount) {
-    hooks.setStatus(
-      `Added ${added} airport${added === 1 ? "" : "s"} — ${hooks.airportCountTotal(pendingSeeds.length)}`
-    );
-  } else {
-    hooks.setStatus(
-      `Added ${added} airport${added === 1 ? "" : "s"} — ${hooks.airportCountTotal(pendingSeeds.length)}`
-    );
-  }
 }
