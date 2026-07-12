@@ -52,6 +52,9 @@ function scaledColorStops(minAlt, maxAlt) {
 }
 
 function elevationToRgb(elevation, minAlt, maxAlt) {
+  if (elevation === 0) {
+    return [255, 255, 255];
+  }
   const stops = scaledColorStops(minAlt, maxAlt);
   if (elevation <= stops[0].elev) {
     return stops[0].rgb;
