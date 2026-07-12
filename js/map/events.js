@@ -197,7 +197,7 @@ export function bindMapEvents(app, hooks) {
       return;
     }
 
-    if (!app.interaction.tapPath || !hooks.getConeState()) {
+    if (!app.interaction.tapPath) {
       return;
     }
 

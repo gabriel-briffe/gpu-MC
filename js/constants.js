@@ -22,6 +22,7 @@ export const GRADIENT_MAX_ALT_MIN = 500;
 export const GRADIENT_MAX_ALT_MAX = 9000;
 export const GRADIENT_MAX_ALT_STEP = 500;
 export const GRADIENT_MAX_ALT_DEFAULT = 5000;
+export const GRADIENT_MIN_ALT_DEFAULT = 0;
 export const GRADIENT_RASTER_OPACITY = 0.6;
 
 export const MISSING_TERRAIN_CACHE_MSG =

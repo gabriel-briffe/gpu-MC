@@ -3,18 +3,30 @@ import {
   GRADIENT_MAX_ALT_MAX,
   GRADIENT_MAX_ALT_MIN,
   GRADIENT_MAX_ALT_STEP,
+  GRADIENT_MIN_ALT_DEFAULT,
 } from "../constants.js";
 
 const GRADIENT_STORAGE_KEY = "gpu-mc-gradient-v1";
+
+function stepAltitude(value) {
+  return Math.round(value / GRADIENT_MAX_ALT_STEP) * GRADIENT_MAX_ALT_STEP;
+}
 
 function clampStoredMaxAltitude(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
     return GRADIENT_MAX_ALT_DEFAULT;
   }
-  const stepped =
-    Math.round(numeric / GRADIENT_MAX_ALT_STEP) * GRADIENT_MAX_ALT_STEP;
-  return Math.max(GRADIENT_MAX_ALT_MIN, Math.min(GRADIENT_MAX_ALT_MAX, stepped));
+  return Math.max(GRADIENT_MAX_ALT_MIN, Math.min(GRADIENT_MAX_ALT_MAX, stepAltitude(numeric)));
+}
+
+function clampStoredMinAltitude(value, maxAlt) {
+  const numeric = Number(value);
+  const ceiling = clampStoredMaxAltitude(maxAlt);
+  if (!Number.isFinite(numeric)) {
+    return GRADIENT_MIN_ALT_DEFAULT;
+  }
+  return Math.max(0, Math.min(ceiling, stepAltitude(numeric)));
 }
 
 export function loadGradientState() {
@@ -30,8 +42,14 @@ export function loadGradientState() {
     if (data.version !== 1) {
       return null;
     }
+    const gradientMaxAltitude = clampStoredMaxAltitude(data.gradientMaxAltitude);
+    const gradientMinAltitude = clampStoredMinAltitude(
+      data.gradientMinAltitude ?? GRADIENT_MIN_ALT_DEFAULT,
+      gradientMaxAltitude
+    );
     return {
-      gradientMaxAltitude: clampStoredMaxAltitude(data.gradientMaxAltitude),
+      gradientMinAltitude,
+      gradientMaxAltitude,
     };
   } catch (error) {
     console.warn("Failed to load saved gradient settings", error);
@@ -39,16 +57,19 @@ export function loadGradientState() {
   }
 }
 
-export function saveGradientMaxAltitude(maxAlt) {
+export function saveGradientSettings({ gradientMinAltitude, gradientMaxAltitude }) {
   if (typeof localStorage === "undefined") {
     return;
   }
+  const maxAlt = clampStoredMaxAltitude(gradientMaxAltitude);
+  const minAlt = clampStoredMinAltitude(gradientMinAltitude, maxAlt);
   try {
     localStorage.setItem(
       GRADIENT_STORAGE_KEY,
       JSON.stringify({
         version: 1,
-        gradientMaxAltitude: clampStoredMaxAltitude(maxAlt),
+        gradientMinAltitude: minAlt,
+        gradientMaxAltitude: maxAlt,
       })
     );
   } catch (error) {

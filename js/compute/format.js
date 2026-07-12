@@ -18,6 +18,10 @@ export function tooltipNum(value, { warn = false, unit = "m" } = {}) {
   return `<span class="${classes}">${value}${unit ? ` ${unit}` : ""}</span>`;
 }
 
+export function formatGroundElevationTip(groundElevM) {
+  return `ground elevation: ${tooltipNum(Math.round(groundElevM))}`;
+}
+
 export function formatHoverTip(cell, { groundClearance, debugMode, metrics, glideRatio = 20 }) {
   const minAltVal = cell.alt;
   const minAlt = minAltVal !== null ? tooltipNum(Math.round(minAltVal)) : "—";

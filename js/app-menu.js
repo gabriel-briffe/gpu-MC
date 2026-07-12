@@ -4,8 +4,8 @@ import {
   isSingleParamsMode,
 } from "./params/panel.js";
 import { initParamSteppers } from "./params/steppers.js";
-import { setGradientMaxAltitude as applyGradientMaxAltitude } from "./map/terrain-gradient.js";
-import { loadGradientState, saveGradientMaxAltitude } from "./map/gradient-persist.js";
+import { setGradientAltitudes } from "./map/terrain-gradient.js";
+import { loadGradientState, saveGradientSettings } from "./map/gradient-persist.js";
 
 let hooks;
 let app;
@@ -17,6 +17,7 @@ export function initAppMenu(h, domRefs) {
   dom = domRefs;
 
   restoreGradientState(loadGradientState());
+  syncGradientAltitudeInputs();
 
   dom.appMenuBtn?.addEventListener("click", () => {
     if (app.appMenuOpen) {
@@ -50,7 +51,11 @@ export function initAppMenu(h, domRefs) {
   });
 
   dom.gradientMaxAltInput?.addEventListener("input", () => {
-    updateGradientMaxAltitudeFromInput();
+    updateGradientAltitudesFromInputs();
+  });
+
+  dom.gradientMinAltInput?.addEventListener("input", () => {
+    updateGradientAltitudesFromInputs();
   });
 
   initParamSteppers(dom.basemapGradientSettings);
@@ -98,19 +103,33 @@ export function initAppMenu(h, domRefs) {
   syncAppMenuUi();
 }
 
-function updateGradientMaxAltitudeFromInput() {
-  const next = applyGradientMaxAltitude(dom.gradientMaxAltInput?.value);
-  if (app.gradientMaxAltitude === next) {
-    if (dom.gradientMaxAltInput) {
-      dom.gradientMaxAltInput.value = String(next);
-    }
+function syncGradientAltitudeInputs() {
+  if (dom.gradientMinAltInput) {
+    dom.gradientMinAltInput.max = String(app.gradientMaxAltitude);
+    dom.gradientMinAltInput.value = String(app.gradientMinAltitude);
+  }
+  if (dom.gradientMaxAltInput) {
+    dom.gradientMaxAltInput.value = String(app.gradientMaxAltitude);
+  }
+}
+
+function updateGradientAltitudesFromInputs() {
+  const { minAlt, maxAlt } = setGradientAltitudes({
+    minAlt: dom.gradientMinAltInput?.value,
+    maxAlt: dom.gradientMaxAltInput?.value,
+  });
+  const changed =
+    app.gradientMinAltitude !== minAlt || app.gradientMaxAltitude !== maxAlt;
+  app.gradientMinAltitude = minAlt;
+  app.gradientMaxAltitude = maxAlt;
+  syncGradientAltitudeInputs();
+  if (!changed) {
     return;
   }
-  app.gradientMaxAltitude = next;
-  if (dom.gradientMaxAltInput) {
-    dom.gradientMaxAltInput.value = String(next);
-  }
-  saveGradientMaxAltitude(next);
+  saveGradientSettings({
+    gradientMinAltitude: minAlt,
+    gradientMaxAltitude: maxAlt,
+  });
   hooks.reloadGradientBasemap?.();
 }
 
@@ -118,11 +137,13 @@ export function restoreGradientState(saved) {
   if (!saved) {
     return;
   }
-  const next = applyGradientMaxAltitude(saved.gradientMaxAltitude);
-  app.gradientMaxAltitude = next;
-  if (dom.gradientMaxAltInput) {
-    dom.gradientMaxAltInput.value = String(next);
-  }
+  const { minAlt, maxAlt } = setGradientAltitudes({
+    minAlt: saved.gradientMinAltitude,
+    maxAlt: saved.gradientMaxAltitude,
+  });
+  app.gradientMinAltitude = minAlt;
+  app.gradientMaxAltitude = maxAlt;
+  syncGradientAltitudeInputs();
 }
 
 export function isGlideConesEnabled() {

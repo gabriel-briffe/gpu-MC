@@ -130,6 +130,26 @@ export async function fetchTerrainTileDecodedCachedOnly(z, x, y) {
   return payload;
 }
 
+/** Tile zoom used by the map hillshade / gradient DEM (overzoom above this is visual only). */
+export function displayedTerrainZoom(mapZoom, maxZoom = BASE_MAP_TERRAIN_MAX_ZOOM) {
+  if (!Number.isFinite(mapZoom)) {
+    return maxZoom;
+  }
+  return Math.max(0, Math.min(Math.floor(mapZoom), maxZoom));
+}
+
+/** Ground elevation (m MSL) from Mapterhorn terrarium tiles shown on the map. */
+export async function sampleTerrainElevationAtLngLat(lng, lat, z) {
+  const { gx, gy } = lngLatToGlobalPixel(lng, lat, z);
+  const tileX = Math.floor(gx / TILE_SIZE);
+  const tileY = Math.floor(gy / TILE_SIZE);
+  const localX = Math.floor(gx) - tileX * TILE_SIZE;
+  const localY = Math.floor(gy) - tileY * TILE_SIZE;
+  const tile = await fetchTerrainTileDecoded(z, tileX, tileY);
+  const elev = tile.elevation[localY * TILE_SIZE + localX];
+  return Number.isFinite(elev) ? elev : null;
+}
+
 /** Session memory + persistent blob cache; returns decoded elevation tile. */
 export async function fetchTerrainTileDecoded(z, x, y) {
   const key = terrainTileKey(z, x, y);

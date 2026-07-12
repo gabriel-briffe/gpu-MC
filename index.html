@@ -177,6 +177,37 @@
               <div class="params-fields">
                 <div class="param-field">
                   <div class="param-label-row">
+                    <span class="param-label">Minimum gradient altitude</span>
+                  </div>
+                  <div class="param-stepper">
+                    <button
+                      type="button"
+                      class="param-step-btn"
+                      data-step="-1"
+                      aria-label="Decrease minimum gradient altitude"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      id="gradient-min-alt"
+                      min="0"
+                      max="9000"
+                      step="500"
+                      value="0"
+                    />
+                    <button
+                      type="button"
+                      class="param-step-btn"
+                      data-step="1"
+                      aria-label="Increase minimum gradient altitude"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div class="param-field">
+                  <div class="param-label-row">
                     <span class="param-label">Maximum gradient altitude</span>
                   </div>
                   <div class="param-stepper">

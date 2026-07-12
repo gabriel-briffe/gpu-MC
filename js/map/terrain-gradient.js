@@ -4,6 +4,7 @@ import {
   GRADIENT_MAX_ALT_MAX,
   GRADIENT_MAX_ALT_MIN,
   GRADIENT_MAX_ALT_STEP,
+  GRADIENT_MIN_ALT_DEFAULT,
 } from "../constants.js";
 import { BASE_MAP_TERRAIN_MAX_ZOOM, fetchTerrainTileBlob } from "../terrain-tiles.js";
 
@@ -31,19 +32,27 @@ export const TERRAIN_GRADIENT_TILE_URL_TEMPLATE =
 
 const gradientTileCache = new Map();
 let protocolRegistered = false;
+let gradientMinAltitude = GRADIENT_MIN_ALT_DEFAULT;
 let gradientMaxAltitude = GRADIENT_MAX_ALT_DEFAULT;
 
-function scaledColorStops(maxAlt) {
+function stepGradientAltitude(value) {
+  return Math.round(value / GRADIENT_MAX_ALT_STEP) * GRADIENT_MAX_ALT_STEP;
+}
+
+function scaledColorStops(minAlt, maxAlt) {
+  const targetSpan = maxAlt - minAlt;
+  if (targetSpan <= 0) {
+    return [{ elev: minAlt, rgb: ELEVATION_COLOR_STOPS.at(-1).rgb }];
+  }
   const span = BASE_PALETTE_MAX - BASE_PALETTE_MIN;
-  const targetSpan = maxAlt - BASE_PALETTE_MIN;
   return ELEVATION_COLOR_STOPS.map((stop) => ({
-    elev: BASE_PALETTE_MIN + ((stop.elev - BASE_PALETTE_MIN) * targetSpan) / span,
+    elev: minAlt + ((stop.elev - BASE_PALETTE_MIN) * targetSpan) / span,
     rgb: stop.rgb,
   }));
 }
 
-function elevationToRgb(elevation, maxAlt) {
-  const stops = scaledColorStops(maxAlt);
+function elevationToRgb(elevation, minAlt, maxAlt) {
+  const stops = scaledColorStops(minAlt, maxAlt);
   if (elevation <= stops[0].elev) {
     return stops[0].rgb;
   }
@@ -68,9 +77,23 @@ export function clampGradientMaxAltitude(value) {
   if (!Number.isFinite(numeric)) {
     return GRADIENT_MAX_ALT_DEFAULT;
   }
-  const stepped =
-    Math.round(numeric / GRADIENT_MAX_ALT_STEP) * GRADIENT_MAX_ALT_STEP;
-  return Math.max(GRADIENT_MAX_ALT_MIN, Math.min(GRADIENT_MAX_ALT_MAX, stepped));
+  return Math.max(
+    GRADIENT_MAX_ALT_MIN,
+    Math.min(GRADIENT_MAX_ALT_MAX, stepGradientAltitude(numeric))
+  );
+}
+
+export function clampGradientMinAltitude(value, maxAlt = gradientMaxAltitude) {
+  const numeric = Number(value);
+  const ceiling = clampGradientMaxAltitude(maxAlt);
+  if (!Number.isFinite(numeric)) {
+    return GRADIENT_MIN_ALT_DEFAULT;
+  }
+  return Math.max(0, Math.min(ceiling, stepGradientAltitude(numeric)));
+}
+
+export function getGradientMinAltitude() {
+  return gradientMinAltitude;
 }
 
 export function getGradientMaxAltitude() {
@@ -81,17 +104,32 @@ export function clearGradientTileCache() {
   gradientTileCache.clear();
 }
 
-export function setGradientMaxAltitude(maxAlt) {
-  const next = clampGradientMaxAltitude(maxAlt);
-  if (gradientMaxAltitude === next) {
-    return next;
+export function setGradientAltitudes({ minAlt, maxAlt } = {}) {
+  const nextMax =
+    maxAlt === undefined ? gradientMaxAltitude : clampGradientMaxAltitude(maxAlt);
+  const nextMin =
+    minAlt === undefined
+      ? clampGradientMinAltitude(gradientMinAltitude, nextMax)
+      : clampGradientMinAltitude(minAlt, nextMax);
+  const changed =
+    gradientMinAltitude !== nextMin || gradientMaxAltitude !== nextMax;
+  gradientMaxAltitude = nextMax;
+  gradientMinAltitude = nextMin;
+  if (changed) {
+    clearGradientTileCache();
   }
-  gradientMaxAltitude = next;
-  clearGradientTileCache();
-  return next;
+  return { minAlt: nextMin, maxAlt: nextMax };
 }
 
-async function terrainTileToGradientPng(z, x, y, maxAlt) {
+export function setGradientMaxAltitude(maxAlt) {
+  return setGradientAltitudes({ maxAlt }).maxAlt;
+}
+
+export function setGradientMinAltitude(minAlt) {
+  return setGradientAltitudes({ minAlt }).minAlt;
+}
+
+async function terrainTileToGradientPng(z, x, y, minAlt, maxAlt) {
   const { blob } = await fetchTerrainTileBlob(z, x, y);
   const bitmap = await createImageBitmap(blob);
   const canvas = document.createElement("canvas");
@@ -106,7 +144,7 @@ async function terrainTileToGradientPng(z, x, y, maxAlt) {
   for (let i = 0; i < TILE_SIZE * TILE_SIZE; i += 1) {
     const p = i * 4;
     const elevation = terrariumElevation(data[p], data[p + 1], data[p + 2]);
-    const [r, g, b] = elevationToRgb(elevation, maxAlt);
+    const [r, g, b] = elevationToRgb(elevation, minAlt, maxAlt);
     data[p] = r;
     data[p + 1] = g;
     data[p + 2] = b;
@@ -140,12 +178,13 @@ export function registerTerrainGradientProtocol() {
     const z = Number(match[1]);
     const x = Number(match[2]);
     const y = Number(match[3]);
+    const minAlt = gradientMinAltitude;
     const maxAlt = gradientMaxAltitude;
-    const key = `${maxAlt}/${z}/${x}/${y}`;
+    const key = `${minAlt}/${maxAlt}/${z}/${x}/${y}`;
     if (gradientTileCache.has(key)) {
       return { data: gradientTileCache.get(key) };
     }
-    const data = await terrainTileToGradientPng(z, x, y, maxAlt);
+    const data = await terrainTileToGradientPng(z, x, y, minAlt, maxAlt);
     gradientTileCache.set(key, data);
     return { data };
   });

@@ -7,6 +7,7 @@ export const dom = {
   basemapGradientSettingsBtn: document.getElementById("gradient-settings-btn"),
   basemapGradientSettings: document.getElementById("gradient-settings"),
   gradientMaxAltInput: document.getElementById("gradient-max-alt"),
+  gradientMinAltInput: document.getElementById("gradient-min-alt"),
   basemapSection: document.getElementById("basemap-section"),
   airspaceOpenAipBtn: document.getElementById("openaip-enable"),
   glideconesSection: document.getElementById("glidecones-section"),

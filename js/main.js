@@ -15,6 +15,7 @@ import {
   registerTerrainTileProtocol,
   TERRAIN_TILE_URL_TEMPLATE,
   BASE_MAP_TERRAIN_MAX_ZOOM,
+  displayedTerrainZoom,
 } from "./terrain-tiles.js";
 import { registerTerrainGradientProtocol } from "./map/terrain-gradient.js";
 import { assetUrl } from "./asset-url.js";
@@ -127,7 +128,7 @@ import {
 import { initIconCh1 } from "./iconch1/iconch1-app.js";
 import { raiseIconCh1Layer } from "./map/layers.js";
 import { ensureRasterBasemapLayers, reloadGradientBasemap, setBaseMapRasterMode } from "./map/raster-basemap.js";
-import { setGradientMaxAltitude } from "./map/terrain-gradient.js";
+import { setGradientAltitudes } from "./map/terrain-gradient.js";
 import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
@@ -517,6 +518,10 @@ function getHillshadeTileMaxZoom() {
   return clampTerrainZoom(Number.parseInt(terrainZoomInput?.value ?? "", 10));
 }
 
+function getDisplayedTerrainZoom() {
+  return displayedTerrainZoom(app.map?.getZoom?.(), getHillshadeTileMaxZoom());
+}
+
 function syncBaseMapTerrainMaxZoom() {
   if (!app.map?.getStyle?.()?.sources?.hillshadeSource) {
     return;
@@ -554,6 +559,7 @@ app.hooks = {
   getLastGeoLngLat: () => app.lastGeoLngLat,
   getLastInspectCell,
   getInteraction: () => app.interaction,
+  getDisplayedTerrainZoom,
   runComputation,
   ensureEngine,
   isAutoParamsMode,
@@ -1197,7 +1203,10 @@ function syncOfflineBanner() {
 
 app.map.on("load", async () => {
   syncBaseMapTerrainMaxZoom();
-  setGradientMaxAltitude(app.gradientMaxAltitude);
+  setGradientAltitudes({
+    minAlt: app.gradientMinAltitude,
+    maxAlt: app.gradientMaxAltitude,
+  });
   ensureRasterBasemapLayers(app.map);
   setBaseMapRasterMode(app.map, app.baseMapRaster);
   ensurePathLayer();

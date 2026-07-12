@@ -1,4 +1,4 @@
-import { GRADIENT_MAX_ALT_DEFAULT } from "./constants.js";
+import { GRADIENT_MAX_ALT_DEFAULT, GRADIENT_MIN_ALT_DEFAULT } from "./constants.js";
 
 export function createApp() {
   return {
@@ -57,6 +57,7 @@ export function createApp() {
     glideConesEnabled: true,
     baseMapRaster: "osm",
     gradientMaxAltitude: GRADIENT_MAX_ALT_DEFAULT,
+    gradientMinAltitude: GRADIENT_MIN_ALT_DEFAULT,
     gradientSettingsOpen: false,
     openAipVectorEnabled: false,
     iconChActiveModel: null,

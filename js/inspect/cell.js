@@ -1,6 +1,10 @@
 import { gridCellToLngLat, gridIndexFromLngLat } from "../geo.js";
 import { MANUAL_INSPECT_MS } from "../constants.js";
-import { formatHoverTip as formatHoverTipCore } from "../compute/format.js";
+import {
+  formatGroundElevationTip,
+  formatHoverTip as formatHoverTipCore,
+} from "../compute/format.js";
+import { sampleTerrainElevationAtLngLat } from "../terrain-tiles.js";
 import { isDebugMode } from "../params/panel.js";
 import {
   refreshGeoPath,
@@ -13,6 +17,7 @@ import {
 
 let hooks;
 let app;
+let terrainInspectRequestId = 0;
 
 export function initCellInspect(h) {
   hooks = h;
@@ -205,7 +210,12 @@ export function sampleDemCell(lng, lat) {
   };
 }
 
+function cancelTerrainElevationInspect() {
+  terrainInspectRequestId += 1;
+}
+
 export function clearCellInspect() {
+  cancelTerrainElevationInspect();
   clearManualInspectTimer();
   app.footerCellHtml = null;
   app.lastInspectAnchor = null;
@@ -230,7 +240,56 @@ function isCacheSelectMode() {
   return hooks.getCacheSelectMode?.() ?? false;
 }
 
+async function showTerrainElevationInspect(
+  lng,
+  lat,
+  anchorPoint = null,
+  { temporary = false } = {}
+) {
+  const requestId = ++terrainInspectRequestId;
+  app.lastInspectCell = null;
+  app.lastPathScreenBounds = null;
+  app.lastInspectLngLat = { lng, lat };
+  clearInspectPath();
+
+  const map = hooks.getMap();
+  if (anchorPoint) {
+    app.lastInspectAnchor = { x: anchorPoint.x, y: anchorPoint.y };
+  } else if (map) {
+    const projected = map.project([lng, lat]);
+    app.lastInspectAnchor = { x: projected.x, y: projected.y };
+  }
+
+  const z = hooks.getDisplayedTerrainZoom?.();
+  if (!Number.isFinite(z)) {
+    return;
+  }
+
+  try {
+    const groundElev = await sampleTerrainElevationAtLngLat(lng, lat, z);
+    if (requestId !== terrainInspectRequestId) {
+      return;
+    }
+    if (groundElev === null) {
+      clearCellInspect();
+      return;
+    }
+    app.footerCellHtml = formatGroundElevationTip(groundElev);
+    updateCellTooltip();
+    if (temporary) {
+      scheduleManualInspectClear();
+    }
+    hooks.updateParamsFooter();
+  } catch {
+    if (requestId !== terrainInspectRequestId) {
+      return;
+    }
+    clearCellInspect();
+  }
+}
+
 export function showCellInspect(cell, anchorPoint = null, { temporary = false } = {}) {
+  cancelTerrainElevationInspect();
   if (isCacheSelectMode()) {
     clearCellInspect();
     return;
@@ -275,12 +334,16 @@ export function showCellInspect(cell, anchorPoint = null, { temporary = false } 
 
 export function syncInspectOnMapMove() {
   const map = hooks.getMap();
-  if (!app.lastInspectCell || !app.lastInspectLngLat || !app.footerCellHtml || !map) {
+  if (!app.lastInspectLngLat || !app.footerCellHtml || !map) {
     return;
   }
   const projected = map.project([app.lastInspectLngLat.lng, app.lastInspectLngLat.lat]);
   app.lastInspectAnchor = { x: projected.x, y: projected.y };
-  refreshInspectPath(app.lastInspectCell);
+  if (app.lastInspectCell) {
+    refreshInspectPath(app.lastInspectCell);
+  } else {
+    positionCellTooltip();
+  }
 }
 
 export function getGeoSampleCell() {
@@ -323,15 +386,14 @@ export function onMapMouseMove(event) {
     return;
   }
 
-  const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
-  if (cell === null) {
-    if (!isDebugMode()) {
-      clearCellInspect();
-    }
+  const { lng, lat } = event.lngLat;
+  const cell = sampleDemCell(lng, lat);
+  if (cell !== null) {
+    showCellInspect(cell, event.point);
     return;
   }
 
-  showCellInspect(cell, event.point);
+  showTerrainElevationInspect(lng, lat, event.point);
 }
 
 export function onMapMouseLeave() {
@@ -350,7 +412,7 @@ export function onMapClickInspect(event) {
   if (isCacheSelectMode()) {
     return;
   }
-  if (!hooks.getInteraction().tapPath || !hooks.getConeState()) {
+  if (!hooks.getInteraction().tapPath) {
     return;
   }
 
@@ -359,14 +421,18 @@ export function onMapClickInspect(event) {
     return;
   }
 
-  const cell = sampleDemCell(event.lngLat.lng, event.lngLat.lat);
-  if (cell?.isReachable) {
+  const { lng, lat } = event.lngLat;
+  const cell = sampleDemCell(lng, lat);
+  if (cell !== null) {
     showCellInspect(cell, event.point, { temporary: true });
+    return;
   }
+
+  showTerrainElevationInspect(lng, lat, event.point, { temporary: true });
 }
 
 export function hasActiveInspectTooltip() {
-  return Boolean(getLastInspectCell() && app.footerCellHtml);
+  return Boolean(app.footerCellHtml);
 }
 
 export function syncPathsOnMapMove() {
