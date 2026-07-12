@@ -31,6 +31,13 @@ export function initAppMenu(h, domRefs) {
     setBaseMapRaster(app.baseMapRaster === "satellite" ? null : "satellite");
   });
 
+  dom.basemapOpenAipBtn?.addEventListener("click", () => {
+    if (!hooks.areOpenAipAirportsAvailable?.()) {
+      return;
+    }
+    setOpenAipVectorEnabled(!app.openAipVectorEnabled);
+  });
+
   dom.glideConesEnableBtn?.addEventListener("click", () => {
     setGlideConesEnabled(!app.glideConesEnabled);
   });
@@ -75,6 +82,19 @@ export function setBaseMapRaster(mode) {
   }
   app.baseMapRaster = mode;
   hooks.setBaseMapRasterMode?.(mode);
+  syncAppMenuUi();
+}
+
+export function isOpenAipVectorEnabled() {
+  return app.openAipVectorEnabled;
+}
+
+export function setOpenAipVectorEnabled(enabled) {
+  if (app.openAipVectorEnabled === enabled) {
+    return;
+  }
+  app.openAipVectorEnabled = enabled;
+  hooks.syncAirspaceUi?.();
   syncAppMenuUi();
 }
 
@@ -159,7 +179,7 @@ export function setIconChActiveModel(modelId) {
   syncAppMenuUi();
 }
 
-function syncAppMenuUi() {
+export function syncAppMenuUi() {
   document.body.classList.toggle("app-menu-open", app.appMenuOpen);
   document.body.classList.toggle("glidecones-disabled", !app.glideConesEnabled);
   document.body.classList.toggle("basemap-raster-enabled", Boolean(app.baseMapRaster));
@@ -183,6 +203,14 @@ function syncAppMenuUi() {
 
   dom.basemapSatelliteBtn?.classList.toggle("is-active", app.baseMapRaster === "satellite");
   dom.basemapSatelliteBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "satellite"));
+
+  const openAipAvailable = hooks.areOpenAipAirportsAvailable?.() ?? false;
+  if (dom.basemapOpenAipBtn) {
+    dom.basemapOpenAipBtn.disabled = !openAipAvailable;
+    const openAipActive = openAipAvailable && app.openAipVectorEnabled;
+    dom.basemapOpenAipBtn.classList.toggle("is-active", openAipActive);
+    dom.basemapOpenAipBtn.setAttribute("aria-pressed", String(openAipActive));
+  }
 
   dom.iconCh1EnableBtn?.classList.toggle("is-active", app.iconChActiveModel === "icon-ch1");
   dom.iconCh1EnableBtn?.setAttribute("aria-pressed", String(app.iconChActiveModel === "icon-ch1"));

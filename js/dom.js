@@ -3,6 +3,7 @@ export const dom = {
   appMenuBackdrop: document.getElementById("app-menu-backdrop"),
   basemapOsmBtn: document.getElementById("osm-enable"),
   basemapSatelliteBtn: document.getElementById("satellite-enable"),
+  basemapOpenAipBtn: document.getElementById("openaip-enable"),
   glideconesSection: document.getElementById("glidecones-section"),
   glideConesEnableBtn: document.getElementById("glidecones-enable"),
   glideConesSettingsBtn: document.getElementById("glidecones-settings-btn"),

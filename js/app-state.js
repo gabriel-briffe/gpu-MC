@@ -53,6 +53,7 @@ export function createApp() {
     appMenuOpen: false,
     glideConesEnabled: true,
     baseMapRaster: "osm",
+    openAipVectorEnabled: false,
     iconChActiveModel: null,
     glideSettingsOpen: false,
     iconChSettingsOpen: false,

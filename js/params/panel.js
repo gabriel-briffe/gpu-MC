@@ -309,14 +309,6 @@ export function initParamsPanel(appState, domRefs) {
 
   dom.includeAirspaceInput?.addEventListener("change", () => {
     app.hooks.syncAirspaceUi();
-    if (
-      isDebugMode() &&
-      app.hooks.isIncludeAirspaceEnabled() &&
-      app.hooks.getMap()?.getSource("openaip")
-    ) {
-      const center = app.hooks.getMap().getCenter();
-      app.hooks.updateAirspaceInfo(center.lng, center.lat);
-    }
     scheduleParamsRecompute({ debounce: true });
   });
 

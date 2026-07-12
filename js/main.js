@@ -115,6 +115,9 @@ import {
   isIconCh1Enabled,
   getIconChActiveModel,
   toggleIconChActiveModel,
+  isOpenAipVectorEnabled,
+  setOpenAipVectorEnabled,
+  syncAppMenuUi,
   openAppMenu,
   openGlideSettings,
   closeAppMenu,
@@ -373,12 +376,7 @@ function syncOpenAipVectorTiles() {
   if (!app.map) {
     return;
   }
-  if (!isDebugMode()) {
-    removeOpenAipVectorTiles(app.map);
-    raisePathLayer();
-    return;
-  }
-  const wantTiles = isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable();
+  const wantTiles = isOpenAipVectorEnabled() && areOpenAipAirportsAvailable();
   if (wantTiles) {
     if (initOpenAipAirspaceTiles(app.map, app.openAipConfig)) {
       setOpenAipAirspaceVisible(app.map, true);
@@ -390,6 +388,26 @@ function syncOpenAipVectorTiles() {
   raisePathLayer();
 }
 
+function syncAirspaceInfoBox() {
+  if (!info) {
+    return;
+  }
+  const showInfo =
+    isDebugMode() &&
+    isOpenAipVectorEnabled() &&
+    areOpenAipAirportsAvailable() &&
+    !app.cacheSelectMode &&
+    app.cacheDataWarnings.length === 0;
+  if (showInfo) {
+    info.classList.add("visible");
+    return;
+  }
+  info.classList.remove("visible");
+  if (airspaceInfoEl && app.cacheDataWarnings.length === 0) {
+    airspaceInfoEl.textContent = "—";
+  }
+}
+
 function isIncludeAirspaceEnabled() {
   return includeAirspaceInput?.checked ?? true;
 }
@@ -398,29 +416,21 @@ function syncAirspaceUi() {
   if (app.cacheSelectMode) {
     return;
   }
-  const enabled = isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable();
+
   syncOpenAipVectorTiles();
-  if (enabled) {
+
+  const restEnabled = isIncludeAirspaceEnabled() && areOpenAipAirportsAvailable();
+  if (restEnabled) {
     ensureRestAirspaceLayers();
     refreshRestAirspaceLayerData();
     setRestAirspaceFillVisible(true);
     setRestAirspaceLineVisible(false);
-    if (isDebugMode()) {
-      info.classList.add("visible");
-    } else {
-      info.classList.remove("visible");
-      if (airspaceInfoEl) {
-        airspaceInfoEl.textContent = "—";
-      }
-    }
   } else {
     setRestAirspaceFillVisible(false);
     setRestAirspaceLineVisible(false);
-    info.classList.remove("visible");
-    if (airspaceInfoEl) {
-      airspaceInfoEl.textContent = "—";
-    }
   }
+
+  syncAirspaceInfoBox();
   raisePathLayer();
 }
 
@@ -534,6 +544,8 @@ app.hooks = {
   isIconCh1Enabled,
   getIconChActiveModel,
   toggleIconChActiveModel,
+  isOpenAipVectorEnabled,
+  setOpenAipVectorEnabled,
   raiseIconCh1Layer,
   setBaseMapRasterMode: (mode) => {
     setBaseMapRasterMode(app.map, mode);
@@ -788,7 +800,7 @@ function updateAirspaceInfo(lng, lat) {
   if (app.cacheDataWarnings.length || app.cacheSelectMode) {
     return;
   }
-  if (!isIncludeAirspaceEnabled() || !isDebugMode() || !app.map?.getSource("openaip")) {
+  if (!isDebugMode() || !isOpenAipVectorEnabled() || !app.map?.getSource("openaip")) {
     return;
   }
 
@@ -1143,6 +1155,7 @@ app.map.on("load", async () => {
       ensureCachedAirportMapLayers();
       refreshCachedAirportMapLayer();
       syncAirspaceUi();
+      syncAppMenuUi();
       raisePathLayer();
     }
   } catch (error) {

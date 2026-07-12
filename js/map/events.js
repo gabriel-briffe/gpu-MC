@@ -29,7 +29,7 @@ function mapTapMoved(app, point) {
 }
 
 function maybeUpdateAirspaceInfo(hooks, lng, lat) {
-  if (!isDebugMode() || !hooks.isIncludeAirspaceEnabled?.()) {
+  if (!isDebugMode() || !hooks.isOpenAipVectorEnabled?.()) {
     return;
   }
   hooks.updateAirspaceInfo(lng, lat);
