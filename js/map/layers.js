@@ -5,8 +5,7 @@ import {
   GLIDE_PATH_PAINT,
   GLIDE_PATH_GROUND_PAINT,
   GLIDE_PATH_GROUND_LAYOUT,
-  GLIDE_PATH_DEFAULT_FILTER,
-  GLIDE_PATH_GROUND_FILTER,
+  glidePathLayerFilter,
   CACHE_HIDDEN_LAYER_IDS,
   AIRPORT_PICK_HIT_PX,
 } from "../constants.js";
@@ -46,8 +45,6 @@ const MAP_LAYER_ORDER = [
   "airports-cached",
   "airports-cached-labels",
   "airports-cached-hit",
-  "cache-airports",
-  "cache-airport-labels",
   "pending-manual-airport-circle",
   "glide-contours-line",
   "glide-contours-label",
@@ -88,25 +85,26 @@ export function ensurePathLayer() {
     return;
   }
 
-  for (const sourceId of ["glide-path-geo", "glide-path"]) {
-    map.addSource(sourceId, {
-      type: "geojson",
-      data: { type: "FeatureCollection", features: [] },
-    });
+  map.addSource("glide-path", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+
+  const pathLayers = [
+    { id: "glide-path", role: "inspect", ground: false },
+    { id: "glide-path-ground", role: "inspect", ground: true },
+    { id: "glide-path-geo", role: "geo", ground: false },
+    { id: "glide-path-geo-ground", role: "geo", ground: true },
+  ];
+
+  for (const { id, role, ground } of pathLayers) {
     map.addLayer({
-      id: sourceId,
+      id,
       type: "line",
-      source: sourceId,
-      filter: GLIDE_PATH_DEFAULT_FILTER,
-      paint: GLIDE_PATH_PAINT,
-    });
-    map.addLayer({
-      id: `${sourceId}-ground`,
-      type: "line",
-      source: sourceId,
-      filter: GLIDE_PATH_GROUND_FILTER,
-      layout: GLIDE_PATH_GROUND_LAYOUT,
-      paint: GLIDE_PATH_GROUND_PAINT,
+      source: "glide-path",
+      filter: glidePathLayerFilter(role, ground),
+      paint: ground ? GLIDE_PATH_GROUND_PAINT : GLIDE_PATH_PAINT,
+      ...(ground ? { layout: GLIDE_PATH_GROUND_LAYOUT } : {}),
     });
   }
 
@@ -391,22 +389,42 @@ function mergeAirportFeaturesForMap(west, south, east, north) {
   });
 }
 
-export function refreshCachedAirportMapLayer() {
+function syncAirportPickLayerVisibility() {
   const map = hooks.getMap();
-  if (!app.cachedAirportMapReady || hooks.getCacheSelectMode() || !map?.getSource("airports-cached")) {
+  if (!map?.getLayer("airports-cached-hit")) {
     return;
   }
-  const bounds = map.getBounds();
-  const features = mergeAirportFeaturesForMap(
-    bounds.getWest(),
-    bounds.getSouth(),
-    bounds.getEast(),
-    bounds.getNorth()
+  map.setLayoutProperty(
+    "airports-cached-hit",
+    "visibility",
+    hooks.getCacheSelectMode() ? "none" : "visible"
   );
+}
+
+export function refreshCachedAirportMapLayer() {
+  const map = hooks.getMap();
+  if (!app.cachedAirportMapReady || !map?.getSource("airports-cached")) {
+    return;
+  }
+
+  let features;
+  if (hooks.getCacheSelectMode()) {
+    features = mergedCachedAirportsToGeoJsonFeatures();
+  } else {
+    const bounds = map.getBounds();
+    features = mergeAirportFeaturesForMap(
+      bounds.getWest(),
+      bounds.getSouth(),
+      bounds.getEast(),
+      bounds.getNorth()
+    );
+  }
+
   map.getSource("airports-cached").setData({
     type: "FeatureCollection",
     features,
   });
+  syncAirportPickLayerVisibility();
 }
 
 function restAirspaceFillPaint() {
@@ -510,88 +528,6 @@ export function setRestAirspaceLineVisible(visible) {
   map.setLayoutProperty(REST_AIRSPACE_LINE_LAYER, "visibility", visible ? "visible" : "none");
 }
 
-function buildCacheAirportFeatures() {
-  return mergedCachedAirportsToGeoJsonFeatures();
-}
-
-export function ensureCacheAirportLayers() {
-  const map = hooks.getMap();
-  if (!map || app.cacheAirportsReady) {
-    return;
-  }
-
-  map.addSource("cache-airports", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-
-  map.addLayer({
-    id: "cache-airports",
-    type: "circle",
-    source: "cache-airports",
-    minzoom: OPENAIP_AIRPORT_MIN_ZOOM,
-    paint: {
-      "circle-radius": OPENAIP_AIRPORT_CIRCLE_RADIUS,
-      "circle-color": "#bf2d2d",
-      "circle-stroke-width": 1,
-      "circle-stroke-color": "#ffffff",
-    },
-  });
-
-  map.addLayer({
-    id: "cache-airport-labels",
-    type: "symbol",
-    source: "cache-airports",
-    minzoom: OPENAIP_AIRPORT_LABEL_MIN_ZOOM,
-    layout: {
-      "text-field": ["coalesce", ["get", "name"], ["get", "icao_code"], ["get", "icaoCode"]],
-      "text-font": ["Noto Sans Regular"],
-      "text-size": 10,
-      "text-offset": [0, -1.2],
-      "text-anchor": "bottom",
-      "text-max-width": 14,
-      "symbol-sort-key": 0,
-      "text-optional": false,
-    },
-    paint: {
-      "text-color": "#f5f7fa",
-      "text-halo-color": "rgba(18, 22, 28, 0.92)",
-      "text-halo-width": 2,
-    },
-  });
-
-  app.cacheAirportsReady = true;
-  raisePathLayer();
-}
-
-export function updateCacheAirportData() {
-  const map = hooks.getMap();
-  if (!app.cacheAirportsReady || !map.getSource("cache-airports")) {
-    return;
-  }
-  map.getSource("cache-airports").setData({
-    type: "FeatureCollection",
-    features: buildCacheAirportFeatures(),
-  });
-}
-
-export function clearCacheAirportLayers() {
-  const map = hooks.getMap();
-  if (!map || !app.cacheAirportsReady) {
-    return;
-  }
-  if (map.getLayer("cache-airport-labels")) {
-    map.removeLayer("cache-airport-labels");
-  }
-  if (map.getLayer("cache-airports")) {
-    map.removeLayer("cache-airports");
-  }
-  if (map.getSource("cache-airports")) {
-    map.removeSource("cache-airports");
-  }
-  app.cacheAirportsReady = false;
-}
-
 export function updateCacheGridData() {
   const map = hooks.getMap();
   if (!app.cacheGridReady || !map.getSource("cache-grid")) {
@@ -630,8 +566,8 @@ export function refreshCacheSelectOverlays() {
   refreshRestAirspaceLayerData({ allCells: true });
   setRestAirspaceFillVisible(true);
   setRestAirspaceLineVisible(true);
-  ensureCacheAirportLayers();
-  updateCacheAirportData();
+  ensureCachedAirportMapLayers();
+  refreshCachedAirportMapLayer();
   raisePathLayer();
 }
 

@@ -42,8 +42,6 @@ export const CACHE_HIDDEN_LAYER_IDS = [
   "glide-contours-line",
   "glide-contours-label",
   "glide-sectors-line",
-  "airports-cached",
-  "airports-cached-labels",
   "airports-cached-hit",
   OPENAIP_AIRSPACE_LAYER,
   "pending-manual-airport-circle",
@@ -96,6 +94,14 @@ export const GLIDE_PATH_DEFAULT_FILTER = [
   ["!", ["has", "segment"]],
   ["!=", ["get", "segment"], "downhill-ground"],
 ];
+
+export function glidePathLayerFilter(role, ground = false) {
+  return [
+    "all",
+    ["==", ["get", "role"], role],
+    ground ? GLIDE_PATH_GROUND_FILTER : GLIDE_PATH_DEFAULT_FILTER,
+  ];
+}
 
 export const GLIDE_PATH_PAINT = {
   "line-color": "#8b1515",

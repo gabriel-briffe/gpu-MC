@@ -49,7 +49,6 @@ import {
   refreshCacheGridForViewport,
   refreshCacheSelectOverlays,
   clearCacheGridLayers,
-  clearCacheAirportLayers,
   setOverlaysHiddenForCacheSelect,
   syncContourLabelSpacing,
   updateCacheGridData,
@@ -475,7 +474,7 @@ function onTerrainZoomChange() {
   }
 }
 
-const sharedHooks = {
+app.hooks = {
   app,
   getMap: () => app.map,
   getConeState: () => app.coneState,
@@ -493,11 +492,13 @@ const sharedHooks = {
   getOpenAipConfig: () => app.openAipConfig,
   getSelectedCacheCells: () => app.selectedCacheCells,
   getLastGeoLngLat: () => app.lastGeoLngLat,
+  getLastInspectCell,
   getInteraction: () => app.interaction,
   runComputation,
   ensureEngine,
   isAutoParamsMode,
   isSingleParamsMode,
+  getParamsMode,
   isGeoTrackingOn,
   areOpenAipAirportsAvailable,
   isIncludeManualAirportsEnabled,
@@ -507,6 +508,15 @@ const sharedHooks = {
   getManualAirportCount,
   getManualAirports,
   removeManualAirportFromStore,
+  getManualAirportSelectMode,
+  exitManualAirportSelectMode,
+  clearAutoComputeScheduling,
+  clearSingleComputeScheduling,
+  flushSingleAirportCompute,
+  getSingleComputePending: () => app.singleComputePending,
+  getSingleLastPick: () => app.singleLastPick,
+  scheduleAutoCompute,
+  scheduleSingleAirportCompute,
   setStatus,
   stopComputeBtn,
   downloadContoursBtn,
@@ -532,6 +542,7 @@ const sharedHooks = {
   clearGlidePath,
   setDownloadContoursVisible,
   downloadContourGeojson,
+  syncDownloadContoursButton,
   ensurePathLayer,
   raisePathLayer,
   syncAirspaceUi,
@@ -547,10 +558,21 @@ const sharedHooks = {
   pathScreenBounds,
   setLastPathScreenBounds,
   updateCellTooltip,
+  showCellInspect,
+  refreshInspectPath,
+  updateGeoLocationPath,
   updateParamsFooter,
   syncComputeStopBar,
   showComputeStopBarMessage,
   clearComputeStopBarMessage,
+  detectInteractionMode,
+  onTerrainZoomChange,
+  syncBaseMapTerrainMaxZoom,
+  updateGridRadiusHint,
+  updateTerrainResolutionHint,
+  syncAutoWindowSizeUi,
+  updateInteractionHints,
+  isDebugMode,
   onMapMouseMove,
   onMapMouseLeave,
   onMapClickInspect,
@@ -579,83 +601,24 @@ const sharedHooks = {
   refreshCacheSelectOverlays,
   reloadHillshadeSource,
   clearCacheGridLayers,
-  clearCacheAirportLayers,
   updateCacheGridData,
   syncComputeContextBar,
 };
 
-initDisabledAirports(sharedHooks);
-initComputeAirports(sharedHooks);
-initManualSelect(sharedHooks);
-initCacheUi(sharedHooks);
-initAppMenu(sharedHooks, dom);
-initIconCh1(sharedHooks, dom);
-initAutoCompute(sharedHooks);
-initSingleCompute(sharedHooks);
-initMapLayers(sharedHooks);
-initGlidePath(sharedHooks);
-initCellInspect(sharedHooks);
-initComputeVisualization(sharedHooks);
-initComputeSession(sharedHooks);
-
-app.hooks = {
-  getMap: () => app.map,
-  getConeState: () => app.coneState,
-  isComputing: () => app.computing,
-  getLastInspectCell,
-  getManualAirportSelectMode,
-  clearAutoComputeScheduling,
-  clearSingleComputeScheduling,
-  flushSingleAirportCompute,
-  getSingleComputePending: () => app.singleComputePending,
-  getSingleLastPick: () => app.singleLastPick,
-  exitManualAirportSelectMode,
-  scheduleAutoCompute,
-  scheduleSingleAirportCompute,
-  getParamsMode,
-  syncDownloadContoursButton,
-  showCellInspect,
-  setStatus,
-  syncAirspaceUi,
-  applyWeatherOverlayOpacity,
-  getWeatherOverlayOpacity,
-  updateAirspaceInfo,
-  refreshInspectPath,
-  updateGeoLocationPath,
-  isGeoTrackingOn,
-  clearCellInspect,
-  updateParamsFooter,
-  syncComputeStopBar,
-  showComputeStopBarMessage,
-  clearComputeStopBarMessage,
-  detectInteractionMode,
-  onTerrainZoomChange,
-  syncBaseMapTerrainMaxZoom,
-  updateGridRadiusHint,
-  updateTerrainResolutionHint,
-  syncAutoWindowSizeUi,
-  updateInteractionHints,
-  isIncludeAirspaceEnabled,
-  isIncludeManualAirportsEnabled,
-  setIncludeManualAirports,
-  syncIncludeManualAirportsUi,
-  addManualAirportsToStore,
-  getManualAirportCount,
-  isDebugMode,
-  clearComputeResults,
-  setComputeShouldStop: (value) => {
-    app.computeShouldStop = value;
-  },
-  syncComputeContextBar,
-  openAppMenu,
-  openGlideSettings,
-  closeAppMenu,
-  isGlideConesEnabled,
-  isIconCh1Enabled,
-  clearComputeAirports: () => sharedHooks.clearComputeAirports?.(),
-};
+initDisabledAirports(app.hooks);
+initComputeAirports(app.hooks);
+initManualSelect(app.hooks);
+initCacheUi(app.hooks);
+initAppMenu(app.hooks, dom);
+initIconCh1(app.hooks, dom);
+initAutoCompute(app.hooks);
+initSingleCompute(app.hooks);
+initMapLayers(app.hooks);
+initGlidePath(app.hooks);
+initCellInspect(app.hooks);
+initComputeVisualization(app.hooks);
+initComputeSession(app.hooks);
 initParamsPanel(app, dom);
-sharedHooks.schedulePersistParamsState = () => app.hooks.schedulePersistParamsState?.();
 
 if (typeof maplibregl !== "undefined") {
   maplibregl.setWorkerUrl(assetUrl("vendor/maplibre-gl/maplibre-gl-csp-worker.js"));
@@ -707,7 +670,6 @@ app.mapReady = new Promise((resolve) => {
   }
   app.map.once("load", () => resolve(app.map));
 });
-sharedHooks.waitForMapReady = () => app.mapReady;
 app.hooks.waitForMapReady = () => app.mapReady;
 
 function lockGeolocatePanZoom() {
@@ -1148,7 +1110,7 @@ app.map.on("load", async () => {
   ensureRasterBasemapLayers(app.map);
   setBaseMapRasterMode(app.map, app.baseMapRaster);
   ensurePathLayer();
-  initFakeGeo(app, sharedHooks);
+  initFakeGeo(app, app.hooks);
   app.map.on("moveend", () => {
     updateTerrainResolutionHint();
     if (isAutoParamsMode()) {
@@ -1159,7 +1121,7 @@ app.map.on("load", async () => {
     if (isIncludeAirspaceEnabled() && !app.cacheSelectMode) {
       refreshRestAirspaceLayerData();
     }
-    sharedHooks.syncFakeGeoFromCamera?.();
+    app.hooks.syncFakeGeoFromCamera?.();
   });
   app.map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);
@@ -1189,7 +1151,7 @@ app.map.on("load", async () => {
 
   if (needsStartupCacheMode()) {
     setParamsMode("single", { initial: true });
-    sharedHooks.enterCacheSelectMode?.();
+    app.hooks.enterCacheSelectMode?.();
   } else if (openAipConfigured(app.openAipConfig) && isAutoParamsMode() && isGlideConesEnabled()) {
     scheduleAutoCompute({ refreshAirports: true });
   }
@@ -1205,6 +1167,6 @@ app.map.on("load", async () => {
   }
 });
 
-bindMapEvents(app, sharedHooks);
-bindUiEvents(app, sharedHooks);
+bindMapEvents(app, app.hooks);
+bindUiEvents(app, app.hooks);
 initWakeLock();

@@ -152,7 +152,6 @@ function exitCacheSelectMode() {
   }
 
   hooks.clearCacheGridLayers();
-  hooks.clearCacheAirportLayers();
   hooks.setOverlaysHiddenForCacheSelect(false);
   hooks.refreshCachedAirportMapLayer?.();
   hooks.setStatus("");

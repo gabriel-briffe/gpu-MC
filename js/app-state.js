@@ -38,7 +38,6 @@ export function createApp() {
     cacheGridReady: false,
     cachedAirportMapReady: false,
     restAirspaceLayersReady: false,
-    cacheAirportsReady: false,
     overlayVisibilityBeforeCache: null,
     footerCellHtml: null,
     lastInspectAnchor: null,

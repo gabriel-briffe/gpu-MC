@@ -1,8 +1,14 @@
 import { gridCellDistanceM, gridCellToLngLat } from "./geo.js";
 import { ensurePathLayer, raisePathLayer } from "./map/layers.js";
 
+const PATH_SOURCE_ID = "glide-path";
+
 let hooks;
 let app;
+const pathFeaturesByRole = {
+  inspect: [],
+  geo: [],
+};
 
 function isPathLayerReady() {
   return app.pathLayerReady;
@@ -52,21 +58,19 @@ function isSeedCell(x, y, dem) {
   return x === dem.homeX && y === dem.homeY;
 }
 
-function buildPathGeoJson(cells, dem, ground, coordinates) {
+function buildPathGeoJson(cells, dem, ground, coordinates, role) {
   if (cells.length < 2) {
-    return {
-      type: "FeatureCollection",
-      features:
-        coordinates.length >= 2
-          ? [
-              {
-                type: "Feature",
-                geometry: { type: "LineString", coordinates },
-                properties: {},
-              },
-            ]
-          : [],
-    };
+    const features =
+      coordinates.length >= 2
+        ? [
+            {
+              type: "Feature",
+              geometry: { type: "LineString", coordinates },
+              properties: { role },
+            },
+          ]
+        : [];
+    return { type: "FeatureCollection", features };
   }
 
   const features = [];
@@ -89,7 +93,7 @@ function buildPathGeoJson(cells, dem, ground, coordinates) {
         features.push({
           type: "Feature",
           geometry: { type: "LineString", coordinates: segmentCoords },
-          properties: { segment: segmentKind },
+          properties: { segment: segmentKind, role },
         });
       }
       segmentKind = kind;
@@ -101,11 +105,45 @@ function buildPathGeoJson(cells, dem, ground, coordinates) {
     features.push({
       type: "Feature",
       geometry: { type: "LineString", coordinates: segmentCoords },
-      properties: { segment: segmentKind },
+      properties: { segment: segmentKind, role },
     });
   }
 
   return { type: "FeatureCollection", features };
+}
+
+function featuresFromPathData(pathData, role) {
+  const coordinates = pathData.coordinates ?? pathData;
+  const cells = pathData.cells ?? [];
+  const coneState = hooks.getConeState();
+  const { dem, ground } = coneState ?? {};
+
+  if (dem && ground) {
+    return buildPathGeoJson(cells, dem, ground, coordinates, role).features;
+  }
+
+  if (coordinates.length >= 2) {
+    return [
+      {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates },
+        properties: { role },
+      },
+    ];
+  }
+  return [];
+}
+
+function syncPathSource() {
+  const map = hooks.getMap();
+  if (!isPathLayerReady() || !map?.getSource(PATH_SOURCE_ID)) {
+    return;
+  }
+  map.getSource(PATH_SOURCE_ID).setData({
+    type: "FeatureCollection",
+    features: [...pathFeaturesByRole.inspect, ...pathFeaturesByRole.geo],
+  });
+  raisePathLayer();
 }
 
 export function traceOriginRelayPath(x, y, dem, originX, originY) {
@@ -264,41 +302,24 @@ export function initGlidePath(h) {
   app = h.app;
 }
 
-function setPathSourceData(sourceId, pathData) {
-  const map = hooks.getMap();
+function setPathForRole(role, pathData) {
   ensurePathLayer();
-  const coordinates = pathData.coordinates ?? pathData;
-  const cells = pathData.cells ?? [];
-  const coneState = hooks.getConeState();
-  const { dem, ground } = coneState ?? {};
+  pathFeaturesByRole[role] = featuresFromPathData(pathData, role);
+  syncPathSource();
+}
 
-  map.getSource(sourceId).setData(
-    dem && ground
-      ? buildPathGeoJson(cells, dem, ground, coordinates)
-      : {
-          type: "FeatureCollection",
-          features:
-            coordinates.length >= 2
-              ? [
-                  {
-                    type: "Feature",
-                    geometry: { type: "LineString", coordinates },
-                    properties: {},
-                  },
-                ]
-              : [],
-        }
-  );
-  raisePathLayer();
+function clearPathForRole(role) {
+  pathFeaturesByRole[role] = [];
+  syncPathSource();
 }
 
 export function refreshGeoPath(cell) {
   const path = traceGlidePath(cell.gi, cell.gj);
   if (path.coordinates.length >= 2) {
-    setPathSourceData("glide-path-geo", path);
+    setPathForRole("geo", path);
   } else if (path.coordinates.length === 1) {
     const pt = path.coordinates[0];
-    setPathSourceData("glide-path-geo", { coordinates: [pt, pt], cells: path.cells });
+    setPathForRole("geo", { coordinates: [pt, pt], cells: path.cells });
   } else {
     clearGeoPath();
   }
@@ -307,11 +328,11 @@ export function refreshGeoPath(cell) {
 export function refreshInspectPath(cell) {
   const path = traceGlidePath(cell.gi, cell.gj);
   if (path.coordinates.length >= 2) {
-    setPathSourceData("glide-path", path);
+    setPathForRole("inspect", path);
     hooks.setLastPathScreenBounds(hooks.pathScreenBounds(path.coordinates));
   } else if (path.coordinates.length === 1) {
     const pt = path.coordinates[0];
-    setPathSourceData("glide-path", { coordinates: [pt, pt], cells: path.cells });
+    setPathForRole("inspect", { coordinates: [pt, pt], cells: path.cells });
     hooks.setLastPathScreenBounds(hooks.pathScreenBounds([pt, pt]));
   } else {
     clearInspectPath();
@@ -321,25 +342,17 @@ export function refreshInspectPath(cell) {
 }
 
 export function clearGeoPath() {
-  const map = hooks.getMap();
-  if (!isPathLayerReady() || !map?.getSource("glide-path-geo")) {
+  if (!isPathLayerReady()) {
     return;
   }
-  map.getSource("glide-path-geo").setData({
-    type: "FeatureCollection",
-    features: [],
-  });
+  clearPathForRole("geo");
 }
 
 export function clearInspectPath() {
-  const map = hooks.getMap();
-  if (!isPathLayerReady() || !map?.getSource("glide-path")) {
+  if (!isPathLayerReady()) {
     return;
   }
-  map.getSource("glide-path").setData({
-    type: "FeatureCollection",
-    features: [],
-  });
+  clearPathForRole("inspect");
 }
 
 export function clearAllGlidePaths() {
