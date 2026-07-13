@@ -12,6 +12,27 @@ export function isLocalhostDev() {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
+/** Hide Dev menu blocks in production; show only on localhost. */
+export function syncFakeGeoMenuVisibility() {
+  const localhost = isLocalhostDev();
+  document.body.classList.toggle("localhost-dev", localhost);
+  if (!localhost) {
+    if (dom.fakeGeoDividerEl) {
+      dom.fakeGeoDividerEl.hidden = true;
+    }
+    if (dom.fakeGeoSectionEl) {
+      dom.fakeGeoSectionEl.hidden = true;
+    }
+  } else {
+    if (dom.fakeGeoDividerEl) {
+      dom.fakeGeoDividerEl.hidden = false;
+    }
+    if (dom.fakeGeoSectionEl) {
+      dom.fakeGeoSectionEl.hidden = false;
+    }
+  }
+}
+
 export function isFakeGeoActive(app) {
   return Boolean(app.fakeGeoActive);
 }
@@ -39,6 +60,7 @@ function syncFakeGeoMenuFields(active) {
 }
 
 export function initFakeGeo(app, hooks) {
+  syncFakeGeoMenuVisibility();
   if (!isLocalhostDev()) {
     return;
   }
@@ -46,13 +68,6 @@ export function initFakeGeo(app, hooks) {
   const map = hooks.getMap();
   if (!map) {
     return;
-  }
-
-  if (dom.fakeGeoDividerEl) {
-    dom.fakeGeoDividerEl.hidden = false;
-  }
-  if (dom.fakeGeoSectionEl) {
-    dom.fakeGeoSectionEl.hidden = false;
   }
 
   function readMaxComputeIterations() {

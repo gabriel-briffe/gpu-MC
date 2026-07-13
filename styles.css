@@ -371,6 +371,18 @@
         flex-shrink: 0;
       }
 
+      .dev-localhost-only {
+        display: none !important;
+      }
+
+      body.localhost-dev .dev-localhost-only {
+        display: block !important;
+      }
+
+      body.localhost-dev #fake-geo-section.dev-localhost-only {
+        display: flex !important;
+      }
+
       .app-menu-subsection[hidden] {
         display: none;
       }

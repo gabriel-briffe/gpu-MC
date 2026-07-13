@@ -137,7 +137,7 @@ import {
   setUserLocationMarkerVisible,
   updateUserLocationFromPosition,
 } from "./map/location-track.js";
-import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
+import { initFakeGeo, isFakeGeoActive, syncFakeGeoMenuVisibility } from "./dev-fake-geo.js";
 import { initWakeLock } from "./wake-lock.js";
 import { attachSeedAirportMeta } from "./airport-label.js";
 
@@ -749,6 +749,7 @@ initCellInspect(app.hooks);
 initComputeVisualization(app.hooks);
 initComputeSession(app.hooks);
 initParamsPanel(app, dom);
+syncFakeGeoMenuVisibility();
 
 if (typeof maplibregl !== "undefined") {
   maplibregl.setWorkerUrl(assetUrl("vendor/maplibre-gl/maplibre-gl-csp-worker.js"));
