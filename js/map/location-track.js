@@ -1,14 +1,12 @@
-import { distanceMetres } from "../geo.js";
-
 export const USER_LOCATION_SOURCE_ID = "user-location";
 export const USER_LOCATION_WEDGE_LAYER_ID = "user-location-wedge";
 export const USER_LOCATION_ICON_ID = "user-location-wedge-icon";
 
-/** Minimum ground movement (m) before updating course-over-ground. */
-const TRACK_MIN_MOVE_M = 4;
+/** Default wedge heading when stationary (degrees, north-up). */
+const TRACK_NORTH_DEG = 0;
 
 let lastPosition = null;
-let currentTrack = null;
+let currentTrack = TRACK_NORTH_DEG;
 let markerVisible = false;
 
 function bearingDegrees(lng1, lat1, lng2, lat2) {
@@ -91,23 +89,19 @@ export function ensureUserLocationLayers(map, onLayersAdded) {
       visibility: "none",
     },
     paint: {
-      "icon-opacity": ["case", ["has", "track"], 1, 0],
+      "icon-opacity": 1,
     },
   });
   onLayersAdded?.();
 }
 
 function syncUserLocationMarkerData(map, lng, lat) {
-  const properties = {};
-  if (currentTrack !== null) {
-    properties.track = currentTrack;
-  }
   map.getSource(USER_LOCATION_SOURCE_ID).setData({
     type: "FeatureCollection",
     features: [
       {
         type: "Feature",
-        properties,
+        properties: { track: currentTrack },
         geometry: { type: "Point", coordinates: [lng, lat] },
       },
     ],
@@ -134,7 +128,7 @@ export function setUserLocationMarkerVisible(map, visible) {
 
 export function resetUserLocationTrack() {
   lastPosition = null;
-  currentTrack = null;
+  currentTrack = TRACK_NORTH_DEG;
 }
 
 export function updateUserLocationFromPosition(map, lng, lat) {
@@ -144,11 +138,13 @@ export function updateUserLocationFromPosition(map, lng, lat) {
   ensureUserLocationLayers(map);
   setUserLocationMarkerVisible(map, true);
 
-  if (lastPosition) {
-    const movedM = distanceMetres(lastPosition.lat, lastPosition.lng, lat, lng);
-    if (movedM >= TRACK_MIN_MOVE_M) {
-      currentTrack = bearingDegrees(lastPosition.lng, lastPosition.lat, lng, lat);
-    }
+  if (
+    lastPosition &&
+    (lastPosition.lng !== lng || lastPosition.lat !== lat)
+  ) {
+    currentTrack = bearingDegrees(lastPosition.lng, lastPosition.lat, lng, lat);
+  } else {
+    currentTrack = TRACK_NORTH_DEG;
   }
 
   lastPosition = { lng, lat };
