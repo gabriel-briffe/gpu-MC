@@ -1,10 +1,8 @@
-import { formatAirportLabel } from "../airport-label.js";
+import { formatAirportLabel, normalizeComputeAirport } from "../airport-label.js";
 import { isAutoParamsMode, isSingleParamsMode } from "../params/panel.js";
 import {
   airportIdFromComputeAirport,
   airportIdFromFeature,
-  airportIdFromManualPlacement,
-  computeAirportFromOpenAip,
 } from "./airport-id.js";
 
 const AIRPORT_PICK_LAYERS = ["airports-cached-hit"];
@@ -53,13 +51,16 @@ function pickFromFeature(feature) {
       lat,
       properties: props,
     });
-  return {
+  return normalizeComputeAirport({
     id,
     lng,
     lat,
     label,
+    icao: props.icao_code ?? props.icaoCode ?? null,
+    name: props.name ?? null,
+    properties: props,
     source: props.source === "manual" ? "manual" : "airport",
-  };
+  });
 }
 
 function featurePickDistanceSq(map, point, feature) {
@@ -114,30 +115,7 @@ export function toggleComputeAirportAt(pick) {
 }
 
 function setComputeAirports(airports) {
-  app.computeAirports = airports.map((airport) => {
-    if (airport.id) {
-      return {
-        id: airport.id,
-        lng: airport.lng,
-        lat: airport.lat,
-        label: airport.label,
-        source: airport.source ?? airport.properties?.source ?? "airport",
-      };
-    }
-    if (airport.properties) {
-      return computeAirportFromOpenAip(airport, {
-        label: airport.label ?? formatAirportLabel(airport),
-        source: airport.properties.source === "manual" ? "manual" : "airport",
-      });
-    }
-    return {
-      id: airportIdFromManualPlacement(airport.lng, airport.lat),
-      lng: airport.lng,
-      lat: airport.lat,
-      label: airport.label,
-      source: airport.source ?? "airport",
-    };
-  });
+  app.computeAirports = airports.map((airport) => normalizeComputeAirport(airport));
   hooks.schedulePersistParamsState?.();
 }
 

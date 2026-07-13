@@ -139,6 +139,7 @@ import {
 } from "./map/location-track.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
 import { initWakeLock } from "./wake-lock.js";
+import { attachSeedAirportMeta } from "./airport-label.js";
 
 const app = createApp();
 
@@ -180,6 +181,11 @@ const {
   debugModeInput,
   computeContextBarEl,
   computeContextGeoStatsEl,
+  computeContextDestRowEl,
+  computeContextDestIcaoEl,
+  computeContextDestNameEl,
+  computeContextDestZEl,
+  computeContextDestPathEl,
   computeContextMinAltReadingEl,
   computeContextDeltaReadingEl,
   computeContextReqLdReadingEl,
@@ -1000,6 +1006,7 @@ function setTerrainTileMaxZoom(zoom) {
 
 
 function setConeState(dem, result, glideParams) {
+  attachSeedAirportMeta(dem, app.computeAirports);
   app.coneState = {
     dem,
     altitudes: result.altitudes,
@@ -1060,6 +1067,23 @@ function geoContextBarTone({ userAlt, geoCell, metrics, glideRatio }) {
 }
 
 function clearGeoContextReadings() {
+  if (computeContextDestRowEl) {
+    computeContextDestRowEl.hidden = true;
+  }
+  if (computeContextDestIcaoEl) {
+    computeContextDestIcaoEl.textContent = "";
+  }
+  if (computeContextDestNameEl) {
+    computeContextDestNameEl.textContent = "";
+    computeContextDestNameEl.hidden = true;
+  }
+  if (computeContextDestZEl) {
+    computeContextDestZEl.textContent = "";
+  }
+  if (computeContextDestPathEl) {
+    computeContextDestPathEl.textContent = "";
+    computeContextDestPathEl.hidden = true;
+  }
   if (computeContextMinAltReadingEl) {
     computeContextMinAltReadingEl.textContent = "";
   }
@@ -1071,17 +1095,77 @@ function clearGeoContextReadings() {
   }
 }
 
-function formatReqLdDisplay(reqLd) {
-  if (reqLd === null) {
+function formatZDistanceDisplay(userAlt, minAlt) {
+  if (!Number.isFinite(userAlt) || minAlt === null) {
     return "—";
   }
-  if (reqLd > 100) {
-    return "100+";
-  }
-  return reqLd.toFixed(1);
+  const delta = Math.round(userAlt - minAlt);
+  const sign = delta > 0 ? "+" : "";
+  return `${sign}${delta} m`;
 }
 
-function setGeoContextReadings({ minAlt, userAlt, reqLd }) {
+function formatPathDistanceDisplay(distanceM) {
+  if (!Number.isFinite(distanceM)) {
+    return "—";
+  }
+  return `${(distanceM / 1000).toFixed(1)} km`;
+}
+
+function setGeoContextReadings({ minAlt, userAlt, reqLd, metrics }) {
+  if (metrics) {
+    if (computeContextDestRowEl) {
+      computeContextDestRowEl.hidden = false;
+    }
+    if (computeContextDestIcaoEl) {
+      const icao = metrics.seedIcao;
+      if (icao) {
+        computeContextDestIcaoEl.textContent = icao;
+        computeContextDestIcaoEl.hidden = false;
+      } else {
+        computeContextDestIcaoEl.textContent = "";
+        computeContextDestIcaoEl.hidden = true;
+      }
+    }
+    if (computeContextDestNameEl) {
+      const name = metrics.seedName;
+      const icao = metrics.seedIcao;
+      if (name && (!icao || name !== icao)) {
+        computeContextDestNameEl.textContent = name;
+        computeContextDestNameEl.hidden = false;
+      } else if (!name && !icao) {
+        computeContextDestNameEl.textContent = "—";
+        computeContextDestNameEl.hidden = false;
+      } else {
+        computeContextDestNameEl.textContent = "";
+        computeContextDestNameEl.hidden = true;
+      }
+    }
+    if (computeContextDestZEl) {
+      computeContextDestZEl.textContent = formatPathDistanceDisplay(metrics.distanceM);
+    }
+    if (computeContextDestPathEl) {
+      computeContextDestPathEl.textContent = "";
+      computeContextDestPathEl.hidden = true;
+    }
+  } else {
+    if (computeContextDestRowEl) {
+      computeContextDestRowEl.hidden = true;
+    }
+    if (computeContextDestIcaoEl) {
+      computeContextDestIcaoEl.textContent = "";
+    }
+    if (computeContextDestNameEl) {
+      computeContextDestNameEl.textContent = "";
+      computeContextDestNameEl.hidden = true;
+    }
+    if (computeContextDestZEl) {
+      computeContextDestZEl.textContent = "";
+    }
+    if (computeContextDestPathEl) {
+      computeContextDestPathEl.textContent = "";
+      computeContextDestPathEl.hidden = true;
+    }
+  }
   if (computeContextMinAltReadingEl) {
     computeContextMinAltReadingEl.textContent =
       minAlt !== null ? `${Math.round(minAlt)} m` : "—";
@@ -1098,6 +1182,16 @@ function setGeoContextReadings({ minAlt, userAlt, reqLd }) {
   if (computeContextReqLdReadingEl) {
     computeContextReqLdReadingEl.textContent = formatReqLdDisplay(reqLd);
   }
+}
+
+function formatReqLdDisplay(reqLd) {
+  if (reqLd === null) {
+    return "—";
+  }
+  if (reqLd > 100) {
+    return "100+";
+  }
+  return reqLd.toFixed(1);
 }
 
 function setComputeContextBarTone(tone) {
@@ -1166,7 +1260,7 @@ function syncComputeContextBar() {
       const userAlt = app.lastGeoAltitude;
       const reqLd = metrics ? computeReqGlideRatio(metrics, userAlt) : null;
 
-      setGeoContextReadings({ minAlt, userAlt, reqLd });
+      setGeoContextReadings({ minAlt, userAlt, reqLd, metrics });
       computeContextGeoStatsEl.hidden = false;
       setComputeContextBarTone(
         geoContextBarTone({ userAlt, geoCell, metrics, glideRatio })

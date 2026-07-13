@@ -1,4 +1,5 @@
 import { gridCellDistanceM, gridCellToLngLat } from "./geo.js";
+import { seedAtGridCell } from "./airport-label.js";
 import { ensurePathLayer, raisePathLayer } from "./map/layers.js";
 
 const PATH_SOURCE_ID = "glide-path";
@@ -248,11 +249,14 @@ export function seedPathMetrics(cell) {
   const seedIdx = cellIndex(path.seedX, path.seedY, dem);
   const seedAlt = seedAltitudeAt(dem, seedIdx, circuitHeight);
   const requiredAlt = seedAlt + path.distanceM / glideRatio;
+  const seed = seedAtGridCell(dem, path.seedX, path.seedY);
 
   return {
     distanceM: path.distanceM,
     requiredAlt,
     seedAlt,
+    seedIcao: seed?.icao ?? null,
+    seedName: seed?.name ?? seed?.label ?? null,
     isGroundSeed: ground[seedIdx] === 1,
     complete: path.complete,
     maxSegmentLd: pathMaxSegmentLd(cell.gi, cell.gj),

@@ -1020,6 +1020,36 @@
         justify-content: center;
       }
 
+      #params-shell:not(.debug-mode) .param-debug-only {
+        display: none !important;
+      }
+
+      #max-compute-iter-field input[type="number"] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.4rem 0.55rem;
+        border-radius: 0.45rem;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: #f5f7fa;
+        font-size: 0.9rem;
+      }
+
+      #fake-geo-section .param-check {
+        justify-content: flex-start;
+      }
+
+      #fake-geo-alt-field input[type="number"] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.4rem 0.55rem;
+        border-radius: 0.45rem;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: #f5f7fa;
+        font-size: 0.9rem;
+      }
+
       .include-manual-airports-row {
         display: flex;
         justify-content: center;
@@ -1426,6 +1456,8 @@
         right: 0;
         bottom: 0;
         z-index: 3;
+        display: flex;
+        flex-direction: column;
         padding: 0.55rem 1rem 0.7rem;
         text-align: center;
         color: #f0fff4;
@@ -1450,23 +1482,80 @@
 
       #compute-context-geo-stats {
         display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        align-items: flex-start;
-        gap: 0.5rem 2.5rem;
-        margin-bottom: 0.2rem;
+        flex-direction: column;
+        width: 100%;
+        max-width: none;
       }
 
       #compute-context-geo-stats[hidden] {
         display: none;
       }
 
+      #compute-context-geo-stats[hidden] + .compute-context-divider--before-params {
+        display: none;
+      }
+
+      .compute-context-divider {
+        flex-shrink: 0;
+        height: 1px;
+        margin: 0.45rem -1rem;
+        background: rgba(255, 255, 255, 0.22);
+      }
+
+      #compute-context-bar.compute-context-bar--orange .compute-context-divider {
+        background: rgba(255, 255, 255, 0.24);
+      }
+
+      #compute-context-bar.compute-context-bar--red .compute-context-divider {
+        background: rgba(255, 255, 255, 0.24);
+      }
+
+      .compute-context-stat-row {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: space-between;
+        align-items: flex-start;
+        width: 100%;
+        gap: 0.75rem;
+      }
+
+      .compute-context-stat-row[hidden] {
+        display: none;
+      }
+
       .compute-context-stat-block {
         display: flex;
         flex-direction: column;
+        flex: 1 1 0;
+        min-width: 0;
         align-items: center;
         text-align: center;
-        min-width: 4.5rem;
+      }
+
+      .compute-context-stat-block--start {
+        align-items: flex-start;
+        text-align: left;
+      }
+
+      .compute-context-stat-block--center {
+        align-items: center;
+        text-align: center;
+      }
+
+      .compute-context-stat-block--end {
+        align-items: flex-end;
+        text-align: right;
+      }
+
+      #compute-context-dest-row .compute-context-stat-block--start {
+        flex: 1 1 0;
+        min-width: 0;
+      }
+
+      #compute-context-dest-row .compute-context-stat-block--end {
+        flex: 0 0 auto;
+        min-width: auto;
       }
 
       .compute-context-stat-label {
@@ -1488,6 +1577,37 @@
         font-variant-numeric: tabular-nums;
       }
 
+      .compute-context-stat-subvalue {
+        margin-top: 0.1rem;
+        font-size: 0.95rem;
+        font-weight: 650;
+        color: rgba(255, 255, 255, 0.88);
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .compute-context-stat-subvalue[hidden] {
+        display: none;
+      }
+
+      #compute-context-dest-icao[hidden],
+      #compute-context-dest-name[hidden] {
+        display: none;
+      }
+
+      #compute-context-dest-name {
+        font-size: 1rem;
+        font-weight: 800;
+        line-height: 1.15;
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+
       #compute-context-params {
         font-size: 1rem;
         font-weight: 650;
@@ -1495,73 +1615,6 @@
       }
 
       #compute-context-bar[hidden] {
-        display: none;
-      }
-
-      #fake-geo-panel {
-        position: fixed;
-        left: 0.75rem;
-        bottom: 4.75rem;
-        z-index: 4;
-        display: flex;
-        flex-direction: column;
-        gap: 0.4rem;
-        min-width: 11rem;
-        padding: 0.55rem 0.65rem;
-        border-radius: 0.6rem;
-        background: rgba(18, 22, 28, 0.94);
-        color: #e8ecf1;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-        border: 1px solid rgba(100, 160, 255, 0.35);
-        font-size: 0.78rem;
-        pointer-events: auto;
-      }
-
-      body.has-compute-context #fake-geo-panel {
-        bottom: 5.5rem;
-      }
-
-      .fake-geo-toggle {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-        cursor: pointer;
-        user-select: none;
-      }
-
-      .fake-geo-alt {
-        display: flex;
-        flex-direction: column;
-        gap: 0.2rem;
-      }
-
-      .fake-geo-max-iter {
-        display: flex;
-        flex-direction: column;
-        gap: 0.2rem;
-      }
-
-      .fake-geo-alt input,
-      #fake-geo-altitude,
-      #fake-geo-max-iter {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 0.25rem 0.4rem;
-        border-radius: 0.35rem;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        background: rgba(255, 255, 255, 0.06);
-        color: #f5f7fa;
-      }
-
-      .fake-geo-hint {
-        margin: 0;
-        color: #9aa4b2;
-        font-size: 0.68rem;
-        line-height: 1.3;
-      }
-
-      #fake-geo-panel:not(.fake-geo-active) .fake-geo-alt,
-      #fake-geo-panel:not(.fake-geo-active) .fake-geo-hint {
         display: none;
       }
 

@@ -185,7 +185,6 @@ export function syncDebugUi() {
   dom.paramsShell?.classList.toggle("debug-mode", debug);
   app.hooks.syncDownloadContoursButton();
   app.hooks.syncBaseMapTerrainMaxZoom?.();
-  app.hooks.syncFakeGeoDebugFields?.();
   syncVizModeDebugOptions();
   app.hooks.syncAirspaceUi?.();
   const lastInspectCell = app.hooks.getLastInspectCell();

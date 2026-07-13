@@ -513,6 +513,12 @@
                 <span class="param-hint" id="sectors-opacity-hint">50%</span>
               </div>
               <p class="param-section-desc param-field-full" id="path-input-hint"></p>
+              <div class="param-field param-field-full param-debug-only" id="max-compute-iter-field">
+                <div class="param-label-row">
+                  <span class="param-label">Stop at iter</span>
+                </div>
+                <input id="max-compute-iter" type="number" min="1" step="1" placeholder="∞" />
+              </div>
             </div>
             <div class="params-section-actions params-section-actions-secondary">
               <button type="button" class="action-btn btn-green" id="download-contours" hidden disabled>
@@ -646,25 +652,60 @@
             </div>
           </div>
         </section>
+
+        <hr class="app-menu-divider" id="fake-geo-divider" hidden />
+
+        <section class="app-menu-section" id="fake-geo-section" hidden>
+          <h2 class="app-menu-section-title">Dev</h2>
+          <div class="params-fields">
+            <div class="param-field param-field-full">
+              <label class="param-check" for="fake-geo-enable">
+                <input id="fake-geo-enable" type="checkbox" />
+                <span>Fake GPS</span>
+              </label>
+              <span class="param-hint">Uses map centre as position (localhost only).</span>
+            </div>
+            <div class="param-field param-field-full" id="fake-geo-alt-field" hidden>
+              <div class="param-label-row">
+                <span class="param-label">Altitude (m)</span>
+              </div>
+              <input id="fake-geo-altitude" type="number" step="10" />
+            </div>
+          </div>
+        </section>
       </div>
     </div>
     <div id="param-help-popover" hidden role="tooltip"></div>
     <div id="cell-tooltip" hidden aria-live="polite"></div>
     <div id="compute-context-bar" hidden aria-live="polite">
       <div id="compute-context-geo-stats" class="compute-context-geo-stats" hidden>
-        <div class="compute-context-stat-block">
-          <div class="compute-context-stat-label">minimum alt</div>
-          <div class="compute-context-stat-value" id="compute-context-min-alt-reading"></div>
+        <div class="compute-context-stat-row" id="compute-context-dest-row">
+          <div class="compute-context-stat-block compute-context-stat-block--start">
+            <div class="compute-context-stat-label" id="compute-context-dest-icao"></div>
+            <div class="compute-context-stat-value" id="compute-context-dest-name"></div>
+          </div>
+          <div class="compute-context-stat-block compute-context-stat-block--end">
+            <div class="compute-context-stat-label">Z dist</div>
+            <div class="compute-context-stat-value" id="compute-context-dest-z"></div>
+          </div>
         </div>
-        <div class="compute-context-stat-block">
-          <div class="compute-context-stat-label">delta</div>
-          <div class="compute-context-stat-value" id="compute-context-delta-reading"></div>
-        </div>
-        <div class="compute-context-stat-block">
-          <div class="compute-context-stat-label">reqL/D</div>
-          <div class="compute-context-stat-value" id="compute-context-reqld-reading"></div>
+        <div class="compute-context-divider" role="presentation" aria-hidden="true"></div>
+        <div class="compute-context-stat-row">
+          <div class="compute-context-stat-block compute-context-stat-block--start">
+            <div class="compute-context-stat-label">minimum alt</div>
+            <div class="compute-context-stat-value" id="compute-context-min-alt-reading"></div>
+          </div>
+          <div class="compute-context-stat-block compute-context-stat-block--center">
+            <div class="compute-context-stat-label">delta</div>
+            <div class="compute-context-stat-value" id="compute-context-delta-reading"></div>
+          </div>
+          <div class="compute-context-stat-block compute-context-stat-block--end">
+            <div class="compute-context-stat-label">reqL/D</div>
+            <div class="compute-context-stat-value" id="compute-context-reqld-reading"></div>
+          </div>
         </div>
       </div>
+      <div class="compute-context-divider compute-context-divider--before-params" role="presentation" aria-hidden="true"></div>
       <div id="compute-context-params"></div>
     </div>
     <div id="map"></div>

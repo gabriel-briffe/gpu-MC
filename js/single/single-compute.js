@@ -109,15 +109,7 @@ async function runSingleAirportCompute(pick) {
     hooks.refreshRestAirspaceLayerData?.();
   }
 
-  hooks.setComputeAirports([
-    {
-      id,
-      lng,
-      lat,
-      label,
-      source: source ?? "airport",
-    },
-  ]);
+  hooks.setComputeAirports([pick]);
 
   const name = label ?? "airport";
   hooks.setStatus(`Computing ${name}…`);
