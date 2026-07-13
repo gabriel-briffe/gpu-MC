@@ -131,6 +131,12 @@ import { ensureRasterBasemapLayers, reloadGradientBasemap, setBaseMapRasterMode 
 import { setGradientAltitudes } from "./map/terrain-gradient.js";
 import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
+import {
+  ensureUserLocationLayers,
+  resetUserLocationTrack,
+  setUserLocationMarkerVisible,
+  updateUserLocationFromPosition,
+} from "./map/location-track.js";
 import { initFakeGeo, isFakeGeoActive } from "./dev-fake-geo.js";
 import { initWakeLock } from "./wake-lock.js";
 
@@ -400,15 +406,38 @@ function updateParamsFooter() {
   statusEl.textContent = text;
 }
 
-function isGeoTrackingOn() {
-  if (isFakeGeoActive(app)) {
-    return true;
-  }
+function isGeolocateControlTracking() {
   if (!app.geolocateControl) {
     return false;
   }
   const state = app.geolocateControl._watchState;
   return state === "ACTIVE_LOCK" || state === "BACKGROUND" || state === "WAITING_ACTIVE";
+}
+
+function isGeoTrackingOn() {
+  if (isFakeGeoActive(app)) {
+    return true;
+  }
+  return isGeolocateControlTracking();
+}
+
+function applyGeoPosition(lng, lat, altitude) {
+  app.lastGeoLngLat = { lng, lat };
+  app.lastGeoAltitude = Number.isFinite(altitude) ? altitude : null;
+  if (isGeoTrackingOn()) {
+    setUserLocationMarkerVisible(app.map, true);
+    updateUserLocationFromPosition(app.map, lng, lat);
+  }
+  updateGeoLocationPath();
+  syncComputeContextBar();
+}
+
+function clearGeoTrackingMarker() {
+  if (isFakeGeoActive(app) || isGeolocateControlTracking()) {
+    return;
+  }
+  setUserLocationMarkerVisible(app.map, false);
+  resetUserLocationTrack();
 }
 
 function areOpenAipAirportsAvailable() {
@@ -560,6 +589,7 @@ app.hooks = {
   getLastInspectCell,
   getInteraction: () => app.interaction,
   getDisplayedTerrainZoom,
+  isGeolocateControlTracking,
   runComputation,
   ensureEngine,
   isAutoParamsMode,
@@ -801,26 +831,35 @@ app.map.addControl(new maplibregl.NavigationControl(), "top-right");
 app.geolocateControl = new maplibregl.GeolocateControl({
   positionOptions: { enableHighAccuracy: true },
   trackUserLocation: true,
-  showUserHeading: true,
+  showUserLocation: false,
+  showUserHeading: false,
+  showAccuracyCircle: false,
 });
 app.map.addControl(app.geolocateControl, "top-right");
 app.geolocateControl._container?.addEventListener("click", lockGeolocatePanZoom, true);
 
 app.geolocateControl.on("geolocate", (event) => {
-  app.lastGeoLngLat = {
-    lng: event.coords.longitude,
-    lat: event.coords.latitude,
-  };
-  app.lastGeoAltitude = Number.isFinite(event.coords.altitude) ? event.coords.altitude : null;
+  applyGeoPosition(
+    event.coords.longitude,
+    event.coords.latitude,
+    event.coords.altitude
+  );
   if (app.geoTrackInitialPanPending) {
     panGeolocateToPosition(event.coords);
   }
-  updateGeoLocationPath();
-  syncComputeContextBar();
 });
 
 app.geolocateControl.on("trackuserlocationstart", () => {
   lockGeolocatePanZoom();
+  resetUserLocationTrack();
+  setUserLocationMarkerVisible(app.map, true);
+  if (app.lastGeoLngLat) {
+    updateUserLocationFromPosition(
+      app.map,
+      app.lastGeoLngLat.lng,
+      app.lastGeoLngLat.lat
+    );
+  }
   updateGeoLocationPath();
   syncComputeContextBar();
 });
@@ -831,6 +870,7 @@ app.geolocateControl.on("trackuserlocationend", () => {
     app.lastGeoLngLat = null;
     app.lastGeoAltitude = null;
     clearGeoPath();
+    clearGeoTrackingMarker();
     syncComputeContextBar();
   }
 });
@@ -1210,7 +1250,7 @@ app.map.on("load", async () => {
   ensureRasterBasemapLayers(app.map);
   setBaseMapRasterMode(app.map, app.baseMapRaster);
   ensurePathLayer();
-  setBaseMapRasterMode(app.map, app.baseMapRaster);
+  ensureUserLocationLayers(app.map, () => raisePathLayer());
   initFakeGeo(app, app.hooks);
   app.map.on("moveend", () => {
     updateTerrainResolutionHint();

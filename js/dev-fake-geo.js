@@ -1,4 +1,9 @@
 import { sampleDemCell } from "./inspect/cell.js";
+import {
+  resetUserLocationTrack,
+  setUserLocationMarkerVisible,
+  updateUserLocationFromPosition,
+} from "./map/location-track.js";
 
 export function isLocalhostDev() {
   const hostname = globalThis.location?.hostname;
@@ -20,53 +25,6 @@ function defaultFakeAltitude(lng, lat) {
 function readAltitudeInput(input) {
   const value = Number.parseFloat(input?.value ?? "");
   return Number.isFinite(value) ? value : null;
-}
-
-function syncFakeGeoMarker(map, lng, lat, visible) {
-  if (!map) {
-    return;
-  }
-
-  const sourceId = "fake-geo-position";
-  const layerId = "fake-geo-position";
-
-  if (!visible) {
-    if (map.getLayer(layerId)) {
-      map.setLayoutProperty(layerId, "visibility", "none");
-    }
-    return;
-  }
-
-  if (!map.getSource(sourceId)) {
-    map.addSource(sourceId, {
-      type: "geojson",
-      data: { type: "FeatureCollection", features: [] },
-    });
-    map.addLayer({
-      id: layerId,
-      type: "circle",
-      source: sourceId,
-      paint: {
-        "circle-radius": 8,
-        "circle-color": "#3b82f6",
-        "circle-stroke-width": 2,
-        "circle-stroke-color": "#ffffff",
-      },
-    });
-    hooks.raisePathLayer?.();
-  }
-
-  map.setLayoutProperty(layerId, "visibility", "visible");
-  map.getSource(sourceId).setData({
-    type: "FeatureCollection",
-    features: [
-      {
-        type: "Feature",
-        properties: {},
-        geometry: { type: "Point", coordinates: [lng, lat] },
-      },
-    ],
-  });
 }
 
 export function initFakeGeo(app, hooks) {
@@ -94,7 +52,7 @@ export function initFakeGeo(app, hooks) {
       <span>Stop at iter</span>
       <input id="fake-geo-max-iter" type="number" min="1" step="1" placeholder="∞" />
     </label>
-    <p class="fake-geo-hint">Uses map centre as fake position.</p>
+    <p class="fake-geo-hint">Uses map centre as fake position; wedge shows movement direction.</p>
   `;
   document.body.appendChild(panel);
 
@@ -125,7 +83,8 @@ export function initFakeGeo(app, hooks) {
   function applyFakeGeo(lng, lat, altitude) {
     app.lastGeoLngLat = { lng, lat };
     app.lastGeoAltitude = Number.isFinite(altitude) ? altitude : null;
-    syncFakeGeoMarker(map, lng, lat, true);
+    setUserLocationMarkerVisible(map, true);
+    updateUserLocationFromPosition(map, lng, lat);
     hooks.updateGeoLocationPath?.();
     hooks.syncComputeContextBar?.();
   }
@@ -150,12 +109,16 @@ export function initFakeGeo(app, hooks) {
     if (!enabled) {
       app.lastGeoLngLat = null;
       app.lastGeoAltitude = null;
-      syncFakeGeoMarker(map, 0, 0, false);
+      if (!hooks.isGeolocateControlTracking?.()) {
+        setUserLocationMarkerVisible(map, false);
+        resetUserLocationTrack();
+      }
       hooks.clearGeoPath?.();
       hooks.syncComputeContextBar?.();
       return;
     }
 
+    resetUserLocationTrack();
     syncFakeGeoFromCamera();
   }
 

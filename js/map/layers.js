@@ -51,7 +51,7 @@ const MAP_LAYER_ORDER = [
   "glide-contours-label",
   REST_AIRSPACE_LINE_LAYER,
   ...OPENAIP_VECTOR_LAYER_IDS,
-  "fake-geo-position",
+  "user-location-wedge",
   "glide-path-geo",
   "glide-path-geo-ground",
   "glide-path",
