@@ -16,6 +16,15 @@
       <button type="button" id="app-menu-btn" class="iconch1-step-btn" aria-label="Menu" aria-expanded="false">
         ☰
       </button>
+      <button
+        type="button"
+        id="basemap-cycle-btn"
+        class="iconch1-step-btn basemap-cycle-btn"
+        aria-label="Cycle base map"
+        hidden
+      >
+        <img id="basemap-cycle-icon" class="basemap-cycle-icon" alt="" draggable="false" />
+      </button>
     </div>
     <div id="app-menu-backdrop" class="app-menu-backdrop" hidden></div>
 
@@ -150,16 +159,19 @@
           <h2 class="app-menu-section-title">Base Map</h2>
           <div class="app-menu-section-head basemap-section-head">
             <div class="basemap-raster-buttons">
-              <button type="button" class="module-enable-btn is-active" id="osm-enable" aria-pressed="true">
+              <button type="button" class="module-enable-btn" id="hillshade-enable" aria-label="Hillshade" aria-pressed="false">
+                Hillshade
+              </button>
+              <button type="button" class="module-enable-btn is-active" id="osm-enable" aria-label="OSM" aria-pressed="true">
                 OSM
               </button>
-              <button type="button" class="module-enable-btn" id="satellite-enable" aria-pressed="false">
+              <button type="button" class="module-enable-btn" id="satellite-enable" aria-label="Satellite" aria-pressed="false">
                 Satellite
               </button>
             </div>
           </div>
           <div class="app-menu-section-head basemap-gradient-row">
-            <button type="button" class="module-enable-btn" id="gradient-enable" aria-pressed="false">
+            <button type="button" class="module-enable-btn" id="gradient-enable" aria-label="Gradient" aria-pressed="false">
               Gradient
             </button>
             <button

@@ -128,6 +128,7 @@ import {
 import { initIconCh1 } from "./iconch1/iconch1-app.js";
 import { raiseIconCh1Layer } from "./map/layers.js";
 import { ensureRasterBasemapLayers, reloadGradientBasemap, setBaseMapRasterMode } from "./map/raster-basemap.js";
+import { ensureBasemapPreviewIcons } from "./map/basemap-preview-icons.js";
 import { setGradientAltitudes } from "./map/terrain-gradient.js";
 import { needsStartupCacheMode } from "./cache-area.js";
 import { bindMapEvents, bindUiEvents } from "./map/events.js";
@@ -1344,6 +1345,20 @@ app.map.on("load", async () => {
   });
   ensureRasterBasemapLayers(app.map);
   setBaseMapRasterMode(app.map, app.baseMapRaster);
+  void ensureBasemapPreviewIcons({
+    hillshade: dom.basemapHillshadeBtn,
+    osm: dom.basemapOsmBtn,
+    satellite: dom.basemapSatelliteBtn,
+    gradient: dom.basemapGradientBtn,
+  })
+    .then((ready) => {
+      if (ready) {
+        syncAppMenuUi();
+      }
+    })
+    .catch((error) => {
+      console.warn("Basemap preview icons skipped", error);
+    });
   ensurePathLayer();
   ensureUserLocationLayers(app.map, () => raisePathLayer());
   initFakeGeo(app, app.hooks);

@@ -6,6 +6,10 @@ import {
 import { initParamSteppers } from "./params/steppers.js";
 import { setGradientAltitudes } from "./map/terrain-gradient.js";
 import { loadGradientState, saveGradientSettings } from "./map/gradient-persist.js";
+import {
+  nextBasemapCycleMode,
+  syncBasemapCycleButton,
+} from "./map/basemap-preview-icons.js";
 
 let hooks;
 let app;
@@ -29,16 +33,24 @@ export function initAppMenu(h, domRefs) {
 
   dom.appMenuBackdrop?.addEventListener("click", closeAppMenu);
 
+  dom.basemapHillshadeBtn?.addEventListener("click", () => {
+    setBaseMapRaster("hillshade");
+  });
+
   dom.basemapOsmBtn?.addEventListener("click", () => {
-    setBaseMapRaster(app.baseMapRaster === "osm" ? null : "osm");
+    setBaseMapRaster("osm");
   });
 
   dom.basemapSatelliteBtn?.addEventListener("click", () => {
-    setBaseMapRaster(app.baseMapRaster === "satellite" ? null : "satellite");
+    setBaseMapRaster("satellite");
   });
 
   dom.basemapGradientBtn?.addEventListener("click", () => {
-    setBaseMapRaster(app.baseMapRaster === "gradient" ? null : "gradient");
+    setBaseMapRaster("gradient");
+  });
+
+  dom.basemapCycleBtn?.addEventListener("click", () => {
+    setBaseMapRaster(nextBasemapCycleMode(app.baseMapRaster));
   });
 
   dom.basemapGradientSettingsBtn?.addEventListener("click", () => {
@@ -264,7 +276,12 @@ export function setIconChActiveModel(modelId) {
 export function syncAppMenuUi() {
   document.body.classList.toggle("app-menu-open", app.appMenuOpen);
   document.body.classList.toggle("glidecones-disabled", !app.glideConesEnabled);
-  document.body.classList.toggle("basemap-raster-enabled", Boolean(app.baseMapRaster));
+  document.body.classList.toggle(
+    "basemap-raster-enabled",
+    app.baseMapRaster === "osm" ||
+      app.baseMapRaster === "satellite" ||
+      app.baseMapRaster === "gradient"
+  );
   document.body.classList.toggle("iconch1-enabled", Boolean(app.iconChActiveModel));
 
   if (dom.appMenuBtn) {
@@ -280,6 +297,9 @@ export function syncAppMenuUi() {
   dom.glideConesEnableBtn?.classList.toggle("is-active", app.glideConesEnabled);
   dom.glideConesEnableBtn?.setAttribute("aria-pressed", String(app.glideConesEnabled));
 
+  dom.basemapHillshadeBtn?.classList.toggle("is-active", app.baseMapRaster === "hillshade");
+  dom.basemapHillshadeBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "hillshade"));
+
   dom.basemapOsmBtn?.classList.toggle("is-active", app.baseMapRaster === "osm");
   dom.basemapOsmBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "osm"));
 
@@ -288,6 +308,8 @@ export function syncAppMenuUi() {
 
   dom.basemapGradientBtn?.classList.toggle("is-active", app.baseMapRaster === "gradient");
   dom.basemapGradientBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "gradient"));
+
+  syncBasemapCycleButton(dom.basemapCycleBtn, dom.basemapCycleIcon, app.baseMapRaster);
 
   const openAipAvailable = hooks.areOpenAipAirportsAvailable?.() ?? false;
   if (dom.airspaceOpenAipBtn) {

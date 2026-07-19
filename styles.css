@@ -28,12 +28,32 @@
         left: max(0.75rem, env(safe-area-inset-left));
         z-index: 4;
         pointer-events: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
       }
 
       #app-menu-chrome .iconch1-step-btn {
         display: flex;
         align-items: center;
         justify-content: center;
+      }
+
+      #app-menu-chrome .basemap-cycle-btn {
+        padding: 0;
+        overflow: hidden;
+      }
+
+      #app-menu-chrome .basemap-cycle-btn[hidden] {
+        display: none;
+      }
+
+      #app-menu-chrome .basemap-cycle-icon {
+        display: block;
+        width: 40px;
+        height: 40px;
+        object-fit: cover;
+        pointer-events: none;
       }
 
       .app-menu-backdrop {
@@ -85,7 +105,17 @@
         flex-direction: column;
         align-items: stretch;
         gap: 0.45rem;
-        width: min(92vw, 24rem);
+        /* Stay centered; shrink so we clear left menu chrome and right MapLibre zoom/geolocate. */
+        width: min(
+          24rem,
+          calc(
+            100vw
+              - max(0.75rem, env(safe-area-inset-left))
+              - max(0.75rem, env(safe-area-inset-right))
+              - 3.75rem /* #app-menu-chrome (~40px btn + padding + gap) */
+              - 3.25rem /* .maplibregl-ctrl-top-right */
+          )
+        );
         padding: 0.65rem 0.85rem;
         border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 12px;
@@ -305,9 +335,22 @@
         min-width: 0;
       }
 
+      .basemap-gradient-row .module-enable-btn.basemap-preview-ready,
+      .basemap-raster-buttons .module-enable-btn.basemap-preview-ready {
+        flex: 0 0 88px;
+        width: 88px;
+        height: 88px;
+        min-width: 88px;
+        min-height: 88px;
+        padding: 0;
+        overflow: hidden;
+        text-align: center;
+      }
+
       .basemap-raster-buttons {
         display: flex;
         flex: 1;
+        flex-wrap: wrap;
         gap: 0.35rem;
         min-width: 0;
       }
@@ -315,6 +358,19 @@
       .basemap-raster-buttons .module-enable-btn {
         flex: 1;
         min-width: 0;
+      }
+
+      .basemap-preview-icon {
+        display: block;
+        width: 88px;
+        height: 88px;
+        object-fit: cover;
+        pointer-events: none;
+      }
+
+      .basemap-gradient-row .app-menu-settings-btn {
+        width: 88px;
+        height: 88px;
       }
 
       .app-menu-section-head {
@@ -445,12 +501,17 @@
       }
 
       body.iconch1-status-visible .iconch1-alt-rail {
-        top: calc(max(0.75rem, env(safe-area-inset-top)) + 5.5rem);
+        top: calc(max(0.75rem, env(safe-area-inset-top)) + 5.75rem);
+      }
+
+      body.iconch1-status-visible:has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
+        top: calc(max(0.75rem, env(safe-area-inset-top)) + 8.65rem);
       }
 
       .iconch1-alt-rail {
         position: fixed;
-        top: calc(max(0.75rem, env(safe-area-inset-top)) + 3.5rem);
+        /* Clear #app-menu-chrome (menu button only). */
+        top: calc(max(0.75rem, env(safe-area-inset-top)) + 3.75rem);
         left: max(0.75rem, env(safe-area-inset-left));
         z-index: 4;
         display: inline-flex;
@@ -459,6 +520,11 @@
         gap: 0.35rem;
         width: fit-content;
         pointer-events: auto;
+      }
+
+      /* Menu + basemap cycle button stacked in #app-menu-chrome. */
+      body:has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
+        top: calc(max(0.75rem, env(safe-area-inset-top)) + 6.65rem);
       }
 
       .iconch1-value-wrap {

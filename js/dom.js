@@ -1,6 +1,9 @@
 export const dom = {
   appMenuBtn: document.getElementById("app-menu-btn"),
+  basemapCycleBtn: document.getElementById("basemap-cycle-btn"),
+  basemapCycleIcon: document.getElementById("basemap-cycle-icon"),
   appMenuBackdrop: document.getElementById("app-menu-backdrop"),
+  basemapHillshadeBtn: document.getElementById("hillshade-enable"),
   basemapOsmBtn: document.getElementById("osm-enable"),
   basemapSatelliteBtn: document.getElementById("satellite-enable"),
   basemapGradientBtn: document.getElementById("gradient-enable"),

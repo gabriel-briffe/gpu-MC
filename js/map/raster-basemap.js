@@ -15,6 +15,10 @@ const GRADIENT_SOURCE_ID = "terrain-gradient-raster";
 const GRADIENT_LAYER_ID = "terrain-gradient-raster-layer";
 const HILLSHADE_LAYER_ID = "hillshade";
 
+export const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+export const SATELLITE_TILE_URL =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+
 const HILLSHADE_PAINT_DEFAULT = {
   "hillshade-shadow-color": "#473b24",
   "hillshade-highlight-color": "#ffffff",
@@ -29,10 +33,6 @@ const HILLSHADE_PAINT_OSM = {
   "hillshade-accent-color": "rgba(60, 48, 30, 0.32)",
   "hillshade-exaggeration": 0.48,
 };
-
-const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const SATELLITE_TILE_URL =
-  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 
 function insertBeforeHillshade(map, layer) {
   const beforeId = map.getLayer(HILLSHADE_LAYER_ID) ? HILLSHADE_LAYER_ID : undefined;
@@ -81,9 +81,13 @@ function syncBasemapLayerStack(map, mode) {
     return;
   }
 
-  const baseLayerId = mode === "osm" ? OSM_LAYER_ID : null;
-  const stack = baseLayerId ? [baseLayerId, HILLSHADE_LAYER_ID] : [HILLSHADE_LAYER_ID];
-  moveBasemapLayers(map, stack, anchor);
+  if (mode === "osm") {
+    moveBasemapLayers(map, [OSM_LAYER_ID, HILLSHADE_LAYER_ID], anchor);
+    return;
+  }
+
+  // hillshade-only (and any unknown mode)
+  moveBasemapLayers(map, [HILLSHADE_LAYER_ID], anchor);
 }
 
 function ensureOsmBasemapLayer(map) {
