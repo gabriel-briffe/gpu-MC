@@ -1279,7 +1279,8 @@
 
       #cell-tooltip {
         position: fixed;
-        z-index: 4;
+        /* Above the map only — below menu, chrome bars, wave/time bar, context bar, etc. */
+        z-index: 1;
         max-width: min(20rem, 88vw);
         padding: 0.55rem 0.7rem;
         border-radius: 0.55rem;
