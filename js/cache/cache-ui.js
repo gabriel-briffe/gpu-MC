@@ -149,6 +149,7 @@ function syncCacheSelectBar() {
   syncMapDoubleTapZoom();
   hooks.updateParamsFooter?.();
   hooks.syncComputeContextBar?.();
+  hooks.syncGlideModeCycleButton?.();
 }
 
 function enterCacheSelectMode({ focusMap = false } = {}) {

@@ -178,6 +178,7 @@ export function setParamsMode(mode, { initial = false } = {}) {
 
   app.hooks.persistParamsState?.();
   app.hooks.updateParamsFooter?.();
+  app.hooks.syncGlideModeCycleButton?.();
 }
 
 export function syncDebugUi() {

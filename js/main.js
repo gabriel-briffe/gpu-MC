@@ -121,6 +121,7 @@ import {
   isOpenAipVectorEnabled,
   setOpenAipVectorEnabled,
   syncAppMenuUi,
+  syncGlideModeCycleButton,
   openAppMenu,
   openGlideSettings,
   closeAppMenu,
@@ -639,6 +640,7 @@ app.hooks = {
   toggleIconChActiveModel,
   isOpenAipVectorEnabled,
   setOpenAipVectorEnabled,
+  syncGlideModeCycleButton,
   raiseIconCh1Layer,
   setBaseMapRasterMode: (mode) => {
     setBaseMapRasterMode(app.map, mode);

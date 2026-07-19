@@ -2,6 +2,8 @@ import { clearAllOverlays } from "./compute/visualization.js";
 import {
   isAutoParamsMode,
   isSingleParamsMode,
+  getParamsMode,
+  setParamsMode,
 } from "./params/panel.js";
 import { initParamSteppers } from "./params/steppers.js";
 import { setGradientAltitudes } from "./map/terrain-gradient.js";
@@ -10,6 +12,19 @@ import {
   nextBasemapCycleMode,
   syncBasemapCycleButton,
 } from "./map/basemap-preview-icons.js";
+import { assetUrl } from "./asset-url.js";
+
+const GLIDE_MODE_CYCLE = ["none", "single", "auto"];
+const GLIDE_MODE_ICONS = {
+  none: "icons/mode-none.svg",
+  single: "icons/mode-single.svg",
+  auto: "icons/mode-auto.svg",
+};
+const GLIDE_MODE_LABELS = {
+  none: "No glide cones",
+  single: "Single airport",
+  auto: "Auto",
+};
 
 let hooks;
 let app;
@@ -51,6 +66,10 @@ export function initAppMenu(h, domRefs) {
 
   dom.basemapCycleBtn?.addEventListener("click", () => {
     setBaseMapRaster(nextBasemapCycleMode(app.baseMapRaster));
+  });
+
+  dom.glideModeCycleBtn?.addEventListener("click", () => {
+    cycleGlideMode();
   });
 
   dom.basemapGradientSettingsBtn?.addEventListener("click", () => {
@@ -160,6 +179,49 @@ export function restoreGradientState(saved) {
 
 export function isGlideConesEnabled() {
   return app.glideConesEnabled;
+}
+
+function getGlideChromeMode() {
+  if (!app.glideConesEnabled) {
+    return "none";
+  }
+  const mode = getParamsMode();
+  return mode === "single" || mode === "auto" ? mode : "auto";
+}
+
+function nextGlideChromeMode(mode) {
+  const index = GLIDE_MODE_CYCLE.indexOf(mode);
+  const from = index < 0 ? 0 : index;
+  return GLIDE_MODE_CYCLE[(from + 1) % GLIDE_MODE_CYCLE.length];
+}
+
+export function syncGlideModeCycleButton() {
+  const btn = dom.glideModeCycleBtn;
+  const img = dom.glideModeCycleIcon;
+  if (!btn || !img) {
+    return;
+  }
+  const hide = Boolean(app.cacheSelectMode);
+  btn.hidden = hide;
+  if (hide) {
+    return;
+  }
+  const mode = getGlideChromeMode();
+  img.src = assetUrl(GLIDE_MODE_ICONS[mode]);
+  btn.setAttribute("aria-label", `${GLIDE_MODE_LABELS[mode]} (cycle)`);
+}
+
+function cycleGlideMode() {
+  const next = nextGlideChromeMode(getGlideChromeMode());
+  if (next === "none") {
+    setGlideConesEnabled(false);
+    return;
+  }
+  if (!app.glideConesEnabled) {
+    app.glideConesEnabled = true;
+  }
+  setParamsMode(next);
+  syncAppMenuUi();
 }
 
 export function setBaseMapRaster(mode) {
@@ -310,6 +372,7 @@ export function syncAppMenuUi() {
   dom.basemapGradientBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "gradient"));
 
   syncBasemapCycleButton(dom.basemapCycleBtn, dom.basemapCycleIcon, app.baseMapRaster);
+  syncGlideModeCycleButton();
 
   const openAipAvailable = hooks.areOpenAipAirportsAvailable?.() ?? false;
   if (dom.airspaceOpenAipBtn) {

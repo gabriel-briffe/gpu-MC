@@ -56,6 +56,23 @@
         pointer-events: none;
       }
 
+      #app-menu-chrome .glide-mode-cycle-btn {
+        padding: 0;
+        overflow: hidden;
+      }
+
+      #app-menu-chrome .glide-mode-cycle-btn[hidden] {
+        display: none;
+      }
+
+      #app-menu-chrome .glide-mode-cycle-icon {
+        display: block;
+        width: 40px;
+        height: 40px;
+        object-fit: cover;
+        pointer-events: none;
+      }
+
       .app-menu-backdrop {
         position: fixed;
         inset: 0;
@@ -504,13 +521,30 @@
         top: calc(max(0.75rem, env(safe-area-inset-top)) + 5.75rem);
       }
 
-      body.iconch1-status-visible:has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
+      /* Menu + glide mode (glide hidden on cache page). */
+      body:not(.cache-select-mode) .iconch1-alt-rail {
+        top: calc(max(0.75rem, env(safe-area-inset-top)) + 6.65rem);
+      }
+
+      body:not(.cache-select-mode).iconch1-status-visible .iconch1-alt-rail {
+        top: calc(max(0.75rem, env(safe-area-inset-top)) + 8.65rem);
+      }
+
+      body:not(.cache-select-mode):has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
+        top: calc(max(0.75rem, env(safe-area-inset-top)) + 9.55rem);
+      }
+
+      body:not(.cache-select-mode).iconch1-status-visible:has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
+        top: calc(max(0.75rem, env(safe-area-inset-top)) + 11.55rem);
+      }
+
+      body.cache-select-mode.iconch1-status-visible:has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
         top: calc(max(0.75rem, env(safe-area-inset-top)) + 8.65rem);
       }
 
       .iconch1-alt-rail {
         position: fixed;
-        /* Clear #app-menu-chrome (menu button only). */
+        /* Clear #app-menu-chrome (menu button only / cache page). */
         top: calc(max(0.75rem, env(safe-area-inset-top)) + 3.75rem);
         left: max(0.75rem, env(safe-area-inset-left));
         z-index: 4;
@@ -522,8 +556,8 @@
         pointer-events: auto;
       }
 
-      /* Menu + basemap cycle button stacked in #app-menu-chrome. */
-      body:has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
+      /* Cache page: menu + optional basemap only. */
+      body.cache-select-mode:has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
         top: calc(max(0.75rem, env(safe-area-inset-top)) + 6.65rem);
       }
 
