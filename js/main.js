@@ -98,6 +98,7 @@ import {
   initComputeAirports,
 } from "./airports/compute-airports.js";
 import { initDisabledAirports } from "./airports/disabled.js";
+import { getHasCycledAirport } from "./airports/auto-disable-tip.js";
 import {
   addManualAirportsToStore,
   getManualAirportCount,
@@ -199,6 +200,7 @@ const {
   paramsScrollEl,
   computeStopBar,
   computeStopMessageEl,
+  modeAirportHintEl,
   pathInputHintEl,
   glideSettingsModeHintEl,
   openCacheDataBtn,
@@ -397,6 +399,37 @@ function syncComputeStopBar() {
   if (computeStopMessageEl) {
     computeStopMessageEl.hidden = !hasMessage || computing;
   }
+}
+
+const SINGLE_AIRPORT_HINT = "Click airport to compute";
+const AUTO_DISABLE_HINT =
+  "Click an airport in the computed box to disable it, see the result, then click again to re-enable it";
+
+/** Bottom hint for single (pick airport) or auto (disable tip) modes. */
+function syncModeAirportHint() {
+  if (!modeAirportHintEl) {
+    return;
+  }
+  const chromeClear =
+    isGlideConesEnabled() &&
+    !app.cacheSelectMode &&
+    !getManualAirportSelectMode() &&
+    !app.appMenuOpen;
+
+  let text = "";
+  if (chromeClear && isSingleParamsMode() && !app.singleLastPick?.id) {
+    text = SINGLE_AIRPORT_HINT;
+  } else if (chromeClear && isAutoParamsMode() && !getHasCycledAirport()) {
+    text = AUTO_DISABLE_HINT;
+  }
+
+  if (text) {
+    modeAirportHintEl.textContent = text;
+    modeAirportHintEl.hidden = false;
+  } else {
+    modeAirportHintEl.hidden = true;
+  }
+  app.hooks.syncGlideSettingsLongpressHint?.();
 }
 
 function updateParamsFooter() {
@@ -736,6 +769,7 @@ app.hooks = {
   clearCacheGridLayers,
   updateCacheGridData,
   syncComputeContextBar,
+  syncModeAirportHint,
 };
 
 initDisabledAirports(app.hooks);
@@ -753,6 +787,8 @@ initComputeVisualization(app.hooks);
 initComputeSession(app.hooks);
 initParamsPanel(app, dom);
 syncFakeGeoMenuVisibility();
+syncAppMenuUi();
+syncModeAirportHint();
 
 if (typeof maplibregl !== "undefined") {
   maplibregl.setWorkerUrl(assetUrl("vendor/maplibre-gl/maplibre-gl-csp-worker.js"));
@@ -767,6 +803,7 @@ app.map = new maplibregl.Map({
   zoom: MAP_INITIAL_ZOOM,
   maxZoom: MAP_MAX_ZOOM,
   center: [MAP_CENTER.lng, MAP_CENTER.lat],
+  attributionControl: { compact: true },
   style: {
     version: 8,
     glyphs: MAP_GLYPHS_URL,
@@ -799,12 +836,25 @@ app.map = new maplibregl.Map({
 
 app.map.keyboard.disable();
 
-app.mapReady = new Promise((resolve) => {
-  if (app.map.loaded()) {
-    resolve(app.map);
+function collapseMapAttribution() {
+  const el = app.map?.getContainer()?.querySelector(".maplibregl-ctrl-attrib");
+  if (!el) {
     return;
   }
-  app.map.once("load", () => resolve(app.map));
+  el.classList.remove("maplibregl-compact-show");
+}
+
+app.mapReady = new Promise((resolve) => {
+  const finish = () => {
+    collapseMapAttribution();
+    requestAnimationFrame(collapseMapAttribution);
+    resolve(app.map);
+  };
+  if (app.map.loaded()) {
+    finish();
+    return;
+  }
+  app.map.once("load", finish);
 });
 app.hooks.waitForMapReady = () => app.mapReady;
 

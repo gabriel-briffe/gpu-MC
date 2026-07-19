@@ -179,6 +179,7 @@ export function setParamsMode(mode, { initial = false } = {}) {
   app.hooks.persistParamsState?.();
   app.hooks.updateParamsFooter?.();
   app.hooks.syncGlideModeCycleButton?.();
+  app.hooks.syncModeAirportHint?.();
 }
 
 export function syncDebugUi() {

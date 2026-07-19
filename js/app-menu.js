@@ -13,6 +13,16 @@ import {
   syncBasemapCycleButton,
 } from "./map/basemap-preview-icons.js";
 import { assetUrl } from "./asset-url.js";
+import { bindLongPress } from "./ui/long-press.js";
+import {
+  getHasLongPressedGlideSettings,
+  noteGlideSettingsLongPress,
+} from "./ui/glide-settings-longpress-tip.js";
+import {
+  getHasLongPressedGradientSettings,
+  noteGradientSettingsLongPress,
+} from "./ui/gradient-settings-longpress-tip.js";
+import { getHasCycledAirport } from "./airports/auto-disable-tip.js";
 
 const GLIDE_MODE_CYCLE = ["none", "single", "auto"];
 const GLIDE_MODE_ICONS = {
@@ -37,6 +47,9 @@ export function initAppMenu(h, domRefs) {
 
   restoreGradientState(loadGradientState());
   syncGradientAltitudeInputs();
+
+  hooks.syncGlideSettingsLongpressHint = syncGlideSettingsLongpressHint;
+  hooks.syncGradientSettingsLongpressHint = syncGradientSettingsLongpressHint;
 
   dom.appMenuBtn?.addEventListener("click", () => {
     if (app.appMenuOpen) {
@@ -64,12 +77,31 @@ export function initAppMenu(h, domRefs) {
     setBaseMapRaster("gradient");
   });
 
-  dom.basemapCycleBtn?.addEventListener("click", () => {
-    setBaseMapRaster(nextBasemapCycleMode(app.baseMapRaster));
+  bindLongPress(dom.basemapCycleBtn, {
+    onShort: () => {
+      setBaseMapRaster(nextBasemapCycleMode(app.baseMapRaster));
+    },
+    onLong: () => {
+      noteGradientSettingsLongPress();
+      syncGradientSettingsLongpressHint();
+      openGradientSettings();
+    },
   });
 
-  dom.glideModeCycleBtn?.addEventListener("click", () => {
-    cycleGlideMode();
+  bindLongPress(dom.glideModeCycleBtn, {
+    onShort: () => {
+      cycleGlideMode();
+    },
+    onLong: () => {
+      noteGlideSettingsLongPress();
+      syncGlideSettingsLongpressHint();
+      openGlideSettings({ scrollToOverlay: true });
+    },
+  });
+
+  window.addEventListener("resize", () => {
+    syncGlideSettingsLongpressHint();
+    syncGradientSettingsLongpressHint();
   });
 
   dom.basemapGradientSettingsBtn?.addEventListener("click", () => {
@@ -204,11 +236,84 @@ export function syncGlideModeCycleButton() {
   const hide = Boolean(app.cacheSelectMode);
   btn.hidden = hide;
   if (hide) {
+    syncGlideSettingsLongpressHint();
     return;
   }
   const mode = getGlideChromeMode();
   img.src = assetUrl(GLIDE_MODE_ICONS[mode]);
-  btn.setAttribute("aria-label", `${GLIDE_MODE_LABELS[mode]} (cycle)`);
+  btn.setAttribute(
+    "aria-label",
+    `${GLIDE_MODE_LABELS[mode]} (tap to cycle, long-press for settings)`
+  );
+  syncGlideSettingsLongpressHint();
+}
+
+function isModeAirportHintVisible() {
+  if (
+    !app.glideConesEnabled ||
+    app.cacheSelectMode ||
+    hooks.getManualAirportSelectMode?.() ||
+    app.appMenuOpen
+  ) {
+    return false;
+  }
+  if (isSingleParamsMode() && !app.singleLastPick?.id) {
+    return true;
+  }
+  if (isAutoParamsMode() && !getHasCycledAirport()) {
+    return true;
+  }
+  return false;
+}
+
+function positionChromeLongpressHint(hint, btn) {
+  const rect = btn.getBoundingClientRect();
+  hint.style.top = `${rect.top + rect.height / 2}px`;
+  hint.style.left = `${rect.right + 8}px`;
+  hint.hidden = false;
+}
+
+function syncGradientSettingsLongpressHint() {
+  const hint = dom.gradientSettingsLongpressHintEl;
+  const btn = dom.basemapCycleBtn;
+  if (!hint) {
+    return;
+  }
+  const show =
+    !getHasLongPressedGradientSettings() &&
+    app.baseMapRaster === "gradient" &&
+    !app.cacheSelectMode &&
+    !app.appMenuOpen &&
+    Boolean(btn) &&
+    !btn.hidden;
+  if (!show) {
+    hint.hidden = true;
+    return;
+  }
+  positionChromeLongpressHint(hint, btn);
+}
+
+function syncGlideSettingsLongpressHint() {
+  const hint = dom.glideSettingsLongpressHintEl;
+  const btn = dom.glideModeCycleBtn;
+  if (!hint) {
+    return;
+  }
+  const inSingleOrAuto =
+    app.glideConesEnabled && (isSingleParamsMode() || isAutoParamsMode());
+  const show =
+    !getHasLongPressedGlideSettings() &&
+    inSingleOrAuto &&
+    !isModeAirportHintVisible() &&
+    !app.cacheSelectMode &&
+    !app.appMenuOpen &&
+    Boolean(btn) &&
+    !btn.hidden;
+  if (!show) {
+    hint.hidden = true;
+    return;
+  }
+  positionChromeLongpressHint(hint, btn);
 }
 
 function cycleGlideMode() {
@@ -268,11 +373,35 @@ export function closeAppMenu() {
   syncAppMenuUi();
 }
 
-export function openGlideSettings() {
+function scrollGlideSettingsToOverlay() {
+  const target = dom.paramsOverlayField ?? dom.vizModeSelect;
+  if (!target) {
+    return;
+  }
+  // Wait for menu + expanded subsection to layout before scrolling.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      target.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  });
+}
+
+export function openGlideSettings({ scrollToOverlay = false } = {}) {
   app.iconChSettingsOpen = false;
   app.gradientSettingsOpen = false;
+  app.appMenuOpen = true;
   app.glideSettingsOpen = true;
-  openAppMenu();
+  syncAppMenuUi();
+  if (scrollToOverlay) {
+    scrollGlideSettingsToOverlay();
+  }
+}
+
+export function openGradientSettings() {
+  app.glideSettingsOpen = false;
+  app.iconChSettingsOpen = false;
+  app.appMenuOpen = true;
+  app.gradientSettingsOpen = true;
   syncAppMenuUi();
 }
 
@@ -310,6 +439,7 @@ export function setGlideConesEnabled(enabled) {
     hooks.scheduleSingleAirportCompute?.(undefined, { debounce: false });
   }
   syncAppMenuUi();
+  hooks.syncModeAirportHint?.();
 }
 
 export function toggleIconChActiveModel() {
@@ -372,7 +502,9 @@ export function syncAppMenuUi() {
   dom.basemapGradientBtn?.setAttribute("aria-pressed", String(app.baseMapRaster === "gradient"));
 
   syncBasemapCycleButton(dom.basemapCycleBtn, dom.basemapCycleIcon, app.baseMapRaster);
+  syncGradientSettingsLongpressHint();
   syncGlideModeCycleButton();
+  hooks.syncModeAirportHint?.();
 
   const openAipAvailable = hooks.areOpenAipAirportsAvailable?.() ?? false;
   if (dom.airspaceOpenAipBtn) {

@@ -54,7 +54,7 @@ export function createApp() {
     mapTapStart: null,
     touchGestureWasPan: false,
     appMenuOpen: false,
-    glideConesEnabled: true,
+    glideConesEnabled: false,
     baseMapRaster: "osm",
     gradientMaxAltitude: GRADIENT_MAX_ALT_DEFAULT,
     gradientMinAltitude: GRADIENT_MIN_ALT_DEFAULT,

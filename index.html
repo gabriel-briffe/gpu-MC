@@ -34,6 +34,12 @@
         <img id="glide-mode-cycle-icon" class="glide-mode-cycle-icon" alt="" draggable="false" />
       </button>
     </div>
+    <p id="glide-settings-longpress-hint" class="chrome-longpress-hint" hidden>
+      ← long click here to change glide parameters and visualisation
+    </p>
+    <p id="gradient-settings-longpress-hint" class="chrome-longpress-hint" hidden>
+      ← long click here to change gradient parameters
+    </p>
     <div id="app-menu-backdrop" class="app-menu-backdrop" hidden></div>
 
     <div id="cache-select-bar" class="map-select-bar" hidden>
@@ -137,6 +143,8 @@
       <p id="compute-stop-message" class="map-select-status compute-stop-message" hidden></p>
       <button type="button" id="stop-compute" hidden>Stop</button>
     </div>
+
+    <div id="mode-airport-hint" class="mode-airport-hint" hidden aria-live="polite"></div>
 
     <div id="iconch1-chrome" hidden>
       <header class="iconch1-time-header" id="iconch1-time-header" aria-label="Forecast time">
@@ -307,7 +315,7 @@
         <form id="params" aria-label="Glide parameters">
           <div class="params-section">
             <div class="params-fields">
-              <div class="param-field param-field-full">
+              <div class="param-field param-field-full" id="params-overlay-field">
                 <div class="param-label-row">
                   <span class="param-label">Overlay</span>
                   <button type="button" class="param-help" data-help="viz-mode" aria-label="Help: overlay mode">ⓘ</button>

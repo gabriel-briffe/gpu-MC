@@ -1,7 +1,31 @@
+import { normalizeComputeAirport } from "../airport-label.js";
+
 const PARAMS_STORAGE_KEY = "gpu-mc-params-v1";
 const VALID_MODES = new Set(["single", "auto"]);
 
 let saveTimer = null;
+
+function serializeSingleLastPick(pick) {
+  if (!pick?.id || !Number.isFinite(pick.lng) || !Number.isFinite(pick.lat)) {
+    return null;
+  }
+  return {
+    id: String(pick.id),
+    lng: pick.lng,
+    lat: pick.lat,
+    label: pick.label ?? null,
+    icao: pick.icao ?? null,
+    name: pick.name ?? null,
+    source: pick.source ?? "airport",
+  };
+}
+
+function parseSingleLastPick(raw) {
+  if (!raw?.id || !Number.isFinite(raw.lng) || !Number.isFinite(raw.lat)) {
+    return null;
+  }
+  return normalizeComputeAirport(raw);
+}
 
 function readCheckbox(el) {
   return el?.checked ?? false;
@@ -79,6 +103,7 @@ export function loadParamsState() {
     return {
       mode,
       form: data.form ?? null,
+      singleLastPick: parseSingleLastPick(data.singleLastPick),
     };
   } catch (error) {
     console.warn("Failed to load saved parameters", error);
@@ -98,6 +123,7 @@ export function saveParamsState(dom, mode, app) {
         version: 1,
         mode: resolvedMode,
         form: collectFormState(dom),
+        singleLastPick: serializeSingleLastPick(app?.singleLastPick),
       })
     );
   } catch (error) {
@@ -128,5 +154,8 @@ export function restoreParamsState(dom, app, saved) {
   }
   if (saved.form) {
     applyFormState(dom, saved.form);
+  }
+  if (saved.singleLastPick) {
+    app.singleLastPick = saved.singleLastPick;
   }
 }
