@@ -1,6 +1,16 @@
-import { openAipAirportsUrl, openAipConfigured, setOpenAipTypeFilter } from "./openaip-client.js";
-import { OPENAIP_INCLUDED_AIRPORT_TYPE_CODES } from "./openaip-airport-types.js";
+import {
+  openAipAirportsUrl,
+  openAipConfigured,
+  openAipCountryAirportGeoJsonUrl,
+  setOpenAipTypeFilter,
+} from "./openaip-client.js";
+import {
+  OPENAIP_INCLUDED_AIRPORT_TYPE_CODES,
+  isIncludedOpenAipAirportType,
+} from "./openaip-airport-types.js";
 import { openAipAirportKey } from "./openaip-tiles.js";
+import { countriesForCellKeys } from "./openaip-cell-countries.js";
+import { cacheCellBounds } from "./cache/cell-geometry.js";
 
 function normalizeCoreAirport(item) {
   let lng;
@@ -29,6 +39,32 @@ function normalizeCoreAirport(item) {
   };
 
   return { lng, lat, properties };
+}
+
+function airportFromGeoJsonFeature(feature) {
+  if (!feature?.geometry) {
+    return null;
+  }
+  const airport = normalizeCoreAirport({
+    ...(feature.properties ?? {}),
+    geometry: feature.geometry,
+  });
+  if (!airport) {
+    return null;
+  }
+  if (!isIncludedOpenAipAirportType(airport.properties.type)) {
+    return null;
+  }
+  return airport;
+}
+
+function airportInBounds(airport, { west, south, east, north }) {
+  return (
+    airport.lng >= west &&
+    airport.lng <= east &&
+    airport.lat >= south &&
+    airport.lat <= north
+  );
 }
 
 export async function fetchAirportsInBbox(bbox, config) {
@@ -71,6 +107,71 @@ export async function fetchAirportsInBbox(bbox, config) {
   }
 
   return { airports: items, fetchCount };
+}
+
+/**
+ * Load country airport GeoJSON exports for the given 1° cells, clip to each cell,
+ * and return the same per-cell airport lists previously built via Core bbox queries.
+ */
+export async function fetchAirportsForCellKeys(cellKeys, config, { onStatus } = {}) {
+  if (!openAipConfigured(config)) {
+    return { airportsByCell: new Map(), fetchCount: 0, countries: [] };
+  }
+
+  const countries = countriesForCellKeys(cellKeys);
+  const airportsByCell = new Map();
+  for (const cellKey of cellKeys) {
+    airportsByCell.set(cellKey, []);
+  }
+
+  if (!countries.length) {
+    return { airportsByCell, fetchCount: 0, countries };
+  }
+
+  const cellBounds = new Map(cellKeys.map((cellKey) => [cellKey, cacheCellBounds(cellKey)]));
+  let fetchCount = 0;
+  const countryAirports = new Map();
+
+  for (let index = 0; index < countries.length; index += 1) {
+    const cc = countries[index];
+    onStatus?.(
+      `Fetching airports export ${index + 1}/${countries.length} (${cc})…`
+    );
+    const url = openAipCountryAirportGeoJsonUrl(config, cc);
+    if (!url) {
+      continue;
+    }
+    const response = await fetch(url);
+    fetchCount += 1;
+    if (!response.ok) {
+      throw new Error(`OpenAIP airport export ${cc} ${response.status}`);
+    }
+    const geojson = await response.json();
+    const airports = [];
+    for (const feature of geojson.features ?? []) {
+      const airport = airportFromGeoJsonFeature(feature);
+      if (airport) {
+        airports.push(airport);
+      }
+    }
+    countryAirports.set(cc, airports);
+  }
+
+  for (const [, airports] of countryAirports) {
+    for (const airport of airports) {
+      for (const [cellKey, bounds] of cellBounds) {
+        if (airportInBounds(airport, bounds)) {
+          airportsByCell.get(cellKey).push(airport);
+        }
+      }
+    }
+  }
+
+  for (const [cellKey, airports] of airportsByCell) {
+    airportsByCell.set(cellKey, dedupeAirports(airports));
+  }
+
+  return { airportsByCell, fetchCount, countries };
 }
 
 export function dedupeAirports(airports) {

@@ -3,3 +3,4 @@ wasm/gribinfo/target/
 wasm/idw-regrid/target/
 cloudflare/openaip-proxy.worker.js
 node_modules/
+countries-distribution/

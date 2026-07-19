@@ -1,6 +1,5 @@
 import { fetchTerrainTileBlob, pruneTerrainTileCache } from "../terrain-tiles.js";
-import { fetchAirportsInBbox } from "../openaip-airports.js";
-import { fetchOverlayAirspaces } from "../airspace.js";
+import { fetchAirportsForCellKeys } from "../openaip-airports.js";
 import {
   clearAllOpenAipData,
   purgeCellCacheExcept,
@@ -61,42 +60,40 @@ async function cacheAirportsForCells(cellKeys, config, onStatus, onWarning) {
   let cellsFetched = 0;
   let cellsFailed = 0;
 
-  for (let index = 0; index < cellKeys.length; index += 1) {
-    const cellKey = cellKeys[index];
-    onStatus?.(`Fetching airports & airspace — cell ${index + 1}/${cellKeys.length} (${cellKey})…`);
-    const bounds = cacheCellBounds(cellKey);
-    try {
-      const [{ airports, fetchCount }, airspaces] = await Promise.all([
-        fetchAirportsInBbox(bounds, config),
-        fetchOverlayAirspaces(
-          {
-            minLng: bounds.west,
-            minLat: bounds.south,
-            maxLng: bounds.east,
-            maxLat: bounds.north,
-          },
-          config
-        ),
-      ]);
-      airportFetches += fetchCount;
-      cellsFetched += 1;
-
-      setCellEntry(cellKey, {
-        cellKey,
-        bounds,
-        airports,
-        airspaces,
-        fetchedAt: Date.now(),
-        airportFetches: fetchCount,
-        airspaceFetches: 1,
-      });
-    } catch (error) {
-      cellsFailed += 1;
-      onWarning?.(`Cell ${cellKey}: ${error.message}`);
+  let airportsByCell = new Map();
+  try {
+    onStatus?.(`Resolving airport countries for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`);
+    const result = await fetchAirportsForCellKeys(cellKeys, config, { onStatus });
+    airportsByCell = result.airportsByCell;
+    airportFetches = result.fetchCount;
+    if (result.countries.length) {
       onStatus?.(
-        `Cell ${index + 1}/${cellKeys.length} (${cellKey}) failed — ${error.message}`
+        `Airport exports loaded for ${result.countries.join(", ")}`
       );
     }
+  } catch (error) {
+    onWarning?.(`Airport exports: ${error.message}`);
+    for (const cellKey of cellKeys) {
+      cellsFailed += 1;
+      onWarning?.(`Cell ${cellKey}: ${error.message}`);
+    }
+    return { airportFetches, cellsFetched, cellsFailed };
+  }
+
+  // Airspace Core API fetch disabled for now (429); store empty lists.
+  for (let index = 0; index < cellKeys.length; index += 1) {
+    const cellKey = cellKeys[index];
+    const bounds = cacheCellBounds(cellKey);
+    cellsFetched += 1;
+    setCellEntry(cellKey, {
+      cellKey,
+      bounds,
+      airports: airportsByCell.get(cellKey) ?? [],
+      airspaces: [],
+      fetchedAt: Date.now(),
+      airportFetches: index === 0 ? airportFetches : 0,
+      airspaceFetches: 0,
+    });
   }
 
   return { airportFetches, cellsFetched, cellsFailed };
@@ -132,7 +129,7 @@ export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, op
     ));
   }
 
-  onStatus?.(`Fetching airports & airspace for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`);
+  onStatus?.(`Fetching airports for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`);
   const { airportFetches, cellsFetched, cellsFailed } = await cacheAirportsForCells(
     cellKeys,
     config,

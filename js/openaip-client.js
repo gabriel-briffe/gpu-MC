@@ -81,6 +81,8 @@ export function openAipAirspacesUrl(config, searchParams) {
 }
 
 const CORE_AIRPORTS_DIRECT = "https://api.core.openaip.net/api/airports";
+const GCS_EXPORT_BUCKET = "29f98e10-a489-4c82-ae5e-489dbcd4912f";
+const GCS_EXPORT_ORIGIN = `https://storage.googleapis.com/${GCS_EXPORT_BUCKET}`;
 
 export function openAipAirportsUrl(config, searchParams) {
   const { apiKey, proxyBase, useProxy } = resolveOpenAipConfig(config);
@@ -97,6 +99,25 @@ export function openAipAirportsUrl(config, searchParams) {
   }
 
   return null;
+}
+
+/**
+ * Daily-export airport GeoJSON URL for an ISO-2 country code (e.g. FR → fr_apt.geojson).
+ * Prefer proxy (GCS has no browser CORS).
+ */
+export function openAipCountryAirportGeoJsonUrl(config, countryCode) {
+  const cc = String(countryCode ?? "")
+    .trim()
+    .toLowerCase();
+  if (!/^[a-z]{2}$/.test(cc)) {
+    return null;
+  }
+  const objectName = `${cc}_apt.geojson`;
+  const { proxyBase, useProxy } = resolveOpenAipConfig(config);
+  if (useProxy && proxyBase) {
+    return `${proxyBase}/gcs/${objectName}`;
+  }
+  return `${GCS_EXPORT_ORIGIN}/${objectName}`;
 }
 
 export async function loadOpenAipConfig() {
