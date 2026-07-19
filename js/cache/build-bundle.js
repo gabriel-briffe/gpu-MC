@@ -1,16 +1,16 @@
 import { fetchTerrainTileBlob, pruneTerrainTileCache } from "../terrain-tiles.js";
 import { fetchAirportsForCellKeys } from "../openaip-airports.js";
+import { fetchAirspacesForCellKeys } from "../airspace.js";
 import {
   clearAllOpenAipData,
   purgeCellCacheExcept,
-  setCellEntry,
   setLastCachedCellKeys,
+  setOpenAipCache,
 } from "./cell-store.js";
 import {
   CACHE_TERRAIN_Z_MAX,
   CACHE_TERRAIN_Z_MIN,
   CACHE_TERRAIN_WARN_Z_MAX,
-  cacheCellBounds,
   terrariumTileJobsForCellKeys,
   unionCellBounds,
 } from "./cell-geometry.js";
@@ -55,48 +55,44 @@ async function prefetchTerrariumTiles(jobs, onStatus, onWarning) {
   return { tileCount: jobs.length, tileFetches, tileFailures };
 }
 
-async function cacheAirportsForCells(cellKeys, config, onStatus, onWarning) {
+async function cacheOpenAipForCells(cellKeys, config, onStatus, onWarning) {
   let airportFetches = 0;
+  let airspaceFetches = 0;
   let cellsFetched = 0;
   let cellsFailed = 0;
 
-  let airportsByCell = new Map();
   try {
-    onStatus?.(`Resolving airport countries for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`);
-    const result = await fetchAirportsForCellKeys(cellKeys, config, { onStatus });
-    airportsByCell = result.airportsByCell;
-    airportFetches = result.fetchCount;
-    if (result.countries.length) {
+    onStatus?.(
+      `Resolving OpenAIP countries for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`
+    );
+    const airportResult = await fetchAirportsForCellKeys(cellKeys, config, { onStatus });
+    airportFetches = airportResult.fetchCount;
+    if (airportResult.countries.length) {
+      onStatus?.(`Airports loaded for ${airportResult.countries.join(", ")}`);
+    }
+
+    const airspaceResult = await fetchAirspacesForCellKeys(cellKeys, config, { onStatus });
+    airspaceFetches = airspaceResult.fetchCount;
+    if (airspaceResult.countries.length) {
       onStatus?.(
-        `Airport exports loaded for ${result.countries.join(", ")}`
+        `Airspaces loaded for ${airspaceResult.countries.join(", ")} (${airspaceResult.airspaces.length} volumes)`
       );
     }
-  } catch (error) {
-    onWarning?.(`Airport exports: ${error.message}`);
-    for (const cellKey of cellKeys) {
-      cellsFailed += 1;
-      onWarning?.(`Cell ${cellKey}: ${error.message}`);
-    }
-    return { airportFetches, cellsFetched, cellsFailed };
-  }
 
-  // Airspace Core API fetch disabled for now (429); store empty lists.
-  for (let index = 0; index < cellKeys.length; index += 1) {
-    const cellKey = cellKeys[index];
-    const bounds = cacheCellBounds(cellKey);
-    cellsFetched += 1;
-    setCellEntry(cellKey, {
-      cellKey,
-      bounds,
-      airports: airportsByCell.get(cellKey) ?? [],
-      airspaces: [],
-      fetchedAt: Date.now(),
-      airportFetches: index === 0 ? airportFetches : 0,
-      airspaceFetches: 0,
+    setOpenAipCache({
+      airports: airportResult.airports,
+      airspaces: airspaceResult.airspaces,
+      airportFetches,
+      airspaceFetches,
     });
+    cellsFetched = cellKeys.length;
+  } catch (error) {
+    cellsFailed = cellKeys.length;
+    onWarning?.(`OpenAIP exports: ${error.message}`);
+    onStatus?.(`OpenAIP cache failed — ${error.message}`);
   }
 
-  return { airportFetches, cellsFetched, cellsFailed };
+  return { airportFetches, airspaceFetches, cellsFetched, cellsFailed };
 }
 
 export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, options = {}) {
@@ -129,16 +125,15 @@ export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, op
     ));
   }
 
-  onStatus?.(`Fetching airports for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`);
-  const { airportFetches, cellsFetched, cellsFailed } = await cacheAirportsForCells(
-    cellKeys,
-    config,
-    onStatus,
-    onWarning
+  onStatus?.(
+    `Fetching airports & airspace for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`
   );
-  const networkFetches = tileFetches + airportFetches;
-  const airportCount = mergeCachedAirports(cellKeys).length;
-  const airspaceCount = mergeCachedAirspaces(cellKeys).length;
+  const { airportFetches, airspaceFetches, cellsFetched, cellsFailed } =
+    await cacheOpenAipForCells(cellKeys, config, onStatus, onWarning);
+  const openAipFetches = airportFetches + airspaceFetches;
+  const networkFetches = tileFetches + openAipFetches;
+  const airportCount = mergeCachedAirports().length;
+  const airspaceCount = mergeCachedAirspaces().length;
   setLastCachedCellKeys(cellKeys);
 
   const failParts = [];
@@ -146,17 +141,17 @@ export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, op
     failParts.push(`${tileFailures} terrain tile${tileFailures === 1 ? "" : "s"} failed`);
   }
   if (cellsFailed > 0) {
-    failParts.push(`${cellsFailed} cell${cellsFailed === 1 ? "" : "s"} failed`);
+    failParts.push(`OpenAIP fetch failed`);
   }
   const failSuffix = failParts.length ? `, ${failParts.join(", ")}` : "";
 
   if (openAipOnly) {
     onStatus?.(
-      `OpenAIP updated — ${airportCount} airports, ${airspaceCount} airspace volumes in ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${airportFetches} fetched${failSuffix})`
+      `OpenAIP updated — ${airportCount} airports, ${airspaceCount} airspace volumes for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${openAipFetches} fetched${failSuffix})`
     );
   } else {
     onStatus?.(
-      `Cache done — ${tileCount} terrarium tiles, ${airportCount} airports, ${airspaceCount} airspace volumes in ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${networkFetches} fetched${failSuffix})`
+      `Cache done — ${tileCount} terrarium tiles, ${airportCount} airports, ${airspaceCount} airspace volumes for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${networkFetches} fetched${failSuffix})`
     );
   }
 
@@ -168,6 +163,7 @@ export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, op
     tileFailures,
     terrainPruned,
     airportFetches,
+    airspaceFetches,
     cellsFetched,
     cellsFailed,
     airportCount,

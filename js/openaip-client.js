@@ -106,13 +106,24 @@ export function openAipAirportsUrl(config, searchParams) {
  * Prefer proxy (GCS has no browser CORS).
  */
 export function openAipCountryAirportGeoJsonUrl(config, countryCode) {
+  return openAipCountryExportUrl(config, countryCode, "apt", "geojson");
+}
+
+/**
+ * Daily-export airspace GeoJSON URL for an ISO-2 country code (e.g. FR → fr_asp.geojson).
+ */
+export function openAipCountryAirspaceGeoJsonUrl(config, countryCode) {
+  return openAipCountryExportUrl(config, countryCode, "asp", "geojson");
+}
+
+function openAipCountryExportUrl(config, countryCode, kind, format) {
   const cc = String(countryCode ?? "")
     .trim()
     .toLowerCase();
   if (!/^[a-z]{2}$/.test(cc)) {
     return null;
   }
-  const objectName = `${cc}_apt.geojson`;
+  const objectName = `${cc}_${kind}.${format}`;
   const { proxyBase, useProxy } = resolveOpenAipConfig(config);
   if (useProxy && proxyBase) {
     return `${proxyBase}/gcs/${objectName}`;

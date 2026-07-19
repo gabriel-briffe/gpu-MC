@@ -67,6 +67,10 @@ function airportInBounds(airport, { west, south, east, north }) {
   );
 }
 
+function airportInAnyCell(airport, cells) {
+  return cells.some((cell) => airportInBounds(airport, cell));
+}
+
 export async function fetchAirportsInBbox(bbox, config) {
   if (!openAipConfigured(config)) {
     return { airports: [], fetchCount: 0 };
@@ -110,27 +114,22 @@ export async function fetchAirportsInBbox(bbox, config) {
 }
 
 /**
- * Load country airport GeoJSON exports for the given 1° cells, clip to each cell,
- * and return the same per-cell airport lists previously built via Core bbox queries.
+ * Load country airport GeoJSON exports for the given 1° cells, clip to those cells,
+ * and return one deduped airport list (shared cache, not per-cell).
  */
 export async function fetchAirportsForCellKeys(cellKeys, config, { onStatus } = {}) {
   if (!openAipConfigured(config)) {
-    return { airportsByCell: new Map(), fetchCount: 0, countries: [] };
+    return { airports: [], fetchCount: 0, countries: [] };
   }
 
   const countries = countriesForCellKeys(cellKeys);
-  const airportsByCell = new Map();
-  for (const cellKey of cellKeys) {
-    airportsByCell.set(cellKey, []);
-  }
-
   if (!countries.length) {
-    return { airportsByCell, fetchCount: 0, countries };
+    return { airports: [], fetchCount: 0, countries };
   }
 
-  const cellBounds = new Map(cellKeys.map((cellKey) => [cellKey, cacheCellBounds(cellKey)]));
+  const cells = cellKeys.map((cellKey) => cacheCellBounds(cellKey));
   let fetchCount = 0;
-  const countryAirports = new Map();
+  const collected = [];
 
   for (let index = 0; index < countries.length; index += 1) {
     const cc = countries[index];
@@ -147,31 +146,23 @@ export async function fetchAirportsForCellKeys(cellKeys, config, { onStatus } = 
       throw new Error(`OpenAIP airport export ${cc} ${response.status}`);
     }
     const geojson = await response.json();
-    const airports = [];
     for (const feature of geojson.features ?? []) {
       const airport = airportFromGeoJsonFeature(feature);
-      if (airport) {
-        airports.push(airport);
+      if (!airport) {
+        continue;
       }
-    }
-    countryAirports.set(cc, airports);
-  }
-
-  for (const [, airports] of countryAirports) {
-    for (const airport of airports) {
-      for (const [cellKey, bounds] of cellBounds) {
-        if (airportInBounds(airport, bounds)) {
-          airportsByCell.get(cellKey).push(airport);
-        }
+      if (!airportInAnyCell(airport, cells)) {
+        continue;
       }
+      collected.push(airport);
     }
   }
 
-  for (const [cellKey, airports] of airportsByCell) {
-    airportsByCell.set(cellKey, dedupeAirports(airports));
-  }
-
-  return { airportsByCell, fetchCount, countries };
+  return {
+    airports: dedupeAirports(collected),
+    fetchCount,
+    countries,
+  };
 }
 
 export function dedupeAirports(airports) {
