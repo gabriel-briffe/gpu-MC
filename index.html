@@ -307,6 +307,36 @@
         <form id="params" aria-label="Glide parameters">
           <div class="params-section">
             <div class="params-fields">
+              <div class="param-field param-field-full">
+                <div class="param-label-row">
+                  <span class="param-label">Overlay</span>
+                  <button type="button" class="param-help" data-help="viz-mode" aria-label="Help: overlay mode">ⓘ</button>
+                </div>
+                <select id="viz-mode">
+                  <option value="path-only">Path only</option>
+                  <option value="sectors">Sectors</option>
+                  <option value="contours" selected>Contours</option>
+                  <option value="contours-sectors">Contours + sectors</option>
+                  <option value="stripes" class="viz-mode-debug-only" hidden disabled>Stripes</option>
+                  <option value="raw" class="viz-mode-debug-only" hidden disabled>Raw raster</option>
+                  <option value="modified-cells" class="viz-mode-debug-only" hidden disabled>Modified cells (last iter)</option>
+                </select>
+                <span class="param-hint" id="viz-hint"></span>
+              </div>
+              <div class="param-field param-field-full" id="sectors-opacity-field" hidden>
+                <div class="param-label-row">
+                  <label class="param-label" for="sectors-opacity">Sectors opacity</label>
+                </div>
+                <input
+                  type="range"
+                  id="sectors-opacity"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value="50"
+                />
+                <span class="param-hint" id="sectors-opacity-hint">50%</span>
+              </div>
               <div class="param-field">
                 <div class="param-label-row">
                   <span class="param-label">L/D</span>
@@ -502,36 +532,6 @@
           <div class="params-section">
             <div class="params-fields">
               <input id="update-map" type="hidden" value="100" />
-              <div class="param-field param-field-full">
-                <div class="param-label-row">
-                  <span class="param-label">Overlay</span>
-                  <button type="button" class="param-help" data-help="viz-mode" aria-label="Help: overlay mode">ⓘ</button>
-                </div>
-                <select id="viz-mode">
-                  <option value="path-only">Path only</option>
-                  <option value="sectors">Sectors</option>
-                  <option value="contours" selected>Contours</option>
-                  <option value="contours-sectors">Contours + sectors</option>
-                  <option value="stripes" class="viz-mode-debug-only" hidden disabled>Stripes</option>
-                  <option value="raw" class="viz-mode-debug-only" hidden disabled>Raw raster</option>
-                  <option value="modified-cells" class="viz-mode-debug-only" hidden disabled>Modified cells (last iter)</option>
-                </select>
-                <span class="param-hint" id="viz-hint"></span>
-              </div>
-              <div class="param-field param-field-full" id="sectors-opacity-field" hidden>
-                <div class="param-label-row">
-                  <label class="param-label" for="sectors-opacity">Sectors opacity</label>
-                </div>
-                <input
-                  type="range"
-                  id="sectors-opacity"
-                  min="0"
-                  max="100"
-                  step="5"
-                  value="50"
-                />
-                <span class="param-hint" id="sectors-opacity-hint">50%</span>
-              </div>
               <p class="param-section-desc param-field-full" id="path-input-hint"></p>
               <div class="param-field param-field-full param-debug-only" id="max-compute-iter-field">
                 <div class="param-label-row">
