@@ -98,7 +98,7 @@ async function cacheOpenAipForCells(cellKeys, config, onStatus, onWarning) {
 export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, options = {}) {
   const { openAipOnly = false } = options;
   if (!cellKeys.length) {
-    throw new Error("Select at least one 1° cell to cache");
+    throw new Error("Select at least one 3° cell to cache");
   }
 
   const bounds = unionCellBounds(cellKeys);

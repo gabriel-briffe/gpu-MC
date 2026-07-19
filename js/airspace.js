@@ -7,6 +7,7 @@ import {
 } from "./openaip-client.js";
 import { countriesForCellKeys } from "./openaip-cell-countries.js";
 import { cacheCellBounds } from "./cache/cell-geometry.js";
+import { fetchCountryExportJson } from "./cache/openaip-export-cache.js";
 
 export const AIRSPACE_TYPE_PROHIBITED = 3;
 export const AIRSPACE_TYPE_ADVISORY = 29;
@@ -442,7 +443,7 @@ function airspaceFromGeoJsonFeature(feature) {
 }
 
 /**
- * Load country airspace GeoJSON exports for the given 1° cells, keep prohibited/advisory
+ * Load country airspace GeoJSON exports for the given 3° cells, keep prohibited/advisory
  * types, clip by cell bbox (antimeridian-aware), and return one deduped list.
  */
 export async function fetchAirspacesForCellKeys(cellKeys, config, { onStatus } = {}) {
@@ -468,16 +469,20 @@ export async function fetchAirspacesForCellKeys(cellKeys, config, { onStatus } =
     if (!url) {
       continue;
     }
-    const response = await fetch(url);
-    fetchCount += 1;
-    if (response.status === 404) {
-      onStatus?.(`No airspace export for ${cc} — skipping`);
+    const { json: geojson, fromNetwork, status } = await fetchCountryExportJson(url);
+    if (fromNetwork) {
+      fetchCount += 1;
+    }
+    if (status === 404 || !geojson) {
+      if (status === 404) {
+        onStatus?.(`No airspace export for ${cc} — skipping`);
+        continue;
+      }
+      if (status) {
+        throw new Error(`OpenAIP airspace export ${cc} ${status}`);
+      }
       continue;
     }
-    if (!response.ok) {
-      throw new Error(`OpenAIP airspace export ${cc} ${response.status}`);
-    }
-    const geojson = await response.json();
     for (const feature of geojson.features ?? []) {
       const airspace = airspaceFromGeoJsonFeature(feature);
       if (!airspace) {

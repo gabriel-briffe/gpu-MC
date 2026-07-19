@@ -1,36 +1,56 @@
 export const CACHE_CELL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const OPENAIP_CACHE_STORAGE_KEY = "gpu-mc-openaip-cache-v2";
-const LEGACY_CELL_CACHE_STORAGE_KEY = "gpu-mc-cell-cache-v1";
+const OPENAIP_CACHE_STORAGE_KEY = "gpu-mc-openaip-cache-v3";
+const LEGACY_OPENAIP_CACHE_STORAGE_KEYS = [
+  "gpu-mc-openaip-cache-v2",
+  "gpu-mc-cell-cache-v1",
+];
 
-/** @type {string[]} Cells selected for cache (terrain / country resolution). */
+/** @type {string[]} Declared coverage cells (terrain / country resolution / geo clip). */
 let lastCachedCellKeys = [];
-/** @type {{ airports: object[], airspaces: object[], fetchedAt: number, airportFetches: number, airspaceFetches: number } | null} */
+/**
+ * Shared OpenAIP payloads for the declared cells (not per-cell).
+ * @type {{ airports: object[], airspaces: object[], fetchedAt: number, airportFetches: number, airspaceFetches: number, byteSize: number } | null}
+ */
 let openAipCache = null;
 
 export function isOpenAipCacheFresh(now = Date.now()) {
   return openAipCache != null && now - openAipCache.fetchedAt < CACHE_CELL_TTL_MS;
 }
 
-export function isCellCacheFresh(entry, now = Date.now()) {
-  // Legacy helper name — freshness is global for OpenAIP payloads.
-  return isOpenAipCacheFresh(now) && entry != null;
+function openAipStoragePayload() {
+  return {
+    version: 3,
+    lastCachedCellKeys,
+    openAip: openAipCache,
+  };
 }
 
 function persistOpenAipCache() {
   if (typeof localStorage === "undefined") {
-    return;
+    return true;
   }
+  const json = JSON.stringify(openAipStoragePayload());
   try {
-    localStorage.setItem(
-      OPENAIP_CACHE_STORAGE_KEY,
-      JSON.stringify({
-        version: 2,
-        lastCachedCellKeys,
-        openAip: openAipCache,
-      })
-    );
+    localStorage.setItem(OPENAIP_CACHE_STORAGE_KEY, json);
+    return true;
   } catch (error) {
     console.warn("Failed to persist OpenAIP cache", error);
+    try {
+      localStorage.removeItem(OPENAIP_CACHE_STORAGE_KEY);
+      localStorage.setItem(OPENAIP_CACHE_STORAGE_KEY, json);
+      return true;
+    } catch (retryError) {
+      console.warn("Failed to persist OpenAIP cache after remove", retryError);
+      return false;
+    }
+  }
+}
+
+function estimatePayloadBytes(airports, airspaces) {
+  try {
+    return new Blob([JSON.stringify(airports ?? []), JSON.stringify(airspaces ?? [])]).size;
+  } catch {
+    return (airports?.length ?? 0) * 900 + (airspaces?.length ?? 0) * 2500;
   }
 }
 
@@ -59,6 +79,10 @@ export function initCellCacheFromStorage() {
           fetchedAt: payload.fetchedAt,
           airportFetches: payload.airportFetches ?? 0,
           airspaceFetches: payload.airspaceFetches ?? 0,
+          byteSize:
+            Number.isFinite(payload.byteSize) && payload.byteSize > 0
+              ? payload.byteSize
+              : estimatePayloadBytes(payload.airports, payload.airspaces),
         };
       } else {
         openAipCache = null;
@@ -68,25 +92,14 @@ export function initCellCacheFromStorage() {
     console.warn("Failed to load OpenAIP cache", error);
   }
 
-  // Drop legacy per-cell payload store (no migration — re-cache).
+  // Drop legacy 1° / per-cell stores (no migration — re-cache on 3° grid).
   try {
-    localStorage.removeItem(LEGACY_CELL_CACHE_STORAGE_KEY);
+    for (const key of LEGACY_OPENAIP_CACHE_STORAGE_KEYS) {
+      localStorage.removeItem(key);
+    }
   } catch {
     // ignore
   }
-}
-
-/** @deprecated Per-cell entries no longer exist; returns a stub when the cell is declared. */
-export function getCellEntry(cellKey) {
-  if (!lastCachedCellKeys.includes(cellKey) || !isOpenAipCacheFresh()) {
-    return null;
-  }
-  return {
-    cellKey,
-    airports: openAipCache.airports,
-    airspaces: openAipCache.airspaces,
-    fetchedAt: openAipCache.fetchedAt,
-  };
 }
 
 export function getCachedAirports() {
@@ -103,14 +116,26 @@ export function setOpenAipCache({
   airportFetches = 0,
   airspaceFetches = 0,
 }) {
+  const nextAirports = airports ?? [];
+  const nextAirspaces = airspaces ?? [];
   openAipCache = {
-    airports: airports ?? [],
-    airspaces: airspaces ?? [],
+    airports: nextAirports,
+    airspaces: nextAirspaces,
     fetchedAt: Date.now(),
     airportFetches,
     airspaceFetches,
+    byteSize: estimatePayloadBytes(nextAirports, nextAirspaces),
   };
-  persistOpenAipCache();
+  if (!persistOpenAipCache()) {
+    console.warn(
+      "OpenAIP cache is in memory but could not be saved to localStorage (quota?). It will be lost on reload."
+    );
+  }
+}
+
+/** True when a cell is in the declared coverage set (independent of OpenAIP TTL). */
+export function isDeclaredCell(cellKey) {
+  return lastCachedCellKeys.includes(cellKey);
 }
 
 export function getDeclaredCachedCellKeys() {
@@ -134,52 +159,46 @@ export function clearAllCellCache() {
   }
   try {
     localStorage.removeItem(OPENAIP_CACHE_STORAGE_KEY);
-    localStorage.removeItem(LEGACY_CELL_CACHE_STORAGE_KEY);
+    for (const key of LEGACY_OPENAIP_CACHE_STORAGE_KEYS) {
+      localStorage.removeItem(key);
+    }
   } catch (error) {
     console.warn("Failed to clear OpenAIP cache", error);
   }
 }
 
-export function isCellCached(cellKey) {
-  return isOpenAipCacheFresh() && lastCachedCellKeys.includes(cellKey);
-}
-
-export function isCellFullyCached(cellKey) {
-  return isCellCached(cellKey);
-}
-
+/**
+ * Open the cache page on startup when there is no usable OpenAIP payload.
+ * Declared cells and terrain are independent — not part of this gate.
+ */
 export function needsStartupCacheMode() {
-  const declared = getDeclaredCachedCellKeys();
-  if (declared.length === 0) {
-    return true;
-  }
-  return !isOpenAipCacheFresh();
-}
-
-export function getCachedCellKeys() {
-  return isOpenAipCacheFresh() ? [...lastCachedCellKeys] : [];
+  return !hasOpenAipCacheData();
 }
 
 export function estimateOpenAipCacheBytes() {
-  if (!isOpenAipCacheFresh()) {
+  if (!openAipCache) {
     return 0;
   }
-  return new Blob([
-    JSON.stringify(openAipCache.airports ?? []),
-    JSON.stringify(openAipCache.airspaces ?? []),
-  ]).size;
+  if (Number.isFinite(openAipCache.byteSize) && openAipCache.byteSize > 0) {
+    return openAipCache.byteSize;
+  }
+  return estimatePayloadBytes(openAipCache.airports, openAipCache.airspaces);
 }
 
 export function daysUntilOpenAipExpiry(now = Date.now()) {
-  if (!isOpenAipCacheFresh(now)) {
+  if (!openAipCache || !Number.isFinite(openAipCache.fetchedAt)) {
     return null;
+  }
+  if (!isOpenAipCacheFresh(now)) {
+    return 0;
   }
   const remaining = CACHE_CELL_TTL_MS - (now - openAipCache.fetchedAt);
   return Math.max(0, Math.ceil(remaining / (24 * 60 * 60 * 1000)));
 }
 
+/** True when a shared OpenAIP payload is loaded (clearable), even if empty arrays. */
 export function hasOpenAipCacheData() {
-  return isOpenAipCacheFresh();
+  return openAipCache != null;
 }
 
 export function shouldWarnOpenAipExpiry(warnDays = 6, now = Date.now()) {
@@ -190,7 +209,14 @@ export function shouldWarnOpenAipExpiry(warnDays = 6, now = Date.now()) {
 /** Drop OpenAIP payloads; keeps lastCachedCellKeys for re-selection. */
 export function clearAllOpenAipData() {
   openAipCache = null;
-  persistOpenAipCache();
+  if (!persistOpenAipCache()) {
+    try {
+      localStorage?.removeItem(OPENAIP_CACHE_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    persistOpenAipCache();
+  }
 }
 
 /** Keep only selected cell keys in the declaration list. */
@@ -203,7 +229,11 @@ export function purgeCellCacheExcept(keepCellKeys) {
   }
 }
 
-/** Remove specific cells from the selection list. */
+/**
+ * Remove cells from the declaration list.
+ * Shared airport/airspace payloads are invalidated whenever the cell set changes
+ * (they were built for the previous union and are no longer valid).
+ */
 export function removeCellKeysFromCache(cellKeys) {
   const remove = new Set(cellKeys);
   if (!remove.size) {
@@ -212,9 +242,7 @@ export function removeCellKeysFromCache(cellKeys) {
   const before = lastCachedCellKeys.length;
   lastCachedCellKeys = lastCachedCellKeys.filter((cellKey) => !remove.has(cellKey));
   if (lastCachedCellKeys.length !== before) {
-    if (lastCachedCellKeys.length === 0) {
-      openAipCache = null;
-    }
+    openAipCache = null;
     persistOpenAipCache();
     return true;
   }

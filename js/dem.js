@@ -7,7 +7,7 @@ import {
 } from "./geo.js";
 import { applyAirspaceToDem, demBbox } from "./airspace.js";
 import { openAipConfigured } from "./openaip-client.js";
-import { clipBoundsToCachedCells, getCachedOverlayAirspaces, MISSING_CACHED_AIRSPACE_MSG, resolveComputeGridBounds } from "./cache-area.js";
+import { clipBoundsToDeclaredCells, getCachedOverlayAirspaces, MISSING_CACHED_AIRSPACE_MSG, resolveComputeGridBounds } from "./cache-area.js";
 import { fetchTerrainTileDecoded, fetchTerrainTileDecodedCachedOnly } from "./terrain-tiles.js";
 
 function sampleGlobalPixel(tiles, gx, gy, z) {
@@ -77,7 +77,7 @@ function gridLngLatBounds(gx0, gy0, width, height, z) {
 }
 
 function clipGridToCachedCells(gx0, gy0, width, height, z) {
-  const clippedBounds = clipBoundsToCachedCells(gridLngLatBounds(gx0, gy0, width, height, z));
+  const clippedBounds = clipBoundsToDeclaredCells(gridLngLatBounds(gx0, gy0, width, height, z));
   if (!clippedBounds) {
     throw new Error(MISSING_CACHED_AIRSPACE_MSG);
   }

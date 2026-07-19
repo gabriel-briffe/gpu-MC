@@ -25,6 +25,8 @@ import {
   cachedAirspacesToGeoJsonFeatures,
   mergedCachedAirportsToGeoJsonFeatures,
   mergedCachedAirspacesToGeoJsonFeatures,
+  cacheCellBounds,
+  cellKeysInBbox,
 } from "../cache-area.js";
 import { manualAirportsToGeoJsonFeatures } from "../airports/manual-airports.js";
 import { isAutoParamsMode, isSingleParamsMode } from "../params/panel.js";
@@ -224,36 +226,36 @@ function buildCacheGridFeatures() {
   }
 
   const bounds = map.getBounds();
-  const west = Math.floor(bounds.getWest());
-  const east = Math.ceil(bounds.getEast());
-  const south = Math.max(-85, Math.floor(bounds.getSouth()));
-  const north = Math.min(85, Math.ceil(bounds.getNorth()));
+  const cellKeys = cellKeysInBbox(
+    bounds.getWest(),
+    bounds.getSouth(),
+    bounds.getEast(),
+    bounds.getNorth()
+  );
   const features = [];
   const selectedCacheCells = hooks.getSelectedCacheCells();
 
-  for (let lng = west; lng < east; lng += 1) {
-    for (let lat = south; lat < north; lat += 1) {
-      const cellKey = `${lng},${lat}`;
-      features.push({
-        type: "Feature",
-        properties: {
-          cellKey,
-          selected: selectedCacheCells.has(cellKey),
-        },
-        geometry: {
-          type: "Polygon",
-          coordinates: [
-            [
-              [lng, lat],
-              [lng + 1, lat],
-              [lng + 1, lat + 1],
-              [lng, lat + 1],
-              [lng, lat],
-            ],
+  for (const cellKey of cellKeys) {
+    const { west, south, east, north } = cacheCellBounds(cellKey);
+    features.push({
+      type: "Feature",
+      properties: {
+        cellKey,
+        selected: selectedCacheCells.has(cellKey),
+      },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [west, south],
+            [east, south],
+            [east, north],
+            [west, north],
+            [west, south],
           ],
-        },
-      });
-    }
+        ],
+      },
+    });
   }
 
   return features;

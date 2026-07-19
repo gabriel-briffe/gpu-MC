@@ -2,7 +2,7 @@ import { kmBoxAroundLngLat } from "../geo.js";
 import {
   MISSING_CACHED_AIRSPACE_MSG,
   resolveComputeGridBounds,
-  isLngLatInCachedCell,
+  isLngLatInDeclaredCoverage,
 } from "../cache-area.js";
 import { AUTO_COMPUTE_DEBOUNCE_MS, MISSING_TERRAIN_CACHE_MSG } from "../constants.js";
 import { isSingleParamsMode } from "../params/panel.js";
@@ -99,7 +99,7 @@ async function runSingleAirportCompute(pick) {
     hooks.setStatus("Imported airports disabled — select a manual airport");
     return false;
   }
-  if (isManual && !isLngLatInCachedCell(lng, lat)) {
+  if (isManual && !isLngLatInDeclaredCoverage(lng, lat)) {
     hooks.showComputeStopBarMessage?.(MISSING_TERRAIN_CACHE_MSG);
     return false;
   }

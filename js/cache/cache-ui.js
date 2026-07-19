@@ -67,7 +67,11 @@ function canFinishCacheSelect() {
     return false;
   }
   const selected = [...hooks.getSelectedCacheCells()];
-  return selected.length > 0 && hasCachedAirports(selected);
+  if (selected.length === 0) {
+    return false;
+  }
+  // After clearing OpenAIP, allow leaving cache mode; otherwise require airports.
+  return !hasOpenAipCacheData() || hasCachedAirports(selected);
 }
 
 function syncCacheSelectButtons() {
@@ -227,7 +231,12 @@ async function refreshAfterCacheMutation(message) {
 }
 
 async function syncCacheClearDialogStats() {
-  const openAipBytes = estimateOpenAipCacheBytes();
+  let openAipBytes = 0;
+  try {
+    openAipBytes = estimateOpenAipCacheBytes();
+  } catch (error) {
+    console.warn("Failed to estimate OpenAIP cache size", error);
+  }
   const terrainBytes = await estimateTerrainCacheBytes();
   const selectedCount = hooks.getSelectedCacheCells().size;
 
@@ -296,6 +305,8 @@ async function withCacheClearLock(run) {
 async function runClearOpenAipData() {
   await withCacheClearLock(async () => {
     clearAllOpenAipData();
+    hooks.clearComputeAirports?.();
+    hooks.clearComputeResults?.();
     closeCacheClearDialog();
     await refreshAfterCacheMutation(
       "OpenAIP data cleared — hit Cache to refresh airports and airspace"
@@ -321,6 +332,8 @@ async function runClearSelectedCells() {
     }
     removeCellKeysFromCache(selected);
     hooks.getSelectedCacheCells().clear();
+    hooks.clearComputeAirports?.();
+    hooks.clearComputeResults?.();
     closeCacheClearDialog();
     await refreshAfterCacheMutation(
       selected.length === 1

@@ -10,8 +10,8 @@ import {
   getCachedAirspaces,
 } from "./cell-store.js";
 import {
-  clipBoundsToCachedCells,
-  getFreshCachedCellKeysInBbox,
+  clipBoundsToDeclaredCells,
+  declaredCellsInBbox,
 } from "./cell-geometry.js";
 
 export const MISSING_CACHED_AIRSPACE_MSG =
@@ -81,12 +81,12 @@ export function resolveComputeGridBounds(bounds, { requireCachedAirspace = false
   if (!requireCachedAirspace) {
     return bounds;
   }
-  return clipBoundsToCachedCells(bounds);
+  return clipBoundsToDeclaredCells(bounds);
 }
 
 export function getCachedOverlayAirspaces(west, south, east, north) {
-  // Require the query area to overlap declared cached cells.
-  const cellKeys = getFreshCachedCellKeysInBbox(west, south, east, north);
+  // Require the query area to overlap declared coverage cells.
+  const cellKeys = declaredCellsInBbox(west, south, east, north);
   if (!cellKeys.length) {
     return [];
   }

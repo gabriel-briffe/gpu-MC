@@ -11,6 +11,7 @@ import {
 import { openAipAirportKey } from "./openaip-tiles.js";
 import { countriesForCellKeys } from "./openaip-cell-countries.js";
 import { cacheCellBounds } from "./cache/cell-geometry.js";
+import { fetchCountryExportJson } from "./cache/openaip-export-cache.js";
 
 function normalizeCoreAirport(item) {
   let lng;
@@ -114,7 +115,7 @@ export async function fetchAirportsInBbox(bbox, config) {
 }
 
 /**
- * Load country airport GeoJSON exports for the given 1° cells, clip to those cells,
+ * Load country airport GeoJSON exports for the given 3° cells, clip to those cells,
  * and return one deduped airport list (shared cache, not per-cell).
  */
 export async function fetchAirportsForCellKeys(cellKeys, config, { onStatus } = {}) {
@@ -140,12 +141,20 @@ export async function fetchAirportsForCellKeys(cellKeys, config, { onStatus } = 
     if (!url) {
       continue;
     }
-    const response = await fetch(url);
-    fetchCount += 1;
-    if (!response.ok) {
-      throw new Error(`OpenAIP airport export ${cc} ${response.status}`);
+    const { json: geojson, fromNetwork, status } = await fetchCountryExportJson(url);
+    if (fromNetwork) {
+      fetchCount += 1;
     }
-    const geojson = await response.json();
+    if (status === 404 || !geojson) {
+      if (status === 404) {
+        onStatus?.(`No airport export for ${cc} — skipping`);
+        continue;
+      }
+      if (status) {
+        throw new Error(`OpenAIP airport export ${cc} ${status}`);
+      }
+      continue;
+    }
     for (const feature of geojson.features ?? []) {
       const airport = airportFromGeoJsonFeature(feature);
       if (!airport) {
