@@ -15,6 +15,7 @@ import {
   unionCellBounds,
 } from "./cell-geometry.js";
 import { mergeCachedAirports, mergeCachedAirspaces } from "./cached-queries.js";
+import { maxPoolZ8FromZ9, maxPoolZ7FromZ8 } from "./terrain-maxpool.js";
 
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
 
@@ -123,6 +124,21 @@ export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, op
       onStatus,
       onWarning
     ));
+
+    try {
+      const z8 = await maxPoolZ8FromZ9(tileJobs, onStatus);
+      const z7 = await maxPoolZ7FromZ8(tileJobs, onStatus);
+      const raised = z8.parentsUpdated + z7.parentsUpdated;
+      const skipped = z8.parentsSkipped + z7.parentsSkipped;
+      if (raised > 0) {
+        onStatus?.(
+          `Raised ridges: ${z8.parentsUpdated} z8←z9, ${z7.parentsUpdated} z7←z8` +
+            (skipped ? ` (${skipped} skipped)` : "")
+        );
+      }
+    } catch (error) {
+      onWarning?.(`Terrain ridge raise failed: ${error.message}`);
+    }
   }
 
   onStatus?.(

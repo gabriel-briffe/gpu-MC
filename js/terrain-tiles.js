@@ -18,6 +18,29 @@ function terrainTileKey(z, x, y) {
   return `${z}/${x}/${y}`;
 }
 
+/** Drop a decoded tile from session memory (e.g. after rewriting Cache API bytes). */
+export function invalidateDecodedTerrainTile(z, x, y) {
+  decodedMemory.delete(terrainTileKey(z, x, y));
+}
+
+/** Write/replace a terrarium tile blob in the persistent Cache API. */
+export async function putTerrainTileBlob(z, x, y, blob) {
+  const cache = await openTerrainCache();
+  if (!cache) {
+    throw new Error("Terrain Cache API unavailable");
+  }
+  const url = terrainTileUrl(z, x, y);
+  await cache.put(
+    url,
+    new Response(blob, {
+      headers: {
+        "Content-Type": blob.type || "image/webp",
+      },
+    })
+  );
+  invalidateDecodedTerrainTile(z, x, y);
+}
+
 async function openTerrainCache() {
   if (typeof caches === "undefined") {
     return null;
