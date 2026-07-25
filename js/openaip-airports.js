@@ -1,7 +1,6 @@
 import {
   openAipAirportsUrl,
   openAipConfigured,
-  openAipCountryAirportGeoJsonUrl,
   setOpenAipTypeFilter,
 } from "./openaip-client.js";
 import {
@@ -9,9 +8,8 @@ import {
   isIncludedOpenAipAirportType,
 } from "./openaip-airport-types.js";
 import { openAipAirportKey } from "./openaip-tiles.js";
-import { countriesForCellKeys } from "./openaip-cell-countries.js";
 import { cacheCellBounds } from "./cache/cell-geometry.js";
-import { fetchCountryExportJson } from "./cache/openaip-export-cache.js";
+import { loadOurAirportsDataset } from "./ourairports.js";
 
 function normalizeCoreAirport(item) {
   let lng;
@@ -40,23 +38,6 @@ function normalizeCoreAirport(item) {
   };
 
   return { lng, lat, properties };
-}
-
-function airportFromGeoJsonFeature(feature) {
-  if (!feature?.geometry) {
-    return null;
-  }
-  const airport = normalizeCoreAirport({
-    ...(feature.properties ?? {}),
-    geometry: feature.geometry,
-  });
-  if (!airport) {
-    return null;
-  }
-  if (!isIncludedOpenAipAirportType(airport.properties.type)) {
-    return null;
-  }
-  return airport;
 }
 
 function airportInBounds(airport, { west, south, east, north }) {
@@ -104,7 +85,7 @@ export async function fetchAirportsInBbox(bbox, config) {
     totalPages = json.totalPages ?? 1;
     for (const item of json.items ?? []) {
       const airport = normalizeCoreAirport(item);
-      if (airport) {
+      if (airport && isIncludedOpenAipAirportType(airport.properties.type)) {
         items.push(airport);
       }
     }
@@ -115,62 +96,36 @@ export async function fetchAirportsInBbox(bbox, config) {
 }
 
 /**
- * Load country airport GeoJSON exports for the given 3° cells, clip to those cells,
- * and return one deduped airport list (shared cache, not per-cell).
+ * Load OurAirports CSV, clip to the given 3° cells, return one deduped airport list.
+ * (Replaces OpenAIP GCS country airport exports.)
  */
-export async function fetchAirportsForCellKeys(cellKeys, config, { onStatus } = {}) {
-  if (!openAipConfigured(config)) {
+export async function fetchAirportsForCellKeys(cellKeys, _config, { onStatus } = {}) {
+  if (!cellKeys?.length) {
     return { airports: [], fetchCount: 0, countries: [] };
   }
 
-  const countries = countriesForCellKeys(cellKeys);
-  if (!countries.length) {
-    return { airports: [], fetchCount: 0, countries };
-  }
-
   const cells = cellKeys.map((cellKey) => cacheCellBounds(cellKey));
-  let fetchCount = 0;
-  const collected = [];
+  const { airports: all, fetchCount } = await loadOurAirportsDataset({ onStatus });
 
-  for (let index = 0; index < countries.length; index += 1) {
-    const cc = countries[index];
-    onStatus?.(
-      `Fetching airports export ${index + 1}/${countries.length} (${cc})…`
-    );
-    const url = openAipCountryAirportGeoJsonUrl(config, cc);
-    if (!url) {
+  onStatus?.(`Clipping OurAirports to ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`);
+
+  const collected = [];
+  const countries = new Set();
+  for (const airport of all) {
+    if (!airportInAnyCell(airport, cells)) {
       continue;
     }
-    const { json: geojson, fromNetwork, status } = await fetchCountryExportJson(url);
-    if (fromNetwork) {
-      fetchCount += 1;
-    }
-    if (status === 404 || !geojson) {
-      if (status === 404) {
-        onStatus?.(`No airport export for ${cc} — skipping`);
-        continue;
-      }
-      if (status) {
-        throw new Error(`OpenAIP airport export ${cc} ${status}`);
-      }
-      continue;
-    }
-    for (const feature of geojson.features ?? []) {
-      const airport = airportFromGeoJsonFeature(feature);
-      if (!airport) {
-        continue;
-      }
-      if (!airportInAnyCell(airport, cells)) {
-        continue;
-      }
-      collected.push(airport);
+    collected.push(airport);
+    const cc = airport.properties?.iso_country;
+    if (cc) {
+      countries.add(String(cc).toUpperCase());
     }
   }
 
   return {
     airports: dedupeAirports(collected),
     fetchCount,
-    countries,
+    countries: [...countries].sort(),
   };
 }
 

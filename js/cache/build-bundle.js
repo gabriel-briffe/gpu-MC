@@ -16,6 +16,7 @@ import {
 } from "./cell-geometry.js";
 import { mergeCachedAirports, mergeCachedAirspaces } from "./cached-queries.js";
 import { maxPoolZ8FromZ9, maxPoolZ7FromZ8 } from "./terrain-maxpool.js";
+import { pruneAirspaceCellCacheExcept } from "./airspace-cell-cache.js";
 
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
 
@@ -62,35 +63,66 @@ async function cacheOpenAipForCells(cellKeys, config, onStatus, onWarning) {
   let cellsFetched = 0;
   let cellsFailed = 0;
 
+  let airports = [];
+  let airspaces = [];
+
   try {
     onStatus?.(
-      `Resolving OpenAIP countries for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`
+      `Loading airports (OurAirports) for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`
     );
     const airportResult = await fetchAirportsForCellKeys(cellKeys, config, { onStatus });
     airportFetches = airportResult.fetchCount;
-    if (airportResult.countries.length) {
-      onStatus?.(`Airports loaded for ${airportResult.countries.join(", ")}`);
-    }
+    airports = airportResult.airports;
+    onStatus?.(
+      `Airports: ${airports.length} from OurAirports` +
+        (airportResult.countries.length
+          ? ` (${airportResult.countries.join(", ")})`
+          : "")
+    );
+  } catch (error) {
+    cellsFailed = cellKeys.length;
+    onWarning?.(`Airports cache: ${error.message}`);
+    onStatus?.(`Airports cache failed — ${error.message}`);
+  }
 
-    const airspaceResult = await fetchAirspacesForCellKeys(cellKeys, config, { onStatus });
+  try {
+    const airspaceResult = await fetchAirspacesForCellKeys(cellKeys, config, {
+      onStatus,
+      onWarning,
+    });
     airspaceFetches = airspaceResult.fetchCount;
-    if (airspaceResult.countries.length) {
-      onStatus?.(
-        `Airspaces loaded for ${airspaceResult.countries.join(", ")} (${airspaceResult.airspaces.length} volumes)`
-      );
+    airspaces = airspaceResult.airspaces;
+    if (airspaceResult.cellsFailed) {
+      cellsFailed += airspaceResult.cellsFailed;
     }
+    onStatus?.(
+      `Airspaces: ${airspaces.length}` +
+        (airspaceResult.countries.length
+          ? ` (${airspaceResult.countries.join(", ")})`
+          : "") +
+        (airspaceResult.cellsFromCache
+          ? ` — ${airspaceResult.cellsFromCache} cell${airspaceResult.cellsFromCache === 1 ? "" : "s"} from cache`
+          : "") +
+        (airspaceResult.cellsFetched
+          ? ` — ${airspaceResult.cellsFetched} fetched`
+          : "") +
+        (airspaceResult.cellsFailed
+          ? ` — ${airspaceResult.cellsFailed} skipped`
+          : "")
+    );
+  } catch (error) {
+    onWarning?.(`Airspaces cache: ${error.message} — continuing with airports only`);
+    onStatus?.(`Airspaces failed — keeping ${airports.length} airports`);
+  }
 
+  if (airports.length || airspaces.length) {
     setOpenAipCache({
-      airports: airportResult.airports,
-      airspaces: airspaceResult.airspaces,
+      airports,
+      airspaces,
       airportFetches,
       airspaceFetches,
     });
     cellsFetched = cellKeys.length;
-  } catch (error) {
-    cellsFailed = cellKeys.length;
-    onWarning?.(`OpenAIP exports: ${error.message}`);
-    onStatus?.(`OpenAIP cache failed — ${error.message}`);
   }
 
   return { airportFetches, airspaceFetches, cellsFetched, cellsFailed };
@@ -106,6 +138,7 @@ export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, op
 
   purgeCellCacheExcept(cellKeys);
   clearAllOpenAipData();
+  await pruneAirspaceCellCacheExcept(cellKeys);
 
   let tileCount = 0;
   let tileFetches = 0;

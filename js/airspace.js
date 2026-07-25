@@ -2,12 +2,13 @@ import { globalPixelToLngLat } from "./geo.js";
 import {
   openAipAirspacesUrl,
   openAipConfigured,
-  openAipCountryAirspaceGeoJsonUrl,
   setOpenAipTypeFilter,
 } from "./openaip-client.js";
-import { countriesForCellKeys } from "./openaip-cell-countries.js";
 import { cacheCellBounds } from "./cache/cell-geometry.js";
-import { fetchCountryExportJson } from "./cache/openaip-export-cache.js";
+import {
+  getCachedAirspacesForCell,
+  putCachedAirspacesForCell,
+} from "./cache/airspace-cell-cache.js";
 
 export const AIRSPACE_TYPE_PROHIBITED = 3;
 export const AIRSPACE_TYPE_ADVISORY = 29;
@@ -321,6 +322,7 @@ export function normalizeAirspace(item) {
     id: item._id ?? item.id,
     name: item.name ?? "—",
     type: item.type,
+    country: item.country ?? null,
     lowerLimit: item.lowerLimit,
     upperLimit: item.upperLimit,
     rings,
@@ -410,7 +412,7 @@ export async function fetchOverlayAirspaces(bbox, config) {
     if (!url) {
       return [];
     }
-    const response = await fetch(url);
+    const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`OpenAIP airspaces ${response.status}`);
     }
@@ -442,63 +444,205 @@ function airspaceFromGeoJsonFeature(feature) {
   });
 }
 
-/**
- * Load country airspace GeoJSON exports for the given 3° cells, keep prohibited/advisory
- * types, clip by cell bbox (antimeridian-aware), and return one deduped list.
- */
-export async function fetchAirspacesForCellKeys(cellKeys, config, { onStatus } = {}) {
-  if (!openAipConfigured(config)) {
-    return { airspaces: [], fetchCount: 0, countries: [] };
-  }
+async function fetchOverlayAirspacesForBbox(bbox, config) {
+  const { west, south, east, north } = bbox;
+  const query = new URLSearchParams({
+    bbox: `${west},${south},${east},${north}`,
+    limit: "500",
+  });
+  setOpenAipTypeFilter(query, OVERLAY_AIRSPACE_TYPES);
 
-  const countries = countriesForCellKeys(cellKeys);
-  if (!countries.length) {
-    return { airspaces: [], fetchCount: 0, countries };
-  }
-
-  const cells = cellKeys.map((cellKey) => cacheCellBounds(cellKey));
+  const items = [];
+  let page = 1;
+  let totalPages = 1;
   let fetchCount = 0;
-  const collected = [];
+  const proxy = {
+    hits: 0,
+    missesOk: 0,
+    misses429: 0,
+    missesOther: 0,
+  };
 
-  for (let index = 0; index < countries.length; index += 1) {
-    const cc = countries[index];
-    onStatus?.(
-      `Fetching airspace export ${index + 1}/${countries.length} (${cc})…`
-    );
-    const url = openAipCountryAirspaceGeoJsonUrl(config, cc);
+  while (page <= totalPages) {
+    query.set("page", String(page));
+    const url = openAipAirspacesUrl(config, query);
     if (!url) {
-      continue;
+      return { airspaces: [], fetchCount, proxy };
     }
-    const { json: geojson, fromNetwork, status } = await fetchCountryExportJson(url);
-    if (fromNetwork) {
-      fetchCount += 1;
+    // no-store: avoid replaying a browser-HTTP-cached MISS (X-GPU-MC-Cache frozen).
+    const response = await fetch(url, { cache: "no-store" });
+    fetchCount += 1;
+    const cacheHeader = (response.headers.get("X-GPU-MC-Cache") || "").toUpperCase();
+    const fromProxyCache = cacheHeader === "HIT";
+
+    if (!response.ok) {
+      if (fromProxyCache) {
+        proxy.hits += 1;
+      } else if (response.status === 429) {
+        proxy.misses429 += 1;
+      } else {
+        proxy.missesOther += 1;
+      }
+      const error = new Error(`OpenAIP airspaces ${response.status}`);
+      error.status = response.status;
+      error.proxy = { ...proxy };
+      throw error;
     }
-    if (status === 404 || !geojson) {
-      if (status === 404) {
-        onStatus?.(`No airspace export for ${cc} — skipping`);
-        continue;
-      }
-      if (status) {
-        throw new Error(`OpenAIP airspace export ${cc} ${status}`);
-      }
-      continue;
+
+    if (fromProxyCache) {
+      proxy.hits += 1;
+    } else {
+      proxy.missesOk += 1;
     }
-    for (const feature of geojson.features ?? []) {
-      const airspace = airspaceFromGeoJsonFeature(feature);
-      if (!airspace) {
-        continue;
+
+    const json = await response.json();
+    totalPages = json.totalPages ?? 1;
+    for (const item of json.items ?? []) {
+      const normalized = normalizeAirspace(item);
+      if (normalized && OVERLAY_AIRSPACE_TYPES.has(normalized.type)) {
+        items.push(normalized);
       }
-      if (!airspaceBBoxIntersectsAnyCell(airspace.bbox, cells)) {
-        continue;
-      }
+    }
+    page += 1;
+  }
+
+  return { airspaces: items, fetchCount, proxy };
+}
+
+/**
+ * Load prohibited/advisory airspaces for the given 3° cells via OpenAIP Core API.
+ * Successful cells are cached for 1 week; on recache those are reused (no network).
+ * Per-cell failures (429, 5xx, network) are skipped so the rest can still cache.
+ */
+export async function fetchAirspacesForCellKeys(
+  cellKeys,
+  config,
+  { onStatus, onWarning } = {}
+) {
+  if (!openAipConfigured(config)) {
+    return {
+      airspaces: [],
+      fetchCount: 0,
+      countries: [],
+      cellsFailed: 0,
+      cellsFromCache: 0,
+      cellsFetched: 0,
+    };
+  }
+
+  if (!cellKeys?.length) {
+    return {
+      airspaces: [],
+      fetchCount: 0,
+      countries: [],
+      cellsFailed: 0,
+      cellsFromCache: 0,
+      cellsFetched: 0,
+    };
+  }
+
+  let fetchCount = 0;
+  let cellsFailed = 0;
+  let cellsFromCache = 0;
+  let cellsFetched = 0;
+  const proxy = {
+    hits: 0,
+    missesOk: 0,
+    misses429: 0,
+    missesOther: 0,
+  };
+  const collected = [];
+  const countries = new Set();
+
+  const addProxyStats = (part) => {
+    if (!part) {
+      return;
+    }
+    proxy.hits += part.hits ?? 0;
+    proxy.missesOk += part.missesOk ?? 0;
+    proxy.misses429 += part.misses429 ?? 0;
+    proxy.missesOther += part.missesOther ?? 0;
+  };
+
+  const addAirspaces = (airspaces) => {
+    for (const airspace of airspaces) {
       collected.push(airspace);
+      if (airspace.country) {
+        countries.add(String(airspace.country).toUpperCase());
+      }
+    }
+  };
+
+  for (let index = 0; index < cellKeys.length; index += 1) {
+    const cellKey = cellKeys[index];
+    const cell = cacheCellBounds(cellKey);
+
+    const cached = await getCachedAirspacesForCell(cellKey);
+    if (cached) {
+      cellsFromCache += 1;
+      onStatus?.(
+        `Airspaces ${index + 1}/${cellKeys.length}: cached (${cached.airspaces.length})`
+      );
+      addAirspaces(cached.airspaces);
+      continue;
+    }
+
+    onStatus?.(
+      `Fetching airspaces ${index + 1}/${cellKeys.length} (OpenAIP API)…`
+    );
+    try {
+      const {
+        airspaces,
+        fetchCount: cellFetches,
+        proxy: cellProxy,
+      } = await fetchOverlayAirspacesForBbox(cell, config);
+      fetchCount += cellFetches;
+      cellsFetched += 1;
+      addProxyStats(cellProxy);
+      // Store volumes for this cell bbox (dedupe later across cells).
+      const forCell = airspaces.filter((airspace) =>
+        airspaceBBoxIntersectsAnyCell(airspace.bbox, [cell])
+      );
+      await putCachedAirspacesForCell(cellKey, forCell);
+      addAirspaces(forCell);
+    } catch (error) {
+      cellsFailed += 1;
+      addProxyStats(error?.proxy);
+      const status = error?.status;
+      const detail =
+        status === 429
+          ? "rate limited (429)"
+          : error?.message || "request failed";
+      onWarning?.(
+        `Airspaces cell ${index + 1}/${cellKeys.length}: ${detail} — skipped`
+      );
+      onStatus?.(
+        `Airspaces ${index + 1}/${cellKeys.length} skipped (${detail})`
+      );
+      if (status === 429) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
     }
   }
+
+  console.log("[openaip-proxy airspaces]", {
+    proxyCacheHits: proxy.hits,
+    proxyCacheMissesFetched: proxy.missesOk,
+    proxyCacheMisses429: proxy.misses429,
+    proxyCacheMissesOther: proxy.missesOther,
+    browserCellCacheHits: cellsFromCache,
+    cellsFetched,
+    cellsFailed,
+  });
 
   return {
     airspaces: dedupeAirspaces(collected),
     fetchCount,
-    countries,
+    countries: [...countries].sort(),
+    cellsFailed,
+    cellsFromCache,
+    cellsFetched,
+    proxy,
   };
 }
 

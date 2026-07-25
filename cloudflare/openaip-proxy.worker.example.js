@@ -12,6 +12,9 @@
  *   GET /core/airspaces?...     → OpenAIP Core airspaces API
  *   GET /core/airports?...      → OpenAIP Core airports API
  *   GET /gcs/{object}           → OpenAIP public GCS daily exports (no API key)
+ *
+ * Edge-caches successful upstream responses for 7 days.
+ * Client-facing Cache-Control is no-store (browsers must not freeze MISS).
  */
 
 const TILES_ORIGIN = "https://api.tiles.openaip.net";
@@ -19,17 +22,35 @@ const CORE_ORIGIN = "https://api.core.openaip.net";
 const GCS_BUCKET = "29f98e10-a489-4c82-ae5e-489dbcd4912f";
 const GCS_ORIGIN = `https://storage.googleapis.com/${GCS_BUCKET}`;
 
+const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
   "Access-Control-Allow-Headers": "*",
+  "Access-Control-Expose-Headers": "X-GPU-MC-Cache, X-GPU-MC-Cache-Layer, CF-Cache-Status",
 };
+
+const STRIP_UPSTREAM_HEADERS = new Set([
+  "set-cookie",
+  "set-cookie2",
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "vary",
+]);
 
 function withCors(response) {
   const headers = new Headers(response.headers);
   for (const [key, value] of Object.entries(CORS)) {
     headers.set(key, value);
   }
+  headers.set("Cache-Control", "no-store");
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -44,6 +65,86 @@ function copySearchParams(source, target, { skip = [] } = {}) {
     }
     target.searchParams.append(key, value);
   }
+}
+
+function copySafeHeaders(from) {
+  const headers = new Headers();
+  from.forEach((value, key) => {
+    if (STRIP_UPSTREAM_HEADERS.has(key.toLowerCase())) {
+      return;
+    }
+    headers.set(key, value);
+  });
+  return headers;
+}
+
+async function fetchUpstreamCached(upstreamUrl, init = {}) {
+  const cache = caches.default;
+  const cacheKey = new Request(upstreamUrl, { method: "GET" });
+
+  try {
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      const headers = copySafeHeaders(cached.headers);
+      headers.set("X-GPU-MC-Cache", "HIT");
+      headers.set("X-GPU-MC-Cache-Layer", "cache-api");
+      return new Response(cached.body, {
+        status: cached.status,
+        statusText: cached.statusText,
+        headers,
+      });
+    }
+  } catch {
+    // Cache API unavailable on some setups.
+  }
+
+  const upstream = await fetch(upstreamUrl, {
+    method: "GET",
+    headers: init.headers,
+    cf: {
+      cacheTtl: CACHE_TTL_SECONDS,
+      cacheEverything: true,
+    },
+  });
+
+  const cfStatus = (upstream.headers.get("CF-Cache-Status") || "").toUpperCase();
+  const cfHit = cfStatus === "HIT" || cfStatus === "REVALIDATED" || cfStatus === "UPDATING";
+
+  const headers = copySafeHeaders(upstream.headers);
+  headers.set("X-GPU-MC-Cache", cfHit ? "HIT" : "MISS");
+  headers.set("X-GPU-MC-Cache-Layer", cfHit ? "cf-fetch" : "origin");
+  if (cfStatus) {
+    headers.set("CF-Cache-Status", cfStatus);
+  }
+
+  const body = await upstream.arrayBuffer();
+  const response = new Response(body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers,
+  });
+
+  if (upstream.ok) {
+    try {
+      const storeHeaders = new Headers(headers);
+      storeHeaders.set(
+        "Cache-Control",
+        `public, max-age=${CACHE_TTL_SECONDS}`
+      );
+      await cache.put(
+        cacheKey,
+        new Response(body, {
+          status: upstream.status,
+          statusText: upstream.statusText,
+          headers: storeHeaders,
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  return response;
 }
 
 export default {
@@ -63,8 +164,7 @@ export default {
     );
     if (gcsMatch) {
       const objectName = gcsMatch[1].toLowerCase();
-      const upstream = await fetch(`${GCS_ORIGIN}/${objectName}`, {
-        method: request.method,
+      const upstream = await fetchUpstreamCached(`${GCS_ORIGIN}/${objectName}`, {
         headers: { Accept: request.headers.get("Accept") ?? "*/*" },
       });
       return withCors(upstream);
@@ -84,8 +184,7 @@ export default {
       const target = new URL(`${TILES_ORIGIN}/api/data/openaip/${z}/${x}/${y}.pbf`);
       copySearchParams(url, target, { skip: ["apiKey"] });
       target.searchParams.set("apiKey", apiKey);
-      const upstream = await fetch(target.toString(), {
-        method: request.method,
+      const upstream = await fetchUpstreamCached(target.toString(), {
         headers: { Accept: request.headers.get("Accept") ?? "*/*" },
       });
       return withCors(upstream);
@@ -95,7 +194,7 @@ export default {
       const target = new URL(`${CORE_ORIGIN}/api/airspaces`);
       copySearchParams(url, target, { skip: ["apiKey"] });
       target.searchParams.set("apiKey", apiKey);
-      const upstream = await fetch(target.toString(), { method: request.method });
+      const upstream = await fetchUpstreamCached(target.toString());
       return withCors(upstream);
     }
 
@@ -103,7 +202,7 @@ export default {
       const target = new URL(`${CORE_ORIGIN}/api/airports`);
       copySearchParams(url, target, { skip: ["apiKey"] });
       target.searchParams.set("apiKey", apiKey);
-      const upstream = await fetch(target.toString(), { method: request.method });
+      const upstream = await fetchUpstreamCached(target.toString());
       return withCors(upstream);
     }
 
