@@ -8,7 +8,7 @@ import { cacheCellBounds } from "./cache/cell-geometry.js";
 import {
   getCachedAirspacesForCell,
   putCachedAirspacesForCell,
-} from "./cache/airspace-cell-cache.js";
+} from "./cache/openaip-cell-cache.js";
 
 export const AIRSPACE_TYPE_PROHIBITED = 3;
 export const AIRSPACE_TYPE_ADVISORY = 29;
@@ -388,60 +388,6 @@ export function demBbox(dem) {
     maxLng: ne.lng,
     maxLat: ne.lat,
   };
-}
-
-export async function fetchOverlayAirspaces(bbox, config) {
-  if (!openAipConfigured(config)) {
-    return [];
-  }
-
-  const { minLng, minLat, maxLng, maxLat } = bbox;
-  const query = new URLSearchParams({
-    bbox: `${minLng},${minLat},${maxLng},${maxLat}`,
-    limit: "500",
-  });
-  setOpenAipTypeFilter(query, OVERLAY_AIRSPACE_TYPES);
-
-  const items = [];
-  let page = 1;
-  let totalPages = 1;
-
-  while (page <= totalPages) {
-    query.set("page", String(page));
-    const url = openAipAirspacesUrl(config, query);
-    if (!url) {
-      return [];
-    }
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`OpenAIP airspaces ${response.status}`);
-    }
-    const json = await response.json();
-    totalPages = json.totalPages ?? 1;
-    for (const item of json.items ?? []) {
-      const normalized = normalizeAirspace(item);
-      if (normalized) {
-        items.push(normalized);
-      }
-    }
-    page += 1;
-  }
-
-  return items;
-}
-
-function airspaceFromGeoJsonFeature(feature) {
-  if (!feature?.geometry) {
-    return null;
-  }
-  const props = feature.properties ?? {};
-  if (!OVERLAY_AIRSPACE_TYPES.has(props.type)) {
-    return null;
-  }
-  return normalizeAirspace({
-    ...props,
-    geometry: feature.geometry,
-  });
 }
 
 async function fetchOverlayAirspacesForBbox(bbox, config) {

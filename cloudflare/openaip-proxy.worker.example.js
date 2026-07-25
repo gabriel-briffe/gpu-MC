@@ -11,7 +11,6 @@
  *   GET /tiles/{z}/{x}/{y}.pbf  → OpenAIP vector tiles
  *   GET /core/airspaces?...     → OpenAIP Core airspaces API
  *   GET /core/airports?...      → OpenAIP Core airports API
- *   GET /gcs/{object}           → OpenAIP public GCS daily exports (no API key)
  *
  * Edge-caches successful upstream responses for 7 days.
  * Client-facing Cache-Control is no-store (browsers must not freeze MISS).
@@ -19,8 +18,6 @@
 
 const TILES_ORIGIN = "https://api.tiles.openaip.net";
 const CORE_ORIGIN = "https://api.core.openaip.net";
-const GCS_BUCKET = "29f98e10-a489-4c82-ae5e-489dbcd4912f";
-const GCS_ORIGIN = `https://storage.googleapis.com/${GCS_BUCKET}`;
 
 const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 
@@ -158,18 +155,6 @@ export default {
     }
 
     const url = new URL(request.url);
-
-    const gcsMatch = url.pathname.match(
-      /^\/gcs\/([a-z]{2}_(?:apt|asp)\.(?:geojson|json|ndgeojson))$/i
-    );
-    if (gcsMatch) {
-      const objectName = gcsMatch[1].toLowerCase();
-      const upstream = await fetchUpstreamCached(`${GCS_ORIGIN}/${objectName}`, {
-        headers: { Accept: request.headers.get("Accept") ?? "*/*" },
-      });
-      return withCors(upstream);
-    }
-
     const apiKey = env.OPENAIP_API_KEY;
     if (!apiKey) {
       return new Response("OPENAIP_API_KEY not configured on worker", {

@@ -16,8 +16,10 @@ import {
 } from "./cell-geometry.js";
 import { mergeCachedAirports, mergeCachedAirspaces } from "./cached-queries.js";
 import { maxPoolZ8FromZ9, maxPoolZ7FromZ8 } from "./terrain-maxpool.js";
-import { pruneAirspaceCellCacheExcept } from "./airspace-cell-cache.js";
-import { pruneAirportCellCacheExcept } from "./airport-cell-cache.js";
+import {
+  pruneAirspaceCellCacheExcept,
+  pruneAirportCellCacheExcept,
+} from "./openaip-cell-cache.js";
 
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
 

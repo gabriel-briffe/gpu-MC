@@ -12,7 +12,8 @@ import { cacheCellBounds } from "./cache/cell-geometry.js";
 import {
   getCachedAirportsForCell,
   putCachedAirportsForCell,
-} from "./cache/airport-cell-cache.js";
+} from "./cache/openaip-cell-cache.js";
+
 
 function normalizeCoreAirport(item) {
   let lng;
