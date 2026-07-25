@@ -17,6 +17,7 @@ import {
 import { mergeCachedAirports, mergeCachedAirspaces } from "./cached-queries.js";
 import { maxPoolZ8FromZ9, maxPoolZ7FromZ8 } from "./terrain-maxpool.js";
 import { pruneAirspaceCellCacheExcept } from "./airspace-cell-cache.js";
+import { pruneAirportCellCacheExcept } from "./airport-cell-cache.js";
 
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
 
@@ -57,6 +58,18 @@ async function prefetchTerrariumTiles(jobs, onStatus, onWarning) {
   return { tileCount: jobs.length, tileFetches, tileFailures };
 }
 
+function formatCellLayerStatus(label, count, result) {
+  return (
+    `${label}: ${count}` +
+    (result.countries?.length ? ` (${result.countries.join(", ")})` : "") +
+    (result.cellsFromCache
+      ? ` — ${result.cellsFromCache} cell${result.cellsFromCache === 1 ? "" : "s"} from cache`
+      : "") +
+    (result.cellsFetched ? ` — ${result.cellsFetched} fetched` : "") +
+    (result.cellsFailed ? ` — ${result.cellsFailed} skipped` : "")
+  );
+}
+
 async function cacheOpenAipForCells(cellKeys, config, onStatus, onWarning) {
   let airportFetches = 0;
   let airspaceFetches = 0;
@@ -67,20 +80,19 @@ async function cacheOpenAipForCells(cellKeys, config, onStatus, onWarning) {
   let airspaces = [];
 
   try {
-    onStatus?.(
-      `Loading airports (OurAirports) for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`
-    );
-    const airportResult = await fetchAirportsForCellKeys(cellKeys, config, { onStatus });
+    const airportResult = await fetchAirportsForCellKeys(cellKeys, config, {
+      onStatus,
+      onWarning,
+    });
     airportFetches = airportResult.fetchCount;
     airports = airportResult.airports;
-    onStatus?.(
-      `Airports: ${airports.length} from OurAirports` +
-        (airportResult.countries.length
-          ? ` (${airportResult.countries.join(", ")})`
-          : "")
-    );
+    if (airportResult.cellsFailed) {
+      cellsFailed += airportResult.cellsFailed;
+    }
+    cellsFetched += airportResult.cellsFetched ?? 0;
+    onStatus?.(formatCellLayerStatus("Airports", airports.length, airportResult));
   } catch (error) {
-    cellsFailed = cellKeys.length;
+    cellsFailed += cellKeys.length;
     onWarning?.(`Airports cache: ${error.message}`);
     onStatus?.(`Airports cache failed — ${error.message}`);
   }
@@ -95,21 +107,8 @@ async function cacheOpenAipForCells(cellKeys, config, onStatus, onWarning) {
     if (airspaceResult.cellsFailed) {
       cellsFailed += airspaceResult.cellsFailed;
     }
-    onStatus?.(
-      `Airspaces: ${airspaces.length}` +
-        (airspaceResult.countries.length
-          ? ` (${airspaceResult.countries.join(", ")})`
-          : "") +
-        (airspaceResult.cellsFromCache
-          ? ` — ${airspaceResult.cellsFromCache} cell${airspaceResult.cellsFromCache === 1 ? "" : "s"} from cache`
-          : "") +
-        (airspaceResult.cellsFetched
-          ? ` — ${airspaceResult.cellsFetched} fetched`
-          : "") +
-        (airspaceResult.cellsFailed
-          ? ` — ${airspaceResult.cellsFailed} skipped`
-          : "")
-    );
+    cellsFetched += airspaceResult.cellsFetched ?? 0;
+    onStatus?.(formatCellLayerStatus("Airspaces", airspaces.length, airspaceResult));
   } catch (error) {
     onWarning?.(`Airspaces cache: ${error.message} — continuing with airports only`);
     onStatus?.(`Airspaces failed — keeping ${airports.length} airports`);
@@ -122,7 +121,6 @@ async function cacheOpenAipForCells(cellKeys, config, onStatus, onWarning) {
       airportFetches,
       airspaceFetches,
     });
-    cellsFetched = cellKeys.length;
   }
 
   return { airportFetches, airspaceFetches, cellsFetched, cellsFailed };
@@ -138,6 +136,7 @@ export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, op
 
   purgeCellCacheExcept(cellKeys);
   clearAllOpenAipData();
+  await pruneAirportCellCacheExcept(cellKeys);
   await pruneAirspaceCellCacheExcept(cellKeys);
 
   let tileCount = 0;
@@ -158,19 +157,25 @@ export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, op
       onWarning
     ));
 
-    try {
-      const z8 = await maxPoolZ8FromZ9(tileJobs, onStatus);
-      const z7 = await maxPoolZ7FromZ8(tileJobs, onStatus);
-      const raised = z8.parentsUpdated + z7.parentsUpdated;
-      const skipped = z8.parentsSkipped + z7.parentsSkipped;
-      if (raised > 0) {
-        onStatus?.(
-          `Raised ridges: ${z8.parentsUpdated} z8←z9, ${z7.parentsUpdated} z7←z8` +
-            (skipped ? ` (${skipped} skipped)` : "")
-        );
+    // Raise only when at least one terrain tile was downloaded this run.
+    // Recache with a full tile hit set would redo idempotent max-pool work.
+    if (tileFetches > 0) {
+      try {
+        const z8 = await maxPoolZ8FromZ9(tileJobs, onStatus);
+        const z7 = await maxPoolZ7FromZ8(tileJobs, onStatus);
+        const raised = z8.parentsUpdated + z7.parentsUpdated;
+        const skipped = z8.parentsSkipped + z7.parentsSkipped;
+        if (raised > 0) {
+          onStatus?.(
+            `Raised ridges: ${z8.parentsUpdated} z8←z9, ${z7.parentsUpdated} z7←z8` +
+              (skipped ? ` (${skipped} skipped)` : "")
+          );
+        }
+      } catch (error) {
+        onWarning?.(`Terrain ridge raise failed: ${error.message}`);
       }
-    } catch (error) {
-      onWarning?.(`Terrain ridge raise failed: ${error.message}`);
+    } else if (tileCount > 0) {
+      onStatus?.("Terrain tiles already cached — skipped ridge raise");
     }
   }
 

@@ -17,7 +17,7 @@ import {
   estimateTerrainCacheBytes,
 } from "../terrain-tiles.js";
 import { initOpenAipExpiryUi } from "./openaip-expiry-ui.js";
-import { clearOurAirportsCsvCache } from "../ourairports.js";
+import { clearAirportCellCache } from "./airport-cell-cache.js";
 import { clearAirspaceCellCache } from "./airspace-cell-cache.js";
 
 let hooks;
@@ -309,7 +309,7 @@ async function withCacheClearLock(run) {
 async function runClearOpenAipData() {
   await withCacheClearLock(async () => {
     clearAllOpenAipData();
-    await clearOurAirportsCsvCache();
+    await clearAirportCellCache();
     await clearAirspaceCellCache();
     hooks.clearComputeAirports?.();
     hooks.clearComputeResults?.();
