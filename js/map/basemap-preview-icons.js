@@ -306,7 +306,7 @@ async function captureModePreview(mode) {
     `height:${CAPTURE_SIZE}px`,
     "overflow:hidden",
     "pointer-events:none",
-    "opacity:0",
+    "opacity:0.1",
   ].join(";");
   document.body.appendChild(container);
 
