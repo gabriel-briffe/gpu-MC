@@ -1,5 +1,8 @@
 import { assetUrl } from "../asset-url.js";
 
+/** Bump when replacing committed basemap thumbnail bytes (shell precache). */
+const BASEMAP_ICON_ASSETS_VERSION = 2;
+
 const MODES = ["hillshade", "osm", "satellite", "gradient"];
 
 const MODE_LABELS = {
@@ -52,7 +55,7 @@ export function syncBasemapCycleButton(btn, img, mode) {
 function staticIconUrls() {
   const icons = {};
   for (const mode of MODES) {
-    icons[mode] = assetUrl(`icons/basemap/${mode}.png`);
+    icons[mode] = assetUrl(`icons/basemap/${mode}.png?v=${BASEMAP_ICON_ASSETS_VERSION}`);
   }
   return icons;
 }
