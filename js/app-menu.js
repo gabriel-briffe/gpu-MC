@@ -23,6 +23,11 @@ import {
   noteGradientSettingsLongPress,
 } from "./ui/gradient-settings-longpress-tip.js";
 import { getHasCycledAirport } from "./airports/auto-disable-tip.js";
+import {
+  COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE,
+  isComputeHardwareSupported,
+  markComputeHardwareUnsupported,
+} from "./capabilities.js";
 
 const GLIDE_MODE_CYCLE = ["none", "single", "auto"];
 const GLIDE_MODE_ICONS = {
@@ -233,7 +238,8 @@ export function syncGlideModeCycleButton() {
   if (!btn || !img) {
     return;
   }
-  const hide = Boolean(app.cacheSelectMode);
+  const hide =
+    Boolean(app.cacheSelectMode) || app.computeHardwareSupported === false;
   btn.hidden = hide;
   if (hide) {
     syncGlideSettingsLongpressHint();
@@ -421,6 +427,9 @@ export function setGradientSettingsOpen(open) {
 }
 
 export function setGlideConesEnabled(enabled) {
+  if (enabled && !isComputeHardwareSupported()) {
+    return;
+  }
   if (app.glideConesEnabled === enabled) {
     return;
   }
@@ -451,6 +460,9 @@ export function toggleIconChActiveModel() {
 }
 
 export function setIconChActiveModel(modelId) {
+  if (modelId && !isComputeHardwareSupported()) {
+    return;
+  }
   if (app.iconChActiveModel === modelId) {
     return;
   }
@@ -465,9 +477,24 @@ export function setIconChActiveModel(modelId) {
   syncAppMenuUi();
 }
 
+export function applyComputeHardwareUnavailable() {
+  markComputeHardwareUnsupported();
+  app.computeHardwareSupported = false;
+  setGlideConesEnabled(false);
+  setIconChActiveModel(null);
+  if (dom.capabilityWarningEl) {
+    dom.capabilityWarningEl.textContent = COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE;
+    dom.capabilityWarningEl.hidden = false;
+  }
+  hooks.setStatus?.(COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE);
+  syncAppMenuUi();
+}
+
 export function syncAppMenuUi() {
+  const hardwareOk = app.computeHardwareSupported !== false;
   document.body.classList.toggle("app-menu-open", app.appMenuOpen);
   document.body.classList.toggle("glidecones-disabled", !app.glideConesEnabled);
+  document.body.classList.toggle("compute-hardware-unavailable", !hardwareOk);
   document.body.classList.toggle(
     "basemap-raster-enabled",
     app.baseMapRaster === "osm" ||
@@ -484,6 +511,22 @@ export function syncAppMenuUi() {
   }
   if (dom.paramsShell) {
     dom.paramsShell.hidden = !app.appMenuOpen;
+  }
+
+  if (dom.glideconesSection) {
+    dom.glideconesSection.hidden = !hardwareOk;
+  }
+  if (dom.iconCh1Section) {
+    dom.iconCh1Section.hidden = !hardwareOk;
+  }
+  if (dom.glideconesDivider) {
+    dom.glideconesDivider.hidden = !hardwareOk;
+  }
+  if (dom.iconchDivider) {
+    dom.iconchDivider.hidden = !hardwareOk;
+  }
+  if (dom.capabilityWarningEl && hardwareOk) {
+    dom.capabilityWarningEl.hidden = true;
   }
 
   dom.glideConesEnableBtn?.classList.toggle("is-active", app.glideConesEnabled);
@@ -537,6 +580,6 @@ export function syncAppMenuUi() {
   dom.iconChSettingsBtn?.setAttribute("aria-expanded", String(app.iconChSettingsOpen));
 
   if (dom.iconCh1Chrome) {
-    dom.iconCh1Chrome.hidden = !app.iconChActiveModel;
+    dom.iconCh1Chrome.hidden = !hardwareOk || !app.iconChActiveModel;
   }
 }

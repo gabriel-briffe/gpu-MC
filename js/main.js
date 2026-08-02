@@ -123,10 +123,16 @@ import {
   setOpenAipVectorEnabled,
   syncAppMenuUi,
   syncGlideModeCycleButton,
+  applyComputeHardwareUnavailable,
   openAppMenu,
   openGlideSettings,
   closeAppMenu,
 } from "./app-menu.js";
+import {
+  COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE,
+  isComputeHardwareSupported,
+  probeComputeHardware,
+} from "./capabilities.js";
 import { initIconCh1 } from "./iconch1/iconch1-app.js";
 import { raiseIconCh1Layer } from "./map/layers.js";
 import { ensureRasterBasemapLayers, reloadGradientBasemap, setBaseMapRasterMode } from "./map/raster-basemap.js";
@@ -668,6 +674,7 @@ app.hooks = {
   openGlideSettings,
   closeAppMenu,
   isGlideConesEnabled,
+  isComputeHardwareSupported,
   isIconCh1Enabled,
   getIconChActiveModel,
   toggleIconChActiveModel,
@@ -1383,6 +1390,10 @@ async function ensureEngine() {
 }
 
 function syncOfflineBanner() {
+  if (app.computeHardwareSupported === false) {
+    setStatus(COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE);
+    return;
+  }
   if (navigator.onLine || app.computing || app.cacheDownloadInProgress) {
     return;
   }
@@ -1429,6 +1440,10 @@ app.map.on("load", async () => {
   app.map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);
   window.addEventListener("online", () => {
+    if (app.computeHardwareSupported === false) {
+      setStatus(COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE);
+      return;
+    }
     if (!app.computing && !app.cacheDownloadInProgress && !app.cacheSelectMode) {
       setStatus("");
     }
@@ -1453,10 +1468,26 @@ app.map.on("load", async () => {
     );
   }
 
-  if (needsStartupCacheMode()) {
+  let hardwareOk = true;
+  try {
+    const capabilities = await probeComputeHardware();
+    hardwareOk = capabilities.supported;
+    app.computeHardwareSupported = capabilities.supported;
+    if (!hardwareOk) {
+      console.warn("Compute hardware unavailable", capabilities);
+      applyComputeHardwareUnavailable();
+    }
+  } catch (error) {
+    hardwareOk = false;
+    app.computeHardwareSupported = false;
+    console.warn("Compute hardware probe failed", error);
+    applyComputeHardwareUnavailable();
+  }
+
+  if (hardwareOk && needsStartupCacheMode()) {
     setParamsMode("single", { initial: true });
     app.hooks.enterCacheSelectMode?.();
-  } else {
+  } else if (hardwareOk) {
     const showedOpenAipExpiryDialog = app.hooks.maybeShowOpenAipExpiryDialog?.() ?? false;
     if (
       !showedOpenAipExpiryDialog &&
@@ -1468,13 +1499,20 @@ app.map.on("load", async () => {
     }
   }
 
+  if (!hardwareOk) {
+    setStatus(COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE);
+    return;
+  }
+
   try {
     await ensureEngine();
     if (!app.cacheSelectMode) {
       setStatus("");
     }
   } catch (error) {
-    setStatus(error.message);
+    app.computeHardwareSupported = false;
+    applyComputeHardwareUnavailable();
+    setStatus(COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE);
     console.error(error);
   }
 });

@@ -55,6 +55,8 @@ export function createApp() {
     touchGestureWasPan: false,
     appMenuOpen: false,
     glideConesEnabled: false,
+    /** null until probed; false disables glide cones + ICON-CH. */
+    computeHardwareSupported: null,
     baseMapRaster: "osm",
     gradientMaxAltitude: GRADIENT_MAX_ALT_DEFAULT,
     gradientMinAltitude: GRADIENT_MIN_ALT_DEFAULT,
