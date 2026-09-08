@@ -13,6 +13,10 @@ import {
   getCachedAirportsForCell,
   putCachedAirportsForCell,
 } from "./cache/openaip-cell-cache.js";
+import {
+  createOpenAip429Backoff,
+  retryOpenAipFetchOn429,
+} from "./cache/openaip-429-backoff.js";
 
 
 function normalizeCoreAirport(item) {
@@ -145,12 +149,13 @@ export async function fetchAirportsInBbox(bbox, config) {
 /**
  * Load airports for the given 3° cells via OpenAIP Core REST (bbox per cell).
  * Successful cells are cached for 1 week; on recache those are reused (no network).
- * Per-cell failures (429, 5xx, network) are skipped so the rest can still cache.
+ * 429s retry the same cell with exponential backoff (time-based, not per cell).
+ * Other per-cell failures (5xx, network) are skipped so the rest can still cache.
  */
 export async function fetchAirportsForCellKeys(
   cellKeys,
   config,
-  { onStatus, onWarning } = {}
+  { onStatus, onWarning, rateLimitBackoff } = {}
 ) {
   if (!openAipConfigured(config)) {
     return {
@@ -186,6 +191,7 @@ export async function fetchAirportsForCellKeys(
   };
   const collected = [];
   const countries = new Set();
+  const backoff = rateLimitBackoff ?? createOpenAip429Backoff();
 
   const addProxyStats = (part) => {
     if (!part) {
@@ -229,7 +235,13 @@ export async function fetchAirportsForCellKeys(
         airports,
         fetchCount: cellFetches,
         proxy: cellProxy,
-      } = await fetchAirportsInBbox(cell, config);
+      } = await retryOpenAipFetchOn429(
+        () => fetchAirportsInBbox(cell, config),
+        backoff,
+        onStatus,
+        `Airports ${index + 1}/${cellKeys.length}: `,
+        { on429: (error) => addProxyStats(error?.proxy) }
+      );
       fetchCount += cellFetches;
       cellsFetched += 1;
       addProxyStats(cellProxy);
@@ -239,20 +251,13 @@ export async function fetchAirportsForCellKeys(
     } catch (error) {
       cellsFailed += 1;
       addProxyStats(error?.proxy);
-      const status = error?.status;
-      const detail =
-        status === 429
-          ? "rate limited (429)"
-          : error?.message || "request failed";
+      const detail = error?.message || "request failed";
       onWarning?.(
         `Airports cell ${index + 1}/${cellKeys.length}: ${detail} — skipped`
       );
       onStatus?.(
         `Airports ${index + 1}/${cellKeys.length} skipped (${detail})`
       );
-      if (status === 429) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      }
     }
   }
 

@@ -20,6 +20,7 @@ import {
   pruneAirspaceCellCacheExcept,
   pruneAirportCellCacheExcept,
 } from "./openaip-cell-cache.js";
+import { createOpenAip429Backoff } from "./openaip-429-backoff.js";
 
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
 
@@ -80,11 +81,13 @@ async function cacheOpenAipForCells(cellKeys, config, onStatus, onWarning) {
 
   let airports = [];
   let airspaces = [];
+  const rateLimitBackoff = createOpenAip429Backoff();
 
   try {
     const airportResult = await fetchAirportsForCellKeys(cellKeys, config, {
       onStatus,
       onWarning,
+      rateLimitBackoff,
     });
     airportFetches = airportResult.fetchCount;
     airports = airportResult.airports;
@@ -103,6 +106,7 @@ async function cacheOpenAipForCells(cellKeys, config, onStatus, onWarning) {
     const airspaceResult = await fetchAirspacesForCellKeys(cellKeys, config, {
       onStatus,
       onWarning,
+      rateLimitBackoff,
     });
     airspaceFetches = airspaceResult.fetchCount;
     airspaces = airspaceResult.airspaces;
