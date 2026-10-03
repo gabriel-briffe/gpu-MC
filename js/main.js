@@ -147,6 +147,7 @@ import {
   updateUserLocationFromPosition,
 } from "./map/location-track.js";
 import { initFakeGeo, isFakeGeoActive, syncFakeGeoMenuVisibility } from "./dev-fake-geo.js";
+import { initOptionalArea } from "./optional-area.js";
 import { initWakeLock } from "./wake-lock.js";
 import { attachSeedAirportMeta } from "./airport-label.js";
 
@@ -1425,6 +1426,7 @@ app.map.on("load", async () => {
   ensurePathLayer();
   ensureUserLocationLayers(app.map, () => raisePathLayer());
   initFakeGeo(app, app.hooks);
+  initOptionalArea(app.hooks);
   app.map.on("moveend", () => {
     updateTerrainResolutionHint();
     if (isAutoParamsMode()) {

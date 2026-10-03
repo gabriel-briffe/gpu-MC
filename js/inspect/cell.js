@@ -14,6 +14,7 @@ import {
   clearAllGlidePaths,
   seedPathMetrics,
 } from "../glide-path.js";
+import { clearOptionalArea, refreshOptionalArea } from "../optional-area.js";
 
 let hooks;
 let app;
@@ -223,6 +224,7 @@ export function clearCellInspect() {
   app.lastInspectCell = null;
   app.lastPathScreenBounds = null;
   clearInspectPath();
+  clearOptionalArea();
   updateCellTooltip();
   hooks.updateParamsFooter();
 }
@@ -425,9 +427,11 @@ export function onMapClickInspect(event) {
   const cell = sampleDemCell(lng, lat);
   if (cell !== null) {
     showCellInspect(cell, event.point, { temporary: true });
+    refreshOptionalArea(cell);
     return;
   }
 
+  clearOptionalArea();
   showTerrainElevationInspect(lng, lat, event.point, { temporary: true });
 }
 

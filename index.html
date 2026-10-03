@@ -587,6 +587,12 @@
                   <span>Debug mode</span>
                 </label>
               </div>
+              <div class="param-field param-field-full param-debug-only" id="emulated-alt-field">
+                <div class="param-label-row">
+                  <span class="param-label">Emulated altitude (m)</span>
+                </div>
+                <input id="emulated-altitude-menu" type="number" inputmode="decimal" step="10" placeholder="MSL" />
+              </div>
             </div>
           </div>
         </form>
@@ -705,6 +711,10 @@
       </div>
     </div>
     <div id="param-help-popover" hidden role="tooltip"></div>
+    <div id="emulated-alt-box" class="emulated-alt-box" hidden>
+      <label for="emulated-altitude">Emulated alt (m)</label>
+      <input id="emulated-altitude" type="number" inputmode="decimal" step="10" placeholder="MSL" />
+    </div>
     <div id="cell-tooltip" hidden aria-live="polite"></div>
     <div id="compute-context-bar" hidden aria-live="polite">
       <div id="compute-context-geo-stats" class="compute-context-geo-stats" hidden>

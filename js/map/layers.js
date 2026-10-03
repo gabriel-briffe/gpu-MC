@@ -42,6 +42,7 @@ export function initMapLayers(h) {
 /** Bottom-to-top overlay stack (OSM + hillshade basemap stay below). Labels sit above their layer. */
 const MAP_LAYER_ORDER = [
   "glide-cone",
+  "glide-optional",
   "glide-sectors-line",
   REST_AIRSPACE_FILL_LAYER,
   "ch1-sectors-layer",
