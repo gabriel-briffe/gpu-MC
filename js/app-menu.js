@@ -243,8 +243,10 @@ export function syncGlideModeCycleButton() {
   btn.hidden = hide;
   if (hide) {
     syncGlideSettingsLongpressHint();
+    app.hooks?.syncFlightShaderButton?.();
     return;
   }
+  app.hooks?.syncFlightShaderButton?.();
   const mode = getGlideChromeMode();
   img.src = assetUrl(GLIDE_MODE_ICONS[mode]);
   btn.setAttribute(

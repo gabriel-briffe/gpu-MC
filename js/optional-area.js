@@ -3,6 +3,9 @@ import { isDebugMode } from "./params/panel.js";
 import { dom } from "./dom.js";
 import { raisePathLayer } from "./map/layers.js";
 import { buildOptionalMask } from "./optional-area-mask.js";
+import { gridIndexFromLngLat } from "./geo.js";
+import { bindLongPress } from "./ui/long-press.js";
+import { isGlideConesEnabled } from "./app-menu.js";
 
 const SOURCE_ID = "glide-optional";
 const LAYER_ID = "glide-optional";
@@ -14,6 +17,15 @@ let shaderRequestId = 0;
 
 export function downwardMethod() {
   return app?.downwardMethod === "shader" ? "shader" : "dijkstra";
+}
+
+function syncFlightShaderButton() {
+  const button = dom.flightShaderBtn;
+  if (!button) {
+    return;
+  }
+  const show = !isDebugMode() && isGlideConesEnabled() && app?.computeHardwareSupported !== false && !app?.cacheSelectMode;
+  button.hidden = !show;
 }
 
 function syncDownwardMethodButton() {
@@ -228,6 +240,7 @@ export function initOptionalArea(h) {
   app = h.app;
   hooks.syncEmulatedAltitudeBox = syncEmulatedAltitudeBox;
   hooks.syncDownwardMethodButton = syncDownwardMethodButton;
+  hooks.syncFlightShaderButton = syncFlightShaderButton;
   hooks.clearOptionalArea = clearOptionalArea;
   hooks.refreshOptionalArea = refreshOptionalArea;
   app.downwardMethod = app.downwardMethod === "shader" ? "shader" : "dijkstra";
@@ -254,6 +267,59 @@ export function initOptionalArea(h) {
     writeEmulatedAltitude(dom.fakeGeoAltitudeInput.value);
   });
 
+  bindLongPress(dom.flightShaderBtn, {
+    onShort: () => {
+      void recomputeFlightShaderArea();
+    },
+    onLong: () => {
+      shaderRequestId += 1;
+      clearOptionalArea();
+      dom.flightShaderBtn?.classList.remove("is-busy");
+      hooks.setStatus?.("Optional area cleared");
+    },
+  });
+
   syncEmulatedAltitudeBox();
   syncDownwardMethodButton();
+  syncFlightShaderButton();
+}
+
+function cellFromCurrentPosition(dem) {
+  const position = hooks.getLastGeoLngLat?.();
+  if (!position) {
+    return null;
+  }
+  const { gi, gj } = gridIndexFromLngLat(position.lng, position.lat, dem);
+  if (gi < 0 || gj < 0 || gi >= dem.width || gj >= dem.height) {
+    return null;
+  }
+  return { gi, gj };
+}
+
+async function recomputeFlightShaderArea() {
+  if (isDebugMode() || !isGlideConesEnabled()) {
+    return;
+  }
+  const coneState = hooks.getConeState?.();
+  const startAlt = app.lastGeoAltitude;
+  if (!coneState?.dem) {
+    hooks.setStatus?.("Compute a glide cone first");
+    return;
+  }
+  if (!Number.isFinite(startAlt)) {
+    hooks.setStatus?.("Need a current altitude");
+    return;
+  }
+  const cell = cellFromCurrentPosition(coneState.dem);
+  if (!cell) {
+    hooks.setStatus?.("Position is outside the glide cone");
+    return;
+  }
+  shaderRequestId += 1;
+  const requestId = shaderRequestId;
+  dom.flightShaderBtn?.classList.add("is-busy");
+  await showShaderMask(cell, coneState, startAlt, requestId);
+  if (requestId === shaderRequestId) {
+    dom.flightShaderBtn?.classList.remove("is-busy");
+  }
 }

@@ -2114,3 +2114,20 @@
         background: rgba(46, 204, 113, 0.22);
         color: #d8ffe8;
       }
+
+      #app-menu-chrome .flight-shader-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        border-color: rgba(46, 204, 113, 0.55);
+        color: #d8ffe8;
+      }
+
+      #app-menu-chrome .flight-shader-btn[hidden] {
+        display: none !important;
+      }
+
+      #app-menu-chrome .flight-shader-btn.is-busy {
+        opacity: 0.55;
+      }

@@ -188,6 +188,7 @@ export function syncDebugUi() {
   document.body.classList.toggle("debug-mode", debug);
   app.hooks.syncEmulatedAltitudeBox?.();
   app.hooks.syncDownwardMethodButton?.();
+  app.hooks.syncFlightShaderButton?.();
   app.hooks.syncDownloadContoursButton();
   app.hooks.syncBaseMapTerrainMaxZoom?.();
   syncVizModeDebugOptions();

@@ -101,6 +101,7 @@ export const dom = {
   emulatedAltitudeInput: document.getElementById("emulated-altitude"),
   emulatedAltitudeMenuInput: document.getElementById("emulated-altitude-menu"),
   downwardMethodBtn: document.getElementById("downward-method-btn"),
+  flightShaderBtn: document.getElementById("flight-shader-btn"),
   computeContextBarEl: document.getElementById("compute-context-bar"),
   computeContextGeoStatsEl: document.getElementById("compute-context-geo-stats"),
   computeContextDestRowEl: document.getElementById("compute-context-dest-row"),
