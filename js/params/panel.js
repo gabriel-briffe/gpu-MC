@@ -185,6 +185,7 @@ export function setParamsMode(mode, { initial = false } = {}) {
 export function syncDebugUi() {
   const debug = isDebugMode();
   dom.paramsShell?.classList.toggle("debug-mode", debug);
+  app.hooks.syncEmulatedAltitudeBox?.();
   app.hooks.syncDownloadContoursButton();
   app.hooks.syncBaseMapTerrainMaxZoom?.();
   syncVizModeDebugOptions();
@@ -342,8 +343,14 @@ export function initParamsPanel(appState, domRefs) {
   syncDebugUi();
   app.hooks.updateParamsFooter();
 
-  dom.paramsShell?.addEventListener("pointerenter", app.hooks.clearCellInspect);
-  dom.paramsShell?.addEventListener("touchstart", app.hooks.clearCellInspect, { passive: true });
+  function clearInspectUnlessAltitudeEdit(event) {
+    if (event.target?.closest?.("#emulated-alt-field, #emulated-alt-box")) {
+      return;
+    }
+    app.hooks.clearCellInspect();
+  }
+  dom.paramsShell?.addEventListener("pointerenter", clearInspectUnlessAltitudeEdit);
+  dom.paramsShell?.addEventListener("touchstart", clearInspectUnlessAltitudeEdit, { passive: true });
 
   dom.paramsFooterEl?.addEventListener("click", () => {
     if (!app.glideSettingsOpen) {
