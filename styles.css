@@ -2096,3 +2096,21 @@
           font-size: 16px;
         }
       }
+
+      #app-menu-chrome .downward-method-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      #app-menu-chrome .downward-method-btn[hidden] {
+        display: none !important;
+      }
+
+      #app-menu-chrome .downward-method-btn[aria-pressed="true"] {
+        border-color: rgba(46, 204, 113, 0.7);
+        background: rgba(46, 204, 113, 0.22);
+        color: #d8ffe8;
+      }

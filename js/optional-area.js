@@ -10,6 +10,37 @@ const OPTIONAL_GREEN = [46, 204, 113, 128];
 
 let hooks;
 let app;
+let shaderRequestId = 0;
+
+export function downwardMethod() {
+  return app?.downwardMethod === "shader" ? "shader" : "dijkstra";
+}
+
+function syncDownwardMethodButton() {
+  const button = dom.downwardMethodBtn;
+  if (!button) {
+    return;
+  }
+  const show = isDebugMode();
+  button.hidden = !show;
+  const shader = downwardMethod() === "shader";
+  button.textContent = shader ? "S" : "D";
+  button.setAttribute("aria-pressed", shader ? "true" : "false");
+  button.setAttribute(
+    "aria-label",
+    shader ? "Downward cone method: shader" : "Downward cone method: Dijkstra"
+  );
+}
+
+function maskFromArrivals(arrivals) {
+  const mask = new Uint8Array(arrivals.length);
+  for (let i = 0; i < arrivals.length; i += 1) {
+    if (arrivals[i] >= 0) {
+      mask[i] = 1;
+    }
+  }
+  return mask;
+}
 
 export function readEmulatedAltitudeM() {
   const primary = Number.parseFloat(dom.emulatedAltitudeInput?.value ?? "");
@@ -125,18 +156,7 @@ export function syncEmulatedAltitudeBox() {
   }
 }
 
-export function refreshOptionalArea(cell) {
-  if (!isDebugMode() || !cell) {
-    clearOptionalArea();
-    return;
-  }
-  const coneState = hooks.getConeState?.();
-  const startAlt = readEmulatedAltitudeM();
-  if (!coneState?.dem || !Number.isFinite(startAlt)) {
-    clearOptionalArea();
-    return;
-  }
-
+function showDijkstraMask(cell, coneState, startAlt) {
   const { dem, altitudes, maxAltitude, glideRatio, groundClearance } = coneState;
   const mask = buildOptionalMask({
     dem,
@@ -151,12 +171,74 @@ export function refreshOptionalArea(cell) {
   showOptionalImage(maskToImageData(mask, dem.width, dem.height), dem);
 }
 
+async function showShaderMask(cell, coneState, startAlt, requestId) {
+  const engine = app.engine;
+  if (!engine?.computeDownward) {
+    hooks.setStatus?.("Shader optional area needs WebGPU");
+    clearOptionalArea();
+    return;
+  }
+  const { dem, altitudes, maxAltitude, glideRatio } = coneState;
+  hooks.setStatus?.("Shader optional area…");
+  try {
+    const { arrivals, iterations } = await engine.computeDownward(dem, {
+      glideRatio,
+      maxAltitude,
+      gi: cell.gi,
+      gj: cell.gj,
+      startAlt,
+      coneAltitudes: altitudes,
+    });
+    if (requestId !== shaderRequestId) {
+      return;
+    }
+    showOptionalImage(maskToImageData(maskFromArrivals(arrivals), dem.width, dem.height), dem);
+    hooks.setStatus?.(`Shader optional area, ${iterations} iterations`);
+  } catch (error) {
+    if (requestId !== shaderRequestId) {
+      return;
+    }
+    clearOptionalArea();
+    hooks.setStatus?.(error?.message ?? "Shader optional area failed");
+  }
+}
+
+export function refreshOptionalArea(cell) {
+  shaderRequestId += 1;
+  const requestId = shaderRequestId;
+  if (!isDebugMode() || !cell) {
+    clearOptionalArea();
+    return;
+  }
+  const coneState = hooks.getConeState?.();
+  const startAlt = readEmulatedAltitudeM();
+  if (!coneState?.dem || !Number.isFinite(startAlt)) {
+    clearOptionalArea();
+    return;
+  }
+  if (downwardMethod() === "shader") {
+    void showShaderMask(cell, coneState, startAlt, requestId);
+    return;
+  }
+  showDijkstraMask(cell, coneState, startAlt);
+}
+
 export function initOptionalArea(h) {
   hooks = h;
   app = h.app;
   hooks.syncEmulatedAltitudeBox = syncEmulatedAltitudeBox;
+  hooks.syncDownwardMethodButton = syncDownwardMethodButton;
   hooks.clearOptionalArea = clearOptionalArea;
   hooks.refreshOptionalArea = refreshOptionalArea;
+  app.downwardMethod = app.downwardMethod === "shader" ? "shader" : "dijkstra";
+
+  dom.downwardMethodBtn?.addEventListener("click", () => {
+    app.downwardMethod = downwardMethod() === "shader" ? "dijkstra" : "shader";
+    syncDownwardMethodButton();
+    if (app.lastInspectCell) {
+      refreshOptionalArea(app.lastInspectCell);
+    }
+  });
 
   dom.emulatedAltitudeInput?.addEventListener("input", () => {
     onEmulatedAltitudeEdited(dom.emulatedAltitudeInput);
@@ -173,4 +255,5 @@ export function initOptionalArea(h) {
   });
 
   syncEmulatedAltitudeBox();
+  syncDownwardMethodButton();
 }

@@ -185,7 +185,9 @@ export function setParamsMode(mode, { initial = false } = {}) {
 export function syncDebugUi() {
   const debug = isDebugMode();
   dom.paramsShell?.classList.toggle("debug-mode", debug);
+  document.body.classList.toggle("debug-mode", debug);
   app.hooks.syncEmulatedAltitudeBox?.();
+  app.hooks.syncDownwardMethodButton?.();
   app.hooks.syncDownloadContoursButton();
   app.hooks.syncBaseMapTerrainMaxZoom?.();
   syncVizModeDebugOptions();

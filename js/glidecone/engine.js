@@ -9,6 +9,7 @@ import {
   COLOR_SHADER_SECTORS,
   RESOLVE_ORIGIN_SHADER,
 } from "./shaders.js";
+import { DOWNWARD_PROPAGATE_SHADER } from "./downward-shader.js";
 import { buildSeedPaletteGrid } from "./sectors-color.js";
 import {
   pickColorPipeline,
@@ -100,7 +101,124 @@ export class GlideConeEngine {
         "read-only-storage",
         "storage",
       ]),
+      downward: await createPipeline(this.device, DOWNWARD_PROPAGATE_SHADER, [
+        "uniform",
+        "read-only-storage",
+        "read-only-storage",
+        "read-only-storage",
+        "storage",
+        "read-only-storage",
+        "storage",
+        "read-only-storage",
+        "storage",
+      ]),
     };
+  }
+
+  async computeDownward(dem, { glideRatio, maxAltitude, gi, gj, startAlt, coneAltitudes }) {
+    const { device, pipelines } = this;
+    if (!device || !pipelines?.downward) {
+      throw new Error("WebGPU downward pipeline is not ready.");
+    }
+    const { width, height, cellSizeM, elevation } = dem;
+    const count = width * height;
+    const startIdx = gj * width + gi;
+    const alt = new Float32Array(count).fill(-1);
+    const originX = new Int32Array(count).fill(-1);
+    const originY = new Int32Array(count).fill(-1);
+    const flags = new Uint32Array(count);
+    alt[startIdx] = startAlt;
+    originX[startIdx] = gi;
+    originY[startIdx] = gj;
+    flags[startIdx] = 2;
+    const originPairs = new Int32Array(count * 2);
+    for (let i = 0; i < count; i += 1) {
+      originPairs[i * 2] = originX[i];
+      originPairs[i * 2 + 1] = originY[i];
+    }
+    const params = packParams(width, height, gi, gj, cellSizeM, glideRatio, maxAltitude, startAlt);
+    const storage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
+    const uniform = createBuffer(device, new Uint8Array(params), GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
+    const elevBuffer = createBuffer(device, new Uint8Array(elevation.buffer), storage);
+    const coneBuffer = createBuffer(device, new Uint8Array(coneAltitudes.buffer), storage);
+    let altRead = createBuffer(device, new Uint8Array(alt.buffer), storage);
+    let altWrite = createBuffer(device, new Uint8Array(alt.buffer), storage);
+    let originRead = createBuffer(device, new Uint8Array(originPairs.buffer), storage);
+    let originWrite = createBuffer(device, new Uint8Array(originPairs.buffer), storage);
+    let flagsPrev = createBuffer(device, new Uint8Array(flags.buffer), storage);
+    let flagsCurr = createBuffer(device, new Uint8Array(count * 4), storage);
+    const changeCountBuffer = createBuffer(device, new Uint32Array([0]), storage);
+    const changeReadBuffer = device.createBuffer({
+      size: 4,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+    const sumUniform = new ArrayBuffer(8);
+    new DataView(sumUniform).setUint32(0, width, true);
+    new DataView(sumUniform).setUint32(4, height, true);
+    const sumUniformBuffer = createBuffer(device, new Uint8Array(sumUniform), GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
+    const wgX = Math.ceil(width / 8);
+    const wgY = Math.ceil(height / 8);
+    const maxIterations = width + height;
+    let iterations = 0;
+    for (let iter = 0; iter < maxIterations; iter += 1) {
+      iterations = iter + 1;
+      const encoder = device.createCommandEncoder();
+      const propagateBind = device.createBindGroup({
+        layout: pipelines.downward.layout,
+        entries: [
+          { binding: 0, resource: { buffer: uniform } },
+          { binding: 1, resource: { buffer: elevBuffer } },
+          { binding: 2, resource: { buffer: coneBuffer } },
+          { binding: 3, resource: { buffer: altRead } },
+          { binding: 4, resource: { buffer: altWrite } },
+          { binding: 5, resource: { buffer: originRead } },
+          { binding: 6, resource: { buffer: originWrite } },
+          { binding: 7, resource: { buffer: flagsPrev } },
+          { binding: 8, resource: { buffer: flagsCurr } },
+        ],
+      });
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(pipelines.downward.pipeline);
+      pass.setBindGroup(0, propagateBind);
+      pass.dispatchWorkgroups(wgX, wgY);
+      pass.end();
+      [altRead, altWrite] = [altWrite, altRead];
+      [originRead, originWrite] = [originWrite, originRead];
+      [flagsPrev, flagsCurr] = [flagsCurr, flagsPrev];
+      device.queue.writeBuffer(changeCountBuffer, 0, new Uint32Array([0]));
+      const sumBind = device.createBindGroup({
+        layout: pipelines.changedSum.layout,
+        entries: [
+          { binding: 0, resource: { buffer: sumUniformBuffer } },
+          { binding: 1, resource: { buffer: flagsPrev } },
+          { binding: 2, resource: { buffer: changeCountBuffer } },
+        ],
+      });
+      const passSum = encoder.beginComputePass();
+      passSum.setPipeline(pipelines.changedSum.pipeline);
+      passSum.setBindGroup(0, sumBind);
+      passSum.dispatchWorkgroups(wgX, wgY);
+      passSum.end();
+      encoder.copyBufferToBuffer(changeCountBuffer, 0, changeReadBuffer, 0, 4);
+      device.queue.submit([encoder.finish()]);
+      await changeReadBuffer.mapAsync(GPUMapMode.READ);
+      const changes = new Uint32Array(changeReadBuffer.getMappedRange().slice(0))[0];
+      changeReadBuffer.unmap();
+      if (changes === 0) {
+        break;
+      }
+    }
+    const altReadBuffer = device.createBuffer({
+      size: count * 4,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+    const copy = device.createCommandEncoder();
+    copy.copyBufferToBuffer(altRead, 0, altReadBuffer, 0, count * 4);
+    device.queue.submit([copy.finish()]);
+    await altReadBuffer.mapAsync(GPUMapMode.READ);
+    const arrivals = new Float32Array(altReadBuffer.getMappedRange().slice(0));
+    altReadBuffer.unmap();
+    return { arrivals, iterations };
   }
 
   async compute(dem, params, options = {}) {
