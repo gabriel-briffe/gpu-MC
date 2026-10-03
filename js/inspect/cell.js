@@ -225,6 +225,7 @@ export function clearCellInspect() {
   app.lastPathScreenBounds = null;
   clearInspectPath();
   clearOptionalArea();
+  app.inspectPinned = false;
   updateCellTooltip();
   hooks.updateParamsFooter();
 }
@@ -382,6 +383,9 @@ export function onMapMouseMove(event) {
   if (!hooks.getInteraction().hoverPath) {
     return;
   }
+  if (isDebugMode() && app.inspectPinned) {
+    return;
+  }
 
   const { clientX, clientY } = event.originalEvent;
   if (isPointerOverParams(clientX, clientY)) {
@@ -426,10 +430,13 @@ export function onMapClickInspect(event) {
   const { lng, lat } = event.lngLat;
   const cell = sampleDemCell(lng, lat);
   if (cell !== null) {
-    showCellInspect(cell, event.point, { temporary: true });
+    const pin = isDebugMode();
+    showCellInspect(cell, event.point, { temporary: !pin });
+    app.inspectPinned = pin;
     refreshOptionalArea(cell);
     return;
   }
+  app.inspectPinned = false;
 
   clearOptionalArea();
   showTerrainElevationInspect(lng, lat, event.point, { temporary: true });

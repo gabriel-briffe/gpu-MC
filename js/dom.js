@@ -100,6 +100,7 @@ export const dom = {
   emulatedAltBoxEl: document.getElementById("emulated-alt-box"),
   emulatedAltitudeInput: document.getElementById("emulated-altitude"),
   emulatedAltitudeMenuInput: document.getElementById("emulated-altitude-menu"),
+  downwardMethodBtn: document.getElementById("downward-method-btn"),
   computeContextBarEl: document.getElementById("compute-context-bar"),
   computeContextGeoStatsEl: document.getElementById("compute-context-geo-stats"),
   computeContextDestRowEl: document.getElementById("compute-context-dest-row"),
