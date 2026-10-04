@@ -84,6 +84,27 @@ fn hasConeFloor(i: u32) -> bool {
   return gc < params.maxAlt;
 }
 
+// True if the upward cone sticks through the descending L/D slope from origin.
+// Mirror of upward elev-vs-climb LOS (GC flags alone are not enough).
+fn cellBlocksRay(cx: i32, cy: i32, ox: i32, oy: i32, originAlt: f32) -> bool {
+  if (!inBounds(cx, cy)) {
+    return true;
+  }
+  if (cx == ox && cy == oy) {
+    return false;
+  }
+  let i = idx(cx, cy);
+  if (!hasConeFloor(i)) {
+    return false;
+  }
+  let dx = f32(cx - ox);
+  let dy = f32(cy - oy);
+  let descentAlt = originAlt - sqrt(dx * dx + dy * dy) * params.cellSizeM / params.glideRatio;
+  return coneAlt[i] >= descentAlt;
+}
+
+// Bresenham LOS to the elected origin: descent path must stay above the
+// upward cone along the ray (already-GC flags alone do not block).
 fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
   if (!originValid(targetOx, targetOy)) {
     return false;
@@ -91,6 +112,7 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
   if (x0 == targetOx && y0 == targetOy) {
     return true;
   }
+  let originAlt = altIn[idx(targetOx, targetOy)];
   let adx = abs(targetOx - x0);
   let ady = abs(targetOy - y0);
   var x1 = x0;
@@ -112,16 +134,16 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
         y1 = y1 + ystep;
         error = error - ddx;
         if (error + errorprev < ddx) {
-          if (isGcAt(x1, y1 - ystep)) {
+          if (cellBlocksRay(x1, y1 - ystep, targetOx, targetOy, originAlt)) {
             return false;
           }
         } else if (error + errorprev > ddx) {
-          if (isGcAt(x1 - xstep, y1)) {
+          if (cellBlocksRay(x1 - xstep, y1, targetOx, targetOy, originAlt)) {
             return false;
           }
         }
       }
-      if (!(x1 == targetOx && y1 == targetOy) && isGcAt(x1, y1)) {
+      if (cellBlocksRay(x1, y1, targetOx, targetOy, originAlt)) {
         return false;
       }
       errorprev = error;
@@ -134,16 +156,16 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
         x1 = x1 + xstep;
         error = error - ddy;
         if (error + errorprev < ddy) {
-          if (isGcAt(x1 - xstep, y1)) {
+          if (cellBlocksRay(x1 - xstep, y1, targetOx, targetOy, originAlt)) {
             return false;
           }
         } else if (error + errorprev > ddy) {
-          if (isGcAt(x1, y1 - ystep)) {
+          if (cellBlocksRay(x1, y1 - ystep, targetOx, targetOy, originAlt)) {
             return false;
           }
         }
       }
-      if (!(x1 == targetOx && y1 == targetOy) && isGcAt(x1, y1)) {
+      if (cellBlocksRay(x1, y1, targetOx, targetOy, originAlt)) {
         return false;
       }
       errorprev = error;
