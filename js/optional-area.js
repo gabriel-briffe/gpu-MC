@@ -44,10 +44,14 @@ function syncDownwardMethodButton() {
   );
 }
 
-function maskFromArrivals(arrivals) {
+function maskFromArrivals(arrivals, altitudes, maxAltitude) {
   const mask = new Uint8Array(arrivals.length);
   for (let i = 0; i < arrivals.length; i += 1) {
-    if (arrivals[i] >= 0) {
+    const cone = altitudes[i];
+    if (!Number.isFinite(cone) || cone >= maxAltitude) {
+      continue;
+    }
+    if (arrivals[i] > cone) {
       mask[i] = 1;
     }
   }
@@ -204,7 +208,7 @@ async function showShaderMask(cell, coneState, startAlt, requestId) {
     if (requestId !== shaderRequestId) {
       return;
     }
-    showOptionalImage(maskToImageData(maskFromArrivals(arrivals), dem.width, dem.height), dem);
+    showOptionalImage(maskToImageData(maskFromArrivals(arrivals, altitudes, maxAltitude), dem.width, dem.height), dem);
     hooks.setStatus?.(`Shader optional area, ${iterations} iterations`);
   } catch (error) {
     if (requestId !== shaderRequestId) {

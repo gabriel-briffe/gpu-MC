@@ -24,6 +24,7 @@ struct Params {
 @group(0) @binding(7) var<storage, read> flagsIn: array<u32>;
 @group(0) @binding(8) var<storage, read_write> flagsOut: array<u32>;
 
+const FLAG_GROUND: u32 = 1u;
 const FLAG_CHANGED: u32 = 2u;
 
 fn idx(x: i32, y: i32) -> u32 {
@@ -38,17 +39,34 @@ fn originValid(ox: i32, oy: i32) -> bool {
   return inBounds(ox, oy) && !(ox == -1 && oy == -1);
 }
 
-fn wasModified(flags: u32) -> bool {
-  return (flags & FLAG_CHANGED) != 0u;
+fn hasStoredOrigin(ox: i32, oy: i32) -> bool {
+  return originValid(ox, oy);
 }
 
 fn isGroundAt(x: i32, y: i32) -> bool {
   if (!inBounds(x, y)) {
     return false;
   }
-  // Ridges above the emulated altitude block a straight relay, matching the
-  // cone shader's ground-cell line-of-sight test.
-  return elev[idx(x, y)] > params.homeAlt;
+  return (flagsIn[idx(x, y)] & FLAG_GROUND) != 0u;
+}
+
+fn isGroundCell(flags: u32) -> bool {
+  return (flags & FLAG_GROUND) != 0u;
+}
+
+fn wasModified(flags: u32) -> bool {
+  return (flags & FLAG_CHANGED) != 0u;
+}
+
+fn packFlags(ground: bool, changed: bool) -> u32 {
+  var f = 0u;
+  if (ground) {
+    f = f | FLAG_GROUND;
+  }
+  if (changed) {
+    f = f | FLAG_CHANGED;
+  }
+  return f;
 }
 
 fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
@@ -137,22 +155,63 @@ fn electedFromNeighbor(x: i32, y: i32, px: i32, py: i32) -> vec2<i32> {
   return vec2<i32>(px, py);
 }
 
+fn neighborIsModifiedAndDifferentOrigin(nx: i32, ny: i32, myOx: i32, myOy: i32) -> bool {
+  if (!inBounds(nx, ny)) {
+    return false;
+  }
+  let ni = idx(nx, ny);
+  if (!wasModified(flagsIn[ni])) {
+    return false;
+  }
+  let norigin = originIn[ni];
+  return norigin.x != myOx || norigin.y != myOy;
+}
+
 const NEIGHBOR_OFFSETS = array<vec2<i32>, 8>(
   vec2<i32>(-1, -1), vec2<i32>(0, -1), vec2<i32>(1, -1),
   vec2<i32>(-1, 0), vec2<i32>(1, 0),
   vec2<i32>(-1, 1), vec2<i32>(0, 1), vec2<i32>(1, 1)
 );
 
-fn clearsFloor(x: i32, y: i32, arrival: f32) -> bool {
-  let i = idx(x, y);
-  if (arrival < elev[i]) {
-    return false;
+fn hasActiveNeighbor(x: i32, y: i32, myOx: i32, myOy: i32) -> bool {
+  for (var k = 0; k < 8; k = k + 1) {
+    let off = NEIGHBOR_OFFSETS[k];
+    if (neighborIsModifiedAndDifferentOrigin(x + off.x, y + off.y, myOx, myOy)) {
+      return true;
+    }
   }
-  let cone = coneAlt[i];
-  if (cone >= params.maxAlt) {
-    return false;
+  return false;
+}
+
+fn tryModifiedNeighbor(
+  nx: i32,
+  ny: i32,
+  x: i32,
+  y: i32,
+  myOx: i32,
+  myOy: i32,
+  bestArrival: f32,
+  bestOx: i32,
+  bestOy: i32
+) -> vec3<f32> {
+  if (!neighborIsModifiedAndDifferentOrigin(nx, ny, myOx, myOy)) {
+    return vec3<f32>(bestArrival, f32(bestOx), f32(bestOy));
   }
-  return arrival >= cone;
+  let elected = electedFromNeighbor(x, y, nx, ny);
+  if (!originValid(elected.x, elected.y)) {
+    return vec3<f32>(bestArrival, f32(bestOx), f32(bestOy));
+  }
+  let arrival = arrivalFrom(elected.x, elected.y, x, y);
+  if (arrival > bestArrival) {
+    return vec3<f32>(arrival, f32(elected.x), f32(elected.y));
+  }
+  return vec3<f32>(bestArrival, f32(bestOx), f32(bestOy));
+}
+
+fn passthrough(i: u32, curO: vec2<i32>, curAlt: f32, curFlags: u32) {
+  altOut[i] = curAlt;
+  originOut[i] = curO;
+  flagsOut[i] = curFlags & FLAG_GROUND;
 }
 
 @compute @workgroup_size(8, 8)
@@ -166,53 +225,77 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let curO = originIn[i];
   let curAlt = altIn[i];
   let curFlags = flagsIn[i];
+  let myOx = curO.x;
+  let myOy = curO.y;
 
-  var bestArrival = curAlt;
-  var bestOx = curO.x;
-  var bestOy = curO.y;
-  var sawOffer = originValid(curO.x, curO.y);
-
-  for (var k = 0; k < 8; k = k + 1) {
-    let off = NEIGHBOR_OFFSETS[k];
-    let nx = x + off.x;
-    let ny = y + off.y;
-    if (!inBounds(nx, ny)) {
-      continue;
+  if (isGroundCell(curFlags)) {
+    if (!hasActiveNeighbor(x, y, myOx, myOy)) {
+      passthrough(i, curO, curAlt, curFlags);
+      flagsOut[i] = FLAG_GROUND;
+      return;
     }
-    let ni = idx(nx, ny);
-    if (!wasModified(flagsIn[ni])) {
-      continue;
+    var currentArrival = -1e30;
+    if (hasStoredOrigin(myOx, myOy)) {
+      currentArrival = arrivalFrom(myOx, myOy, x, y);
     }
-    let norigin = originIn[ni];
-    if (norigin.x == curO.x && norigin.y == curO.y && originValid(curO.x, curO.y)) {
-      continue;
+    var bestArrival = currentArrival;
+    var bestOx = myOx;
+    var bestOy = myOy;
+    for (var k = 0; k < 8; k = k + 1) {
+      let off = NEIGHBOR_OFFSETS[k];
+      let pick = tryModifiedNeighbor(x + off.x, y + off.y, x, y, myOx, myOy, bestArrival, bestOx, bestOy);
+      bestArrival = pick.x;
+      bestOx = i32(pick.y);
+      bestOy = i32(pick.z);
     }
-    let elected = electedFromNeighbor(x, y, nx, ny);
-    if (!originValid(elected.x, elected.y)) {
-      continue;
+    if (bestArrival <= currentArrival) {
+      passthrough(i, curO, curAlt, curFlags);
+      flagsOut[i] = FLAG_GROUND;
+      return;
     }
-    let arrival = arrivalFrom(elected.x, elected.y, x, y);
-    if (!clearsFloor(x, y, arrival)) {
-      continue;
-    }
-    if (!sawOffer || arrival > bestArrival) {
-      sawOffer = true;
-      bestArrival = arrival;
-      bestOx = elected.x;
-      bestOy = elected.y;
-    }
-  }
-
-  if (!sawOffer || bestArrival >= params.maxAlt) {
     altOut[i] = curAlt;
-    originOut[i] = curO;
-    flagsOut[i] = 0u;
+    originOut[i] = vec2<i32>(bestOx, bestOy);
+    flagsOut[i] = FLAG_GROUND;
     return;
   }
 
-  let changed = bestOx != curO.x || bestOy != curO.y || abs(bestArrival - curAlt) > 0.001;
-  altOut[i] = bestArrival;
+  if (!hasActiveNeighbor(x, y, myOx, myOy)) {
+    passthrough(i, curO, curAlt, curFlags);
+    return;
+  }
+
+  var bestArrival = curAlt;
+  var bestOx = myOx;
+  var bestOy = myOy;
+  if (!hasStoredOrigin(myOx, myOy)) {
+    bestArrival = -1e30;
+  }
+  for (var k = 0; k < 8; k = k + 1) {
+    let off = NEIGHBOR_OFFSETS[k];
+    let pick = tryModifiedNeighbor(x + off.x, y + off.y, x, y, myOx, myOy, bestArrival, bestOx, bestOy);
+    bestArrival = pick.x;
+    bestOx = i32(pick.y);
+    bestOy = i32(pick.z);
+  }
+
+  if (hasStoredOrigin(myOx, myOy) && bestArrival <= curAlt) {
+    passthrough(i, curO, curAlt, curFlags);
+    return;
+  }
+  if (bestArrival <= -1e20) {
+    passthrough(i, curO, curAlt, curFlags);
+    return;
+  }
+
+  var newAlt = bestArrival;
+  var newGround = false;
+  if (bestArrival <= elev[i]) {
+    newAlt = elev[i];
+    newGround = true;
+  }
+  altOut[i] = newAlt;
   originOut[i] = vec2<i32>(bestOx, bestOy);
-  flagsOut[i] = select(0u, FLAG_CHANGED, changed);
+  let changed = bestOx != myOx || bestOy != myOy || abs(newAlt - curAlt) > 0.001 || newGround;
+  flagsOut[i] = packFlags(newGround, changed);
 }
 `;

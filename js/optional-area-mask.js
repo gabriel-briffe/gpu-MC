@@ -73,17 +73,6 @@ class MaxArrivalHeap {
   }
 }
 
-function terrainMslAt(dem, idx) {
-  if (dem.terrainMsl) {
-    return dem.terrainMsl[idx];
-  }
-  return dem.elevation[idx] - dem.groundClearance;
-}
-
-function floorAltAt(dem, idx, groundClearance) {
-  return terrainMslAt(dem, idx) + groundClearance;
-}
-
 function coneAltAt(altitudes, maxAltitude, idx) {
   const alt = altitudes[idx];
   if (!Number.isFinite(alt) || alt >= maxAltitude) {
@@ -94,8 +83,8 @@ function coneAltAt(altitudes, maxAltitude, idx) {
 
 /**
  * Descending glide from a clicked cell. A cell is optional when the arrival
- * altitude (start altitude minus path distance / L/D) is still at least
- * ground + clearance and at least the airport glide-cone altitude.
+ * altitude (start altitude minus path distance / L/D) is above the airport
+ * glide-cone altitude. Ridge height is already included in that cone.
  * Distance is the shortest 8-connected path, so the mask can go around a ridge.
  */
 export function buildOptionalMask({
@@ -125,11 +114,8 @@ export function buildOptionalMask({
   }
 
   const startIdx = gj * width + gi;
-  const startNeed = Math.max(
-    floorAltAt(dem, startIdx, groundClearance),
-    coneAltAt(altitudes, maxAltitude, startIdx)
-  );
-  if (startAlt + ALT_EPSILON_M < startNeed) {
+  const startCone = coneAltAt(altitudes, maxAltitude, startIdx);
+  if (!(startAlt > startCone)) {
     return mask;
   }
 
@@ -163,11 +149,8 @@ export function buildOptionalMask({
       const nIdx = ny * width + nx;
       const step = cellSizeM * Math.hypot(dx, dy);
       const nextArrival = arrival - step / glideRatio;
-      const need = Math.max(
-        floorAltAt(dem, nIdx, groundClearance),
-        coneAltAt(altitudes, maxAltitude, nIdx)
-      );
-      if (nextArrival + ALT_EPSILON_M < need) {
+      const cone = coneAltAt(altitudes, maxAltitude, nIdx);
+      if (!(nextArrival > cone)) {
         continue;
       }
       if (nextArrival <= best[nIdx]) {
