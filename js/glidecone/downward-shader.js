@@ -144,15 +144,13 @@ const NEIGHBOR_OFFSETS = array<vec2<i32>, 8>(
 );
 
 fn clearsFloor(x: i32, y: i32, arrival: f32) -> bool {
-  let i = idx(x, y);
-  if (arrival < elev[i]) {
-    return false;
-  }
-  let cone = coneAlt[i];
+  // Ridge height is already in the airport cone. A cell is an option when
+  // the arrival is strictly above that cone altitude.
+  let cone = coneAlt[idx(x, y)];
   if (cone >= params.maxAlt) {
     return false;
   }
-  return arrival >= cone;
+  return arrival > cone;
 }
 
 @compute @workgroup_size(8, 8)

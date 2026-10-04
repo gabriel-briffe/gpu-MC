@@ -13,7 +13,7 @@ function demOf(width, height, terrain, cellSizeM = 100) {
   };
 }
 
-test("optional mask stays above ground clearance and the airport cone", () => {
+test("optional mask stays above the airport cone", () => {
   const width = 5;
   const height = 1;
   const terrain = new Float32Array([0, 0, 0, 0, 500]);
@@ -36,12 +36,12 @@ test("optional mask stays above ground clearance and the airport cone", () => {
   assert.equal(mask[4], 0);
 });
 
-test("optional mask can step around a ridge that blocks the straight cell", () => {
+test("optional mask can step around a ridge already raised in the cone", () => {
   const width = 3;
   const height = 3;
   const terrain = new Float32Array(9).fill(0);
-  terrain[1 * width + 1] = 400;
   const altitudes = new Float32Array(9).fill(150);
+  altitudes[1 * width + 1] = 400;
   const mask = buildOptionalMask({
     dem: demOf(width, height, terrain, 100),
     altitudes,
