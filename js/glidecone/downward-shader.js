@@ -1,3 +1,12 @@
+/**
+ * Downward optional-area propagate (inverse of upward PROPAGATE_SHADER).
+ *
+ * The upward glide-cone altitudes are treated as "ground" (GC): no terrain
+ * clearance, no circuit height. Question: which cells can you still reach
+ * descending (with origin / LOS bends) before hitting the upward cone?
+ *
+ * FLAG_GROUND here means "hit upward glide cone", not terrain.
+ */
 export const DOWNWARD_PROPAGATE_SHADER = /* wgsl */ `
 struct Params {
   width: u32,
@@ -43,14 +52,14 @@ fn hasStoredOrigin(ox: i32, oy: i32) -> bool {
   return originValid(ox, oy);
 }
 
-fn isGroundAt(x: i32, y: i32) -> bool {
+fn isGcAt(x: i32, y: i32) -> bool {
   if (!inBounds(x, y)) {
     return false;
   }
   return (flagsIn[idx(x, y)] & FLAG_GROUND) != 0u;
 }
 
-fn isGroundCell(flags: u32) -> bool {
+fn isGcCell(flags: u32) -> bool {
   return (flags & FLAG_GROUND) != 0u;
 }
 
@@ -58,15 +67,21 @@ fn wasModified(flags: u32) -> bool {
   return (flags & FLAG_CHANGED) != 0u;
 }
 
-fn packFlags(ground: bool, changed: bool) -> u32 {
+fn packFlags(gc: bool, changed: bool) -> u32 {
   var f = 0u;
-  if (ground) {
+  if (gc) {
     f = f | FLAG_GROUND;
   }
   if (changed) {
     f = f | FLAG_CHANGED;
   }
   return f;
+}
+
+/** Real upward-cone floor (ignore unreachable / maxAlt sentinels). */
+fn hasConeFloor(i: u32) -> bool {
+  let gc = coneAlt[i];
+  return gc < params.maxAlt;
 }
 
 fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
@@ -97,16 +112,16 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
         y1 = y1 + ystep;
         error = error - ddx;
         if (error + errorprev < ddx) {
-          if (isGroundAt(x1, y1 - ystep)) {
+          if (isGcAt(x1, y1 - ystep)) {
             return false;
           }
         } else if (error + errorprev > ddx) {
-          if (isGroundAt(x1 - xstep, y1)) {
+          if (isGcAt(x1 - xstep, y1)) {
             return false;
           }
         }
       }
-      if (!(x1 == targetOx && y1 == targetOy) && isGroundAt(x1, y1)) {
+      if (!(x1 == targetOx && y1 == targetOy) && isGcAt(x1, y1)) {
         return false;
       }
       errorprev = error;
@@ -119,16 +134,16 @@ fn isInViewToOrigin(x0: i32, y0: i32, targetOx: i32, targetOy: i32) -> bool {
         x1 = x1 + xstep;
         error = error - ddy;
         if (error + errorprev < ddy) {
-          if (isGroundAt(x1 - xstep, y1)) {
+          if (isGcAt(x1 - xstep, y1)) {
             return false;
           }
         } else if (error + errorprev > ddy) {
-          if (isGroundAt(x1, y1 - ystep)) {
+          if (isGcAt(x1, y1 - ystep)) {
             return false;
           }
         }
       }
-      if (!(x1 == targetOx && y1 == targetOy) && isGroundAt(x1, y1)) {
+      if (!(x1 == targetOx && y1 == targetOy) && isGcAt(x1, y1)) {
         return false;
       }
       errorprev = error;
@@ -144,10 +159,8 @@ fn arrivalFrom(ox: i32, oy: i32, x: i32, y: i32) -> f32 {
   return altIn[oi] - sqrt(dx * dx + dy * dy) * params.cellSizeM / params.glideRatio;
 }
 
+/** Parent is never GC (callers skip GC neighbors). */
 fn electedFromNeighbor(x: i32, y: i32, px: i32, py: i32) -> vec2<i32> {
-  if (isGroundAt(px, py)) {
-    return vec2<i32>(px, py);
-  }
   let parentOrigin = originIn[idx(px, py)];
   if (isInViewToOrigin(x, y, parentOrigin.x, parentOrigin.y)) {
     return vec2<i32>(parentOrigin.x, parentOrigin.y);
@@ -155,12 +168,17 @@ fn electedFromNeighbor(x: i32, y: i32, px: i32, py: i32) -> vec2<i32> {
   return vec2<i32>(px, py);
 }
 
-fn neighborIsModifiedAndDifferentOrigin(nx: i32, ny: i32, myOx: i32, myOy: i32) -> bool {
+fn neighborIsActiveAir(nx: i32, ny: i32, myOx: i32, myOy: i32) -> bool {
   if (!inBounds(nx, ny)) {
     return false;
   }
   let ni = idx(nx, ny);
-  if (!wasModified(flagsIn[ni])) {
+  let nflags = flagsIn[ni];
+  // GC neighbors are a hard stop — never use them for altitude / wavefront.
+  if (isGcCell(nflags)) {
+    return false;
+  }
+  if (!wasModified(nflags)) {
     return false;
   }
   let norigin = originIn[ni];
@@ -176,7 +194,7 @@ const NEIGHBOR_OFFSETS = array<vec2<i32>, 8>(
 fn hasActiveNeighbor(x: i32, y: i32, myOx: i32, myOy: i32) -> bool {
   for (var k = 0; k < 8; k = k + 1) {
     let off = NEIGHBOR_OFFSETS[k];
-    if (neighborIsModifiedAndDifferentOrigin(x + off.x, y + off.y, myOx, myOy)) {
+    if (neighborIsActiveAir(x + off.x, y + off.y, myOx, myOy)) {
       return true;
     }
   }
@@ -194,11 +212,15 @@ fn tryModifiedNeighbor(
   bestOx: i32,
   bestOy: i32
 ) -> vec3<f32> {
-  if (!neighborIsModifiedAndDifferentOrigin(nx, ny, myOx, myOy)) {
+  if (!neighborIsActiveAir(nx, ny, myOx, myOy)) {
     return vec3<f32>(bestArrival, f32(bestOx), f32(bestOy));
   }
   let elected = electedFromNeighbor(x, y, nx, ny);
   if (!originValid(elected.x, elected.y)) {
+    return vec3<f32>(bestArrival, f32(bestOx), f32(bestOy));
+  }
+  // Elected origin must itself still be air (not GC).
+  if (isGcAt(elected.x, elected.y)) {
     return vec3<f32>(bestArrival, f32(bestOx), f32(bestOy));
   }
   let arrival = arrivalFrom(elected.x, elected.y, x, y);
@@ -228,33 +250,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let myOx = curO.x;
   let myOy = curO.y;
 
-  if (isGroundCell(curFlags)) {
-    if (!hasActiveNeighbor(x, y, myOx, myOy)) {
-      passthrough(i, curO, curAlt, curFlags);
-      flagsOut[i] = FLAG_GROUND;
-      return;
-    }
-    var currentArrival = -1e30;
-    if (hasStoredOrigin(myOx, myOy)) {
-      currentArrival = arrivalFrom(myOx, myOy, x, y);
-    }
-    var bestArrival = currentArrival;
-    var bestOx = myOx;
-    var bestOy = myOy;
-    for (var k = 0; k < 8; k = k + 1) {
-      let off = NEIGHBOR_OFFSETS[k];
-      let pick = tryModifiedNeighbor(x + off.x, y + off.y, x, y, myOx, myOy, bestArrival, bestOx, bestOy);
-      bestArrival = pick.x;
-      bestOx = i32(pick.y);
-      bestOy = i32(pick.z);
-    }
-    if (bestArrival <= currentArrival) {
-      passthrough(i, curO, curAlt, curFlags);
-      flagsOut[i] = FLAG_GROUND;
-      return;
-    }
-    altOut[i] = curAlt;
-    originOut[i] = vec2<i32>(bestOx, bestOy);
+  // Already hit the upward cone — stay GC, do not continue (unlike upward ground).
+  if (isGcCell(curFlags)) {
+    passthrough(i, curO, curAlt, curFlags);
     flagsOut[i] = FLAG_GROUND;
     return;
   }
@@ -288,14 +286,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   var newAlt = bestArrival;
-  var newGround = false;
-  if (bestArrival <= elev[i]) {
-    newAlt = elev[i];
-    newGround = true;
+  var newGc = false;
+  // Upward glide cone is the floor (not terrain).
+  if (hasConeFloor(i) && bestArrival < coneAlt[i]) {
+    newAlt = coneAlt[i];
+    newGc = true;
   }
   altOut[i] = newAlt;
   originOut[i] = vec2<i32>(bestOx, bestOy);
-  let changed = bestOx != myOx || bestOy != myOy || abs(newAlt - curAlt) > 0.001 || newGround;
-  flagsOut[i] = packFlags(newGround, changed);
+  let changed = bestOx != myOx || bestOy != myOy || abs(newAlt - curAlt) > 0.001 || newGc;
+  flagsOut[i] = packFlags(newGc, changed);
 }
 `;

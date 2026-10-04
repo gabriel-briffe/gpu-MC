@@ -1345,6 +1345,11 @@
         pointer-events: none;
       }
 
+      body.debug-mode #cell-tooltip {
+        /* Sit with the emulated-alt chrome (same stacking band). */
+        z-index: 6;
+      }
+
       #cell-tooltip[hidden] {
         display: none;
       }

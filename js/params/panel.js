@@ -63,7 +63,15 @@ function getWeatherOverlayOpacity() {
   return Math.max(50, Math.min(100, value)) / 100;
 }
 
-export { getSectorsOverlayOpacity, getWeatherOverlayOpacity };
+function getOptionalOverlayOpacity() {
+  const value = Number.parseInt(dom.optionalOpacityInput?.value ?? "50", 10);
+  if (!Number.isFinite(value)) {
+    return 0.5;
+  }
+  return Math.max(0, Math.min(100, value)) / 100;
+}
+
+export { getSectorsOverlayOpacity, getWeatherOverlayOpacity, getOptionalOverlayOpacity };
 
 export function syncParamVisibility() {
   const { mode } = parseVizMode();
@@ -71,6 +79,7 @@ export function syncParamVisibility() {
     dom.vizHintEl.textContent = VIZ_HINTS[mode] ?? "";
   }
   syncSectorsOpacityUi();
+  syncOptionalOpacityUi();
   app.hooks.updateInteractionHints();
 }
 
@@ -81,6 +90,12 @@ export function syncSectorsOpacityUi() {
   }
   if (dom.sectorsOpacityHintEl && dom.sectorsOpacityInput) {
     dom.sectorsOpacityHintEl.textContent = `${dom.sectorsOpacityInput.value}%`;
+  }
+}
+
+export function syncOptionalOpacityUi() {
+  if (dom.optionalOpacityHintEl && dom.optionalOpacityInput) {
+    dom.optionalOpacityHintEl.textContent = `${dom.optionalOpacityInput.value}%`;
   }
 }
 
@@ -116,6 +131,14 @@ export function applyWeatherOverlayOpacity() {
     return;
   }
   map.setPaintProperty("ch1-sectors-layer", "fill-opacity", getWeatherOverlayOpacity());
+}
+
+export function applyOptionalOverlayOpacity() {
+  const map = app.hooks.getMap();
+  if (!map?.getLayer("glide-optional")) {
+    return;
+  }
+  map.setPaintProperty("glide-optional", "raster-opacity", getOptionalOverlayOpacity());
 }
 
 export function syncVizModeDebugOptions() {
@@ -333,11 +356,19 @@ export function initParamsPanel(appState, domRefs) {
     applySectorsOverlayOpacity();
   });
 
+  dom.optionalOpacityInput?.addEventListener("input", () => {
+    syncOptionalOpacityUi();
+    applyOptionalOverlayOpacity();
+    app.hooks.schedulePersistParamsState?.();
+  });
+
   dom.weatherOpacityInput?.addEventListener("input", () => {
     syncWeatherOpacityUi();
     applyWeatherOverlayOpacity();
     app.hooks.schedulePersistParamsState?.();
   });
+
+  syncOptionalOpacityUi();
 
   app.hooks.detectInteractionMode();
   for (const query of ["(pointer: coarse)", "(pointer: fine)", "(hover: hover)"]) {

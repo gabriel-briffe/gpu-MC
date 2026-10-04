@@ -62,6 +62,8 @@ export const dom = {
   sectorsOpacityFieldEl: document.getElementById("sectors-opacity-field"),
   sectorsOpacityInput: document.getElementById("sectors-opacity"),
   sectorsOpacityHintEl: document.getElementById("sectors-opacity-hint"),
+  optionalOpacityInput: document.getElementById("optional-opacity"),
+  optionalOpacityHintEl: document.getElementById("optional-opacity-hint"),
   weatherOpacityInput: document.getElementById("weather-opacity"),
   weatherOpacityHintEl: document.getElementById("weather-opacity-hint"),
   vizHintEl: document.getElementById("viz-hint"),

@@ -127,10 +127,17 @@ export class GlideConeEngine {
     const originX = new Int32Array(count).fill(-1);
     const originY = new Int32Array(count).fill(-1);
     const flags = new Uint32Array(count);
-    alt[startIdx] = startAlt;
     originX[startIdx] = gi;
     originY[startIdx] = gj;
-    flags[startIdx] = 2;
+    const startCone = coneAltitudes[startIdx];
+    // Already at/below the upward cone: seed as GC (no wavefront).
+    if (Number.isFinite(startCone) && startCone < maxAltitude && startAlt < startCone) {
+      alt[startIdx] = startCone;
+      flags[startIdx] = 1; // FLAG_GROUND
+    } else {
+      alt[startIdx] = startAlt;
+      flags[startIdx] = 2; // FLAG_CHANGED
+    }
     const originPairs = new Int32Array(count * 2);
     for (let i = 0; i < count; i += 1) {
       originPairs[i * 2] = originX[i];

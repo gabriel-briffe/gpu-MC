@@ -15,6 +15,7 @@ import {
   seedPathMetrics,
 } from "../glide-path.js";
 import { clearOptionalArea, refreshOptionalArea } from "../optional-area.js";
+import { dom } from "../dom.js";
 
 let hooks;
 let app;
@@ -84,9 +85,40 @@ function viewportInsets() {
   };
 }
 
+function positionDebugCellTooltip(cellTooltipEl) {
+  const width = cellTooltipEl.offsetWidth;
+  const height = cellTooltipEl.offsetHeight;
+  const { left: minLeft, top: minTop, right: maxRight, bottom: maxBottom } = viewportInsets();
+  const gap = 8;
+  const box = dom.emulatedAltBoxEl;
+  let left = maxRight - width;
+  let top = minTop + gap;
+
+  if (box && !box.hidden) {
+    const rect = box.getBoundingClientRect();
+    left = rect.right - width;
+    top = rect.bottom + gap;
+  }
+
+  left = Math.max(minLeft, Math.min(left, maxRight - width));
+  top = Math.max(minTop, Math.min(top, maxBottom - height));
+  cellTooltipEl.style.left = `${left}px`;
+  cellTooltipEl.style.top = `${top}px`;
+}
+
 export function positionCellTooltip() {
   const cellTooltipEl = hooks.cellTooltipEl;
-  if (!cellTooltipEl || cellTooltipEl.hidden || !app.lastInspectAnchor) {
+  if (!cellTooltipEl || cellTooltipEl.hidden) {
+    return;
+  }
+
+  // Debug: park under the emulated-alt box (right), don't follow the pointer.
+  if (isDebugMode()) {
+    positionDebugCellTooltip(cellTooltipEl);
+    return;
+  }
+
+  if (!app.lastInspectAnchor) {
     return;
   }
 
@@ -383,7 +415,8 @@ export function onMapMouseMove(event) {
   if (!hooks.getInteraction().hoverPath) {
     return;
   }
-  if (isDebugMode() && app.inspectPinned) {
+  // Desktop debug: path is click-only (no mouse follow).
+  if (isDebugMode()) {
     return;
   }
 
@@ -418,7 +451,8 @@ export function onMapClickInspect(event) {
   if (isCacheSelectMode()) {
     return;
   }
-  if (!hooks.getInteraction().tapPath) {
+  // Touch uses tapPath; desktop debug uses click instead of hover-follow.
+  if (!hooks.getInteraction().tapPath && !isDebugMode()) {
     return;
   }
 

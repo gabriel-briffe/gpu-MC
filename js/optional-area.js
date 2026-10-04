@@ -1,5 +1,5 @@
 import { gridBoundsLngLat } from "./geo.js";
-import { isDebugMode } from "./params/panel.js";
+import { getOptionalOverlayOpacity, isDebugMode } from "./params/panel.js";
 import { dom } from "./dom.js";
 import { raisePathLayer } from "./map/layers.js";
 import { buildOptionalMask } from "./optional-area-mask.js";
@@ -9,7 +9,8 @@ import { isGlideConesEnabled } from "./app-menu.js";
 
 const SOURCE_ID = "glide-optional";
 const LAYER_ID = "glide-optional";
-const OPTIONAL_GREEN = [46, 204, 113, 128];
+/** Full alpha in the image; layer raster-opacity comes from the Options slider. */
+const OPTIONAL_GREEN = [46, 204, 113, 255];
 
 let hooks;
 let app;
@@ -44,6 +45,7 @@ function syncDownwardMethodButton() {
   );
 }
 
+/** Green where descending arrival is still strictly above the upward cone. */
 function maskFromArrivals(arrivals, altitudes, maxAltitude) {
   const mask = new Uint8Array(arrivals.length);
   for (let i = 0; i < arrivals.length; i += 1) {
@@ -51,7 +53,8 @@ function maskFromArrivals(arrivals, altitudes, maxAltitude) {
     if (!Number.isFinite(cone) || cone >= maxAltitude) {
       continue;
     }
-    if (arrivals[i] > cone) {
+    const arrival = arrivals[i];
+    if (Number.isFinite(arrival) && arrival > cone) {
       mask[i] = 1;
     }
   }
@@ -144,8 +147,12 @@ function showOptionalImage(imageData, dem) {
   const url = app.optionalOverlayCanvas.toDataURL();
   const coordinates = overlayCoordinates(dem);
 
+  const opacity = getOptionalOverlayOpacity();
   if (map.getSource(SOURCE_ID)) {
     map.getSource(SOURCE_ID).updateImage({ url, coordinates });
+    if (map.getLayer(LAYER_ID)) {
+      map.setPaintProperty(LAYER_ID, "raster-opacity", opacity);
+    }
     raisePathLayer();
     return;
   }
@@ -155,7 +162,7 @@ function showOptionalImage(imageData, dem) {
     id: LAYER_ID,
     type: "raster",
     source: SOURCE_ID,
-    paint: { "raster-opacity": 1 },
+    paint: { "raster-opacity": opacity },
   });
   raisePathLayer();
 }

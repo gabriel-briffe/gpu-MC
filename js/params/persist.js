@@ -61,6 +61,7 @@ function collectFormState(dom) {
     updateMap: readInput(document.getElementById("update-map")),
     vizMode: readInput(dom.vizModeSelect),
     sectorsOpacity: readInput(dom.sectorsOpacityInput),
+    optionalOpacity: readInput(dom.optionalOpacityInput),
     weatherOpacity: readInput(dom.weatherOpacityInput),
     debugMode: readCheckbox(dom.debugModeInput),
   };
@@ -82,6 +83,7 @@ function applyFormState(dom, form) {
   writeInput(document.getElementById("update-map"), form.updateMap);
   writeInput(dom.vizModeSelect, form.vizMode);
   writeInput(dom.sectorsOpacityInput, form.sectorsOpacity);
+  writeInput(dom.optionalOpacityInput, form.optionalOpacity);
   writeInput(dom.weatherOpacityInput, form.weatherOpacity);
   writeCheckbox(dom.debugModeInput, form.debugMode);
 }
