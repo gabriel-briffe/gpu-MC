@@ -38,7 +38,7 @@
         id="flight-shader-btn"
         class="iconch1-step-btn flight-shader-btn"
         hidden
-        aria-label="Shader optional area from current position. Long press clears."
+        aria-label="Shader optional area from current position. Long press opens the options area visualisation."
       >S</button>
       <button
         type="button"
@@ -374,6 +374,16 @@
                   value="50"
                 />
                 <span class="param-hint" id="optional-opacity-hint">50%</span>
+              </div>
+              <div class="param-field param-field-full" id="optional-viz-field">
+                <div class="param-label-row">
+                  <label class="param-label" for="optional-viz">Options area</label>
+                </div>
+                <select id="optional-viz">
+                  <option value="margin" selected>Margin above glide cone</option>
+                  <option value="degraded">Degraded masks (10% / 20%)</option>
+                </select>
+                <span class="param-hint" id="optional-viz-hint">Largest margin above the cone is green, zero is red.</span>
               </div>
               <div class="param-field">
                 <div class="param-label-row">

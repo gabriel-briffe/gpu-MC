@@ -381,8 +381,7 @@ export function closeAppMenu() {
   syncAppMenuUi();
 }
 
-function scrollGlideSettingsToOverlay() {
-  const target = dom.paramsOverlayField ?? dom.vizModeSelect;
+function scrollGlideSettingsTo(target) {
   if (!target) {
     return;
   }
@@ -394,14 +393,16 @@ function scrollGlideSettingsToOverlay() {
   });
 }
 
-export function openGlideSettings({ scrollToOverlay = false } = {}) {
+export function openGlideSettings({ scrollToOverlay = false, scrollToOptionalViz = false } = {}) {
   app.iconChSettingsOpen = false;
   app.gradientSettingsOpen = false;
   app.appMenuOpen = true;
   app.glideSettingsOpen = true;
   syncAppMenuUi();
-  if (scrollToOverlay) {
-    scrollGlideSettingsToOverlay();
+  if (scrollToOptionalViz) {
+    scrollGlideSettingsTo(dom.optionalVizField);
+  } else if (scrollToOverlay) {
+    scrollGlideSettingsTo(dom.paramsOverlayField ?? dom.vizModeSelect);
   }
 }
 

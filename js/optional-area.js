@@ -3,7 +3,7 @@ import { getOptionalOverlayOpacity, isDebugMode } from "./params/panel.js";
 import { dom } from "./dom.js";
 import { raisePathLayer } from "./map/layers.js";
 import { buildOptionalMask } from "./optional-area-mask.js";
-import { marginRgb } from "./glidecone/margin-color.js";
+import { cellMarginT, marginHex, marginRgb } from "./glidecone/margin-color.js";
 import { gridIndexFromLngLat } from "./geo.js";
 import { bindLongPress } from "./ui/long-press.js";
 import { isGlideConesEnabled } from "./app-menu.js";
@@ -142,6 +142,93 @@ function paintOptionalImage(mask, arrivals, altitudes, maxAltitude, width, heigh
   return { image, maxMargin };
 }
 
+const OPTIONAL_VIZ_HINTS = {
+  margin: "Largest margin above the cone is green, zero is red.",
+  degraded: "Still reachable at 20% less L/D is green. Lost only at 20% less is yellow. Lost at 10% less is red.",
+};
+
+export function optionalVizMode() {
+  return dom.optionalVizSelect?.value === "degraded" ? "degraded" : "margin";
+}
+
+function syncOptionalVizHint() {
+  if (dom.optionalVizHintEl) {
+    dom.optionalVizHintEl.textContent = OPTIONAL_VIZ_HINTS[optionalVizMode()];
+  }
+}
+
+function fieldMaxMargin(mask, arrivals, altitudes, maxAltitude) {
+  let maxMargin = 0;
+  if (!mask || !arrivals || !altitudes) {
+    return maxMargin;
+  }
+  for (let i = 0; i < mask.length; i += 1) {
+    if (mask[i] !== 1) {
+      continue;
+    }
+    const cone = altitudes[i];
+    const arrival = arrivals[i];
+    if (!Number.isFinite(cone) || cone >= maxAltitude || !Number.isFinite(arrival)) {
+      continue;
+    }
+    const margin = arrival - cone;
+    if (margin > maxMargin) {
+      maxMargin = margin;
+    }
+  }
+  return maxMargin;
+}
+
+/** Full cone, then the part lost at 10% less L/D, then the part lost at 20% less. */
+function paintDegradedImage(fullMask, mask10, mask20, width, height) {
+  const image = new ImageData(width, height);
+  const data = image.data;
+  const red = marginRgb(0);
+  const yellow = marginRgb(0.5);
+  const green = marginRgb(1);
+  for (let i = 0; i < fullMask.length; i += 1) {
+    if (fullMask[i] !== 1) {
+      continue;
+    }
+    let rgb = green;
+    if (mask20?.[i] === 1) {
+      rgb = green;
+    } else if (mask10?.[i] === 1) {
+      rgb = yellow;
+    } else {
+      rgb = red;
+    }
+    const p = i * 4;
+    data[p] = rgb[0];
+    data[p + 1] = rgb[1];
+    data[p + 2] = rgb[2];
+    data[p + 3] = 255;
+  }
+  return image;
+}
+
+export function optionAreaCellColor(idx) {
+  const field = app?.optionalField;
+  const cone = hooks?.getConeState?.();
+  if (!field || !cone || !Number.isInteger(idx) || field.mask?.[idx] !== 1) {
+    return null;
+  }
+  if (optionalVizMode() === "degraded") {
+    if (field.mask20?.[idx] === 1) {
+      return marginHex(1);
+    }
+    if (field.mask10?.[idx] === 1) {
+      return marginHex(0.5);
+    }
+    return marginHex(0);
+  }
+  if (!(field.maxMargin > 0)) {
+    return null;
+  }
+  const t = cellMarginT(field.arrivals?.[idx], cone.altitudes?.[idx], cone.maxAltitude, field.maxMargin);
+  return marginHex(t);
+}
+
 function overlayCoordinates(dem) {
   const coords = gridBoundsLngLat(dem.gx0, dem.gy0, dem.width, dem.height, dem.zoom);
   return [
@@ -243,8 +330,8 @@ function preferShader() {
   return app?.computeHardwareSupported !== false && Boolean(app?.engine?.computeDownward);
 }
 
-async function computeField(cell, startAlt, coneState) {
-  const { dem, altitudes, maxAltitude, glideRatio, groundClearance } = coneState;
+async function computeField(cell, startAlt, coneState, glideRatio = coneState.glideRatio) {
+  const { dem, altitudes, maxAltitude, groundClearance } = coneState;
   if (preferShader()) {
     try {
       const { arrivals, originX, originY, iterations } = await app.engine.computeDownward(dem, {
@@ -393,8 +480,9 @@ export async function refreshOptionalArea({ force = false } = {}) {
     coneSerial += 1;
   }
   const method = preferShader() ? "shader" : "dijkstra";
+  const viz = optionalVizMode();
   const bucket = aircraft.source === "gps" ? Math.round(aircraft.alt / 30) : Math.round(aircraft.alt);
-  const key = `${method}:${coneSerial}:${aircraft.gi},${aircraft.gj}:${bucket}`;
+  const key = `${viz}:${method}:${coneSerial}:${aircraft.gi},${aircraft.gj}:${bucket}`;
   if (!force && key === optionalKey) {
     return;
   }
@@ -409,26 +497,58 @@ export async function refreshOptionalArea({ force = false } = {}) {
     if (requestId !== shaderRequestId || !field) {
       return;
     }
-    const painted = paintOptionalImage(
-      field.mask,
-      field.arrivals,
-      cone.altitudes,
-      cone.maxAltitude,
-      cone.dem.width,
-      cone.dem.height
-    );
+    let mask10 = null;
+    let mask20 = null;
+    let image;
+    if (viz === "degraded" && cone.glideRatio > 0) {
+      hooks.setStatus?.("Optional area, degraded masks…");
+      const degraded10 = await computeField(
+        { gi: aircraft.gi, gj: aircraft.gj },
+        aircraft.alt,
+        cone,
+        cone.glideRatio * 0.9
+      );
+      if (requestId !== shaderRequestId || !degraded10) {
+        return;
+      }
+      const degraded20 = await computeField(
+        { gi: aircraft.gi, gj: aircraft.gj },
+        aircraft.alt,
+        cone,
+        cone.glideRatio * 0.8
+      );
+      if (requestId !== shaderRequestId || !degraded20) {
+        return;
+      }
+      mask10 = degraded10.mask;
+      mask20 = degraded20.mask;
+      image = paintDegradedImage(field.mask, mask10, mask20, cone.dem.width, cone.dem.height);
+    } else {
+      image = paintOptionalImage(
+        field.mask,
+        field.arrivals,
+        cone.altitudes,
+        cone.maxAltitude,
+        cone.dem.width,
+        cone.dem.height
+      ).image;
+    }
     app.optionalField = {
       ...field,
       startGi: aircraft.gi,
       startGj: aircraft.gj,
       startLng: aircraft.lng,
       startLat: aircraft.lat,
-      maxMargin: painted.maxMargin,
+      maxMargin: fieldMaxMargin(field.mask, field.arrivals, cone.altitudes, cone.maxAltitude),
+      mask10,
+      mask20,
     };
-    showOptionalImage(painted.image, cone.dem);
+    showOptionalImage(image, cone.dem);
     hooks.setAircraftArrivalPath?.(app.optionalField);
     if (field.shader && aircraft.source !== "gps") {
-      hooks.setStatus?.(`Optional area, ${field.iterations} iterations`);
+      hooks.setStatus?.(
+        viz === "degraded" ? "Optional area, degraded masks" : `Optional area, ${field.iterations} iterations`
+      );
     }
     if (app.lastInspectCell) {
       scheduleProbeArrival(app.lastInspectCell);
@@ -477,10 +597,7 @@ export function initOptionalArea(h) {
       void recomputeFlightShaderArea();
     },
     onLong: () => {
-      shaderRequestId += 1;
-      clearOptionalArea();
-      dom.flightShaderBtn?.classList.remove("is-busy");
-      hooks.setStatus?.("Optional area cleared");
+      hooks.openGlideSettings?.({ scrollToOptionalViz: true });
     },
   });
 
@@ -501,9 +618,15 @@ export function initOptionalArea(h) {
     }
   });
 
+  dom.optionalVizSelect?.addEventListener("change", () => {
+    syncOptionalVizHint();
+    void refreshOptionalArea({ force: true });
+  });
+
   syncEmulatedAltitudeBox();
   syncDownwardMethodButton();
   syncFlightShaderButton();
+  syncOptionalVizHint();
 }
 
 async function recomputeFlightShaderArea() {

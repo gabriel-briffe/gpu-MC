@@ -2096,6 +2096,10 @@
         display: block;
       }
 
+      #optional-viz-field {
+        scroll-margin-top: 8.5rem;
+      }
+
       .emulated-alt-box[hidden] {
         display: none !important;
       }

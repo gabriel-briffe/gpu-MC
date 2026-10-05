@@ -2,8 +2,7 @@ import { distanceMetres, gridCellDistanceM, gridCellToLngLat } from "./geo.js";
 import { seedAtGridCell } from "./airport-label.js";
 import { ensurePathLayer, raisePathLayer } from "./map/layers.js";
 import { styleUpwardRoute } from "./glidecone/route-style.js";
-import { clearProbeArrival, scheduleProbeArrival } from "./optional-area.js";
-import { cellMarginT, marginHex } from "./glidecone/margin-color.js";
+import { clearProbeArrival, optionAreaCellColor, scheduleProbeArrival } from "./optional-area.js";
 
 const PATH_SOURCE_ID = "glide-path";
 const PROBE_SEPARATION_M = 50;
@@ -105,13 +104,7 @@ function lineFeature(role, segment, coordinates, color) {
 }
 
 function optionCellColor(idx) {
-  const field = app.optionalField;
-  const cone = hooks.getConeState();
-  if (!field || !cone || !(field.maxMargin > 0) || !Number.isInteger(idx)) {
-    return null;
-  }
-  const t = cellMarginT(field.arrivals?.[idx], cone.altitudes?.[idx], cone.maxAltitude, field.maxMargin);
-  return marginHex(t);
+  return optionAreaCellColor(idx);
 }
 
 function originPolyline(originX, originY, dem, startX, startY, startLngLat, endX, endY, endLngLat) {

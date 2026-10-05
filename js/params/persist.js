@@ -62,6 +62,7 @@ function collectFormState(dom) {
     vizMode: readInput(dom.vizModeSelect),
     sectorsOpacity: readInput(dom.sectorsOpacityInput),
     optionalOpacity: readInput(dom.optionalOpacityInput),
+    optionalViz: readInput(dom.optionalVizSelect),
     weatherOpacity: readInput(dom.weatherOpacityInput),
     debugMode: readCheckbox(dom.debugModeInput),
   };
@@ -84,6 +85,7 @@ function applyFormState(dom, form) {
   writeInput(dom.vizModeSelect, form.vizMode);
   writeInput(dom.sectorsOpacityInput, form.sectorsOpacity);
   writeInput(dom.optionalOpacityInput, form.optionalOpacity);
+  writeInput(dom.optionalVizSelect, form.optionalViz);
   writeInput(dom.weatherOpacityInput, form.weatherOpacity);
   writeCheckbox(dom.debugModeInput, form.debugMode);
 }
