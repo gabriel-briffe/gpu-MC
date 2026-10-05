@@ -254,6 +254,20 @@ function isNearAircraft(lngLat) {
   return distanceMetres(aircraft.lat, aircraft.lng, lngLat.lat, lngLat.lng) < PROBE_SEPARATION_M;
 }
 
+/** Sim mode: with a glider and an option area, the mouse worst-case path stays inside that area. */
+function optionAreaHidesMouseWorstPath(cell) {
+  if (hooks.isGeoTrackingOn?.() || !app.simGlider) {
+    return false;
+  }
+  const field = app.optionalField;
+  const dem = hooks.getConeState()?.dem;
+  if (!field?.mask || !dem || !cell) {
+    return false;
+  }
+  const idx = cell.gj * dem.width + cell.gi;
+  return field.mask[idx] !== 1;
+}
+
 export function traceOriginRelayPath(x, y, dem, originX, originY) {
   let totalDistM = 0;
   let cx = x;
@@ -462,7 +476,7 @@ export function refreshGeoPath(cell, startLngLat, startAlt) {
 
 export function refreshInspectPath(cell) {
   const startLngLat = app.lastInspectLngLat;
-  if (isNearAircraft(startLngLat)) {
+  if (isNearAircraft(startLngLat) || optionAreaHidesMouseWorstPath(cell)) {
     probeLines = [];
     discsProbe = [];
     panPink = [];
