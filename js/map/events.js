@@ -7,6 +7,45 @@ import {
 import { requestStopCompute } from "../compute/session.js";
 
 const TAP_MOVE_TOLERANCE_SQ = 100;
+const MAP_LONG_PRESS_MS = 500;
+
+function clearMapLongPress(app) {
+  if (app.mapLongPressTimer) {
+    clearTimeout(app.mapLongPressTimer);
+    app.mapLongPressTimer = null;
+  }
+}
+
+function rememberMapLongPress(app, event) {
+  app.mapLongPressPoint = {
+    lng: event.lngLat.lng,
+    lat: event.lngLat.lat,
+    x: event.point.x,
+    y: event.point.y,
+  };
+}
+
+function canPlaceGliderFromTouch(hooks) {
+  return (
+    !hooks.isGeoTrackingOn() &&
+    !hooks.isComputing() &&
+    !hooks.getCacheSelectMode() &&
+    !hooks.getManualAirportSelectMode()
+  );
+}
+
+function fireMapLongPress(app, hooks) {
+  const point = app.mapLongPressPoint;
+  if (!point || app.mapLongPressFired || !canPlaceGliderFromTouch(hooks)) {
+    return;
+  }
+  app.mapLongPressFired = true;
+  app.suppressNextMapClick = true;
+  clearMapLongPress(app);
+  clearMapTap(app);
+  markTouchHandled(app);
+  hooks.placeSimGlider(point.lng, point.lat, point);
+}
 
 function markTouchHandled(app) {
   app.touchHandledRecently = true;
@@ -19,13 +58,17 @@ function clearMapTap(app) {
   app.mapTapStart = null;
 }
 
-function mapTapMoved(app, point) {
-  if (!app.mapTapStart) {
+function pointMoved(start, point) {
+  if (!start || !point) {
     return false;
   }
-  const dx = point.x - app.mapTapStart.x;
-  const dy = point.y - app.mapTapStart.y;
+  const dx = point.x - start.x;
+  const dy = point.y - start.y;
   return dx * dx + dy * dy > TAP_MOVE_TOLERANCE_SQ;
+}
+
+function mapTapMoved(app, point) {
+  return pointMoved(app.mapTapStart, point);
 }
 
 function maybeUpdateAirspaceInfo(hooks, lng, lat) {
@@ -77,9 +120,11 @@ export function bindMapEvents(app, hooks) {
   });
 
   map.on("movestart", () => {
+    if (app.mapTapStart || app.mapLongPressPoint) {
+      app.touchGestureWasPan = true;
+    }
     if (app.mapTapStart) {
       clearMapTap(app);
-      app.touchGestureWasPan = true;
     }
   });
 
@@ -91,14 +136,28 @@ export function bindMapEvents(app, hooks) {
   });
 
   map.on("touchstart", (event) => {
-    if (hooks.getManualAirportSelectMode() && !hooks.isComputing() && event.points.length === 1) {
+    clearMapLongPress(app);
+    app.mapLongPressFired = false;
+    app.mapLongPressPoint = null;
+    if (event.points.length !== 1) {
+      return;
+    }
+    if (hooks.getManualAirportSelectMode() && !hooks.isComputing()) {
       app.manualTouchStart = event.point;
       return;
     }
-    if (hooks.isAirportPickMode?.() && !hooks.isComputing() && event.points.length === 1) {
+    if (hooks.isAirportPickMode?.() && !hooks.isComputing()) {
       app.touchGestureWasPan = false;
       app.mapTapStart = { x: event.point.x, y: event.point.y };
     }
+    if (!canPlaceGliderFromTouch(hooks)) {
+      return;
+    }
+    rememberMapLongPress(app, event);
+    app.mapLongPressTimer = window.setTimeout(() => {
+      app.mapLongPressTimer = null;
+      fireMapLongPress(app, hooks);
+    }, MAP_LONG_PRESS_MS);
   });
 
   map.on("touchmove", (event) => {
@@ -116,10 +175,25 @@ export function bindMapEvents(app, hooks) {
       clearMapTap(app);
       app.touchGestureWasPan = true;
     }
+    if (app.mapLongPressPoint && (event.points.length !== 1 || pointMoved(app.mapLongPressPoint, event.point))) {
+      clearMapLongPress(app);
+      app.mapLongPressPoint = null;
+      app.touchGestureWasPan = true;
+    }
   });
 
   map.on("touchend", (event) => {
+    clearMapLongPress(app);
     maybeUpdateAirspaceInfo(hooks, event.lngLat.lng, event.lngLat.lat);
+
+    if (app.mapLongPressFired) {
+      app.mapLongPressFired = false;
+      app.mapLongPressPoint = null;
+      app.touchGestureWasPan = false;
+      clearMapTap(app);
+      markTouchHandled(app);
+      return;
+    }
 
     if (hooks.getManualAirportSelectMode() && !hooks.isComputing()) {
       if (app.manualTouchStart) {
@@ -151,14 +225,30 @@ export function bindMapEvents(app, hooks) {
       const picked = hooks.pickAirportAtMapPoint?.(event.point);
       if (picked && hooks.toggleComputeAirportAt?.(picked)) {
         markTouchHandled(app);
+        return;
       }
+    }
+
+    if (canPlaceGliderFromTouch(hooks) && app.interaction.tapPath) {
+      markTouchHandled(app);
+      hooks.inspectMapPoint(event.lngLat.lng, event.lngLat.lat, event.point);
     }
   });
 
   map.on("touchcancel", () => {
+    clearMapLongPress(app);
     app.manualTouchStart = null;
     clearMapTap(app);
+    app.mapLongPressPoint = null;
     app.touchGestureWasPan = false;
+  });
+
+  map.getCanvas().addEventListener("contextmenu", (event) => {
+    if (!app.interaction.tapPath || hooks.isGeoTrackingOn()) {
+      return;
+    }
+    event.preventDefault();
+    fireMapLongPress(app, hooks);
   });
 
   map.on("click", (event) => {
@@ -167,6 +257,11 @@ export function bindMapEvents(app, hooks) {
       if (features.length > 0) {
         hooks.toggleCacheCellSelection(event.lngLat.lng, event.lngLat.lat);
       }
+      return;
+    }
+
+    if (app.suppressNextMapClick) {
+      app.suppressNextMapClick = false;
       return;
     }
 

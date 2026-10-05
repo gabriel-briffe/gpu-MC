@@ -53,6 +53,10 @@ export function createApp() {
     manualTouchStart: null,
     mapTapStart: null,
     touchGestureWasPan: false,
+    mapLongPressTimer: null,
+    mapLongPressPoint: null,
+    mapLongPressFired: false,
+    suppressNextMapClick: false,
     appMenuOpen: false,
     glideConesEnabled: false,
     /** null until probed; false disables glide cones + ICON-CH. */

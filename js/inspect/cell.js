@@ -446,13 +446,37 @@ export function onMapMouseMove(event) {
   }
 
   const { lng, lat } = event.lngLat;
+  inspectMapPoint(lng, lat, event.point);
+}
+
+export function inspectMapPoint(lng, lat, point) {
   const cell = sampleDemCell(lng, lat);
   if (cell !== null) {
-    showCellInspect(cell, event.point, { lngLat: { lng, lat } });
+    showCellInspect(cell, point, { lngLat: { lng, lat } });
     return;
   }
 
-  showTerrainElevationInspect(lng, lat, event.point);
+  showTerrainElevationInspect(lng, lat, point);
+}
+
+export function placeSimGlider(lng, lat, point) {
+  if (isCacheSelectMode() || hooks.isGeoTrackingOn() || hooks.isComputing()) {
+    return;
+  }
+
+  app.simGlider = { lng, lat };
+  const cell = sampleDemCell(lng, lat);
+  const cone = hooks.getConeState();
+  const required = cell && cone ? requiredAltitudeAt(cell.gi, cell.gj, cone) : null;
+  if (Number.isFinite(required)) {
+    writeSimAltitudeM(required + 200);
+  }
+  updateGeoLocationPath();
+  if (cell !== null) {
+    showCellInspect(cell, point, { lngLat: { lng, lat } });
+    return;
+  }
+  showTerrainElevationInspect(lng, lat, point, { temporary: true });
 }
 
 export function onMapMouseLeave() {
@@ -471,7 +495,8 @@ export function onMapClickInspect(event) {
   if (isCacheSelectMode()) {
     return;
   }
-  // Tracking: touch taps and debug clicks inspect. No tracking: any click places the glider.
+  // Tracking: touch taps and debug clicks inspect. No tracking: a click places the glider.
+  // On a phone the tap is handled as inspect, and a long press places the glider.
   if (hooks.isGeoTrackingOn() && !hooks.getInteraction().tapPath && !isDebugMode()) {
     return;
   }
@@ -483,19 +508,7 @@ export function onMapClickInspect(event) {
 
   const { lng, lat } = event.lngLat;
   if (!hooks.isGeoTrackingOn()) {
-    app.simGlider = { lng, lat };
-    const cell = sampleDemCell(lng, lat);
-    const cone = hooks.getConeState();
-    const required = cell && cone ? requiredAltitudeAt(cell.gi, cell.gj, cone) : null;
-    if (Number.isFinite(required)) {
-      writeSimAltitudeM(required + 200);
-    }
-    updateGeoLocationPath();
-    if (cell !== null) {
-      showCellInspect(cell, event.point, { lngLat: { lng, lat } });
-      return;
-    }
-    showTerrainElevationInspect(lng, lat, event.point, { temporary: true });
+    placeSimGlider(lng, lat, event.point);
     return;
   }
 
@@ -515,33 +528,12 @@ export function hasActiveInspectTooltip() {
   return Boolean(app.footerCellHtml);
 }
 
-function syncSimCenterProbe() {
-  if (hooks.isGeoTrackingOn() || hooks.getInteraction().hoverPath || !app.simGlider) {
-    return;
-  }
-  const map = hooks.getMap();
-  const coneState = hooks.getConeState();
-  if (!map || !coneState) {
-    return;
-  }
-  const center = map.getCenter();
-  const cell = sampleDemCell(center.lng, center.lat);
-  if (!cell) {
-    clearCellInspect();
-    return;
-  }
-  const anchor = map.project([center.lng, center.lat]);
-  showCellInspect(cell, anchor, { lngLat: { lng: center.lng, lat: center.lat } });
-}
-
 export function syncPathsOnMapMove() {
   if (isCacheSelectMode()) {
     return;
   }
   if (hooks.isGeoTrackingOn()) {
     updateGeoLocationPath();
-  } else {
-    syncSimCenterProbe();
   }
   syncInspectOnMapMove();
 }

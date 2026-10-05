@@ -13,6 +13,7 @@
       #map {
         position: absolute;
         inset: 0;
+        -webkit-touch-callout: none;
       }
 
       .map-top-chrome {
