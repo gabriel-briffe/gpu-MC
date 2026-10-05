@@ -147,6 +147,7 @@ function syncCacheSelectBar() {
     hooks.cacheSelectBar.hidden = !app.cacheSelectMode;
   }
   document.body.classList.toggle("cache-select-mode", app.cacheSelectMode);
+  hooks.syncEmulatedAltitudeBox?.();
   syncMapDoubleTapZoom();
   hooks.updateParamsFooter?.();
   hooks.syncComputeContextBar?.();

@@ -119,6 +119,12 @@
       }
 
       body.app-menu-open .chrome-longpress-hint,
+      body.cache-select-mode .emulated-alt-box,
+      body.cache-select-mode .sim-help-btn,
+      body.cache-select-mode .sim-manual {
+        display: none !important;
+      }
+
       body.cache-select-mode .chrome-longpress-hint {
         display: none;
       }

@@ -311,8 +311,9 @@ export function syncEmulatedAltitudeBox() {
   if (!box) {
     return;
   }
-  const sim = !hooks.isGeoTrackingOn?.();
-  const show = isDebugMode() || sim;
+  const cache = Boolean(app?.cacheSelectMode);
+  const sim = !cache && !hooks.isGeoTrackingOn?.();
+  const show = !cache && (isDebugMode() || sim);
   box.hidden = !show;
   document.body.classList.toggle("sim-mode", Boolean(sim && show));
   if (dom.simHelpBtn) {
