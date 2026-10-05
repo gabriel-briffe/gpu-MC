@@ -113,7 +113,7 @@ export function initFakeGeo(app, hooks) {
         setUserLocationMarkerVisible(map, false);
         resetUserLocationTrack();
       }
-      hooks.clearGeoPath?.();
+      hooks.updateGeoLocationPath?.();
       hooks.syncComputeContextBar?.();
       return;
     }

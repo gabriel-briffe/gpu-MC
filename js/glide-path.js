@@ -1,15 +1,22 @@
-import { gridCellDistanceM, gridCellToLngLat } from "./geo.js";
+import { distanceMetres, gridCellDistanceM, gridCellToLngLat } from "./geo.js";
 import { seedAtGridCell } from "./airport-label.js";
 import { ensurePathLayer, raisePathLayer } from "./map/layers.js";
+import { styleUpwardRoute } from "./glidecone/route-style.js";
+import { clearProbeArrival, scheduleProbeArrival } from "./optional-area.js";
+import { cellMarginT, marginHex } from "./glidecone/margin-color.js";
 
 const PATH_SOURCE_ID = "glide-path";
+const PROBE_SEPARATION_M = 50;
 
 let hooks;
 let app;
-const pathFeaturesByRole = {
-  inspect: [],
-  geo: [],
-};
+let aircraftLines = [];
+let aircraftArrival = [];
+let probeLines = [];
+let panPink = [];
+let probeArrival = [];
+let discsGeo = [];
+let discsProbe = [];
 
 function isPathLayerReady() {
   return app.pathLayerReady;
@@ -32,26 +39,6 @@ function pushPathPoint(coordinates, x, y, dem) {
   coordinates.push([pt.lng, pt.lat]);
 }
 
-function terrainMslAtCell(x, y, dem) {
-  const idx = cellIndex(x, y, dem);
-  return dem.terrainMsl
-    ? dem.terrainMsl[idx]
-    : dem.elevation[idx] - dem.groundClearance;
-}
-
-function isDownhillGroundSegment(from, to, ground, dem) {
-  const fromIdx = cellIndex(from.x, from.y, dem);
-  if (ground[fromIdx] !== 1) {
-    return false;
-  }
-  return terrainMslAtCell(to.x, to.y, dem) < terrainMslAtCell(from.x, from.y, dem);
-}
-
-function cellToLngLatCoord(x, y, dem) {
-  const pt = gridCellToLngLat(x, y, dem);
-  return [pt.lng, pt.lat];
-}
-
 function isSeedCell(x, y, dem) {
   if (dem.seeds?.length) {
     return dem.seeds.some((seed) => seed.x === x && seed.y === y);
@@ -59,92 +46,219 @@ function isSeedCell(x, y, dem) {
   return x === dem.homeX && y === dem.homeY;
 }
 
-function buildPathGeoJson(cells, dem, ground, coordinates, role) {
-  if (cells.length < 2) {
-    const features =
-      coordinates.length >= 2
-        ? [
-            {
-              type: "Feature",
-              geometry: { type: "LineString", coordinates },
-              properties: { role },
-            },
-          ]
-        : [];
-    return { type: "FeatureCollection", features };
+function gliderFeatures() {
+  if (!app?.simGlider || hooks.isGeoTrackingOn?.()) {
+    return [];
   }
-
-  const features = [];
-  let segmentCoords = [];
-  let segmentKind = null;
-
-  for (let i = 1; i < cells.length; i += 1) {
-    const from = cells[i - 1];
-    const to = cells[i];
-    const kind = isDownhillGroundSegment(from, to, ground, dem)
-      ? "downhill-ground"
-      : "default";
-    const fromCoord = cellToLngLatCoord(from.x, from.y, dem);
-    const toCoord = cellToLngLatCoord(to.x, to.y, dem);
-
-    if (segmentKind === kind && segmentCoords.length > 0) {
-      segmentCoords.push(toCoord);
-    } else {
-      if (segmentCoords.length >= 2) {
-        features.push({
-          type: "Feature",
-          geometry: { type: "LineString", coordinates: segmentCoords },
-          properties: { segment: segmentKind, role },
-        });
-      }
-      segmentKind = kind;
-      segmentCoords = [fromCoord, toCoord];
-    }
+  const { lng, lat } = app.simGlider;
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+    return [];
   }
-
-  if (segmentCoords.length >= 2) {
-    features.push({
+  return [
+    {
       type: "Feature",
-      geometry: { type: "LineString", coordinates: segmentCoords },
-      properties: { segment: segmentKind, role },
-    });
-  }
-
-  return { type: "FeatureCollection", features };
-}
-
-function featuresFromPathData(pathData, role) {
-  const coordinates = pathData.coordinates ?? pathData;
-  const cells = pathData.cells ?? [];
-  const coneState = hooks.getConeState();
-  const { dem, ground } = coneState ?? {};
-
-  if (dem && ground) {
-    return buildPathGeoJson(cells, dem, ground, coordinates, role).features;
-  }
-
-  if (coordinates.length >= 2) {
-    return [
-      {
-        type: "Feature",
-        geometry: { type: "LineString", coordinates },
-        properties: { role },
-      },
-    ];
-  }
-  return [];
+      geometry: { type: "Point", coordinates: [lng, lat] },
+      properties: { kind: "glider" },
+    },
+  ];
 }
 
 function syncPathSource() {
+  if (
+    gliderFeatures().length ||
+    aircraftLines.length ||
+    probeLines.length ||
+    panPink.length ||
+    aircraftArrival.length ||
+    probeArrival.length ||
+    discsGeo.length ||
+    discsProbe.length
+  ) {
+    ensurePathLayer();
+  }
   const map = hooks.getMap();
   if (!isPathLayerReady() || !map?.getSource(PATH_SOURCE_ID)) {
     return;
   }
   map.getSource(PATH_SOURCE_ID).setData({
     type: "FeatureCollection",
-    features: [...pathFeaturesByRole.inspect, ...pathFeaturesByRole.geo],
+    features: [
+      ...aircraftLines,
+      ...aircraftArrival,
+      ...probeLines,
+      ...panPink,
+      ...probeArrival,
+      ...discsGeo,
+      ...discsProbe,
+      ...gliderFeatures(),
+    ],
   });
   raisePathLayer();
+}
+
+function lineFeature(role, segment, coordinates, color) {
+  return {
+    type: "Feature",
+    geometry: { type: "LineString", coordinates },
+    properties: color ? { role, segment, color } : { role, segment },
+  };
+}
+
+function optionCellColor(idx) {
+  const field = app.optionalField;
+  const cone = hooks.getConeState();
+  if (!field || !cone || !(field.maxMargin > 0) || !Number.isInteger(idx)) {
+    return null;
+  }
+  const t = cellMarginT(field.arrivals?.[idx], cone.altitudes?.[idx], cone.maxAltitude, field.maxMargin);
+  return marginHex(t);
+}
+
+function originPolyline(originX, originY, dem, startX, startY, startLngLat, endX, endY, endLngLat) {
+  if (!originX || !originY || !startLngLat || !endLngLat) {
+    return null;
+  }
+  const cells = [];
+  let x = endX;
+  let y = endY;
+  const seen = new Set();
+  const maxSteps = (dem.width + dem.height) * 2;
+  for (let step = 0; step < maxSteps; step += 1) {
+    const key = `${x},${y}`;
+    if (seen.has(key)) {
+      return null;
+    }
+    seen.add(key);
+    cells.push({ x, y });
+    if (x === startX && y === startY) {
+      break;
+    }
+    const idx = cellIndex(x, y, dem);
+    const px = originX[idx];
+    const py = originY[idx];
+    if (px < 0 || py < 0 || (px === x && py === y)) {
+      return null;
+    }
+    x = px;
+    y = py;
+  }
+  const last = cells[cells.length - 1];
+  if (!last || last.x !== startX || last.y !== startY) {
+    return null;
+  }
+  cells.reverse();
+  const coordinates = [[startLngLat.lng, startLngLat.lat]];
+  for (let i = 1; i < cells.length - 1; i += 1) {
+    const pt = gridCellToLngLat(cells[i].x, cells[i].y, dem);
+    coordinates.push([pt.lng, pt.lat]);
+  }
+  coordinates.push([endLngLat.lng, endLngLat.lat]);
+  if (coordinates.length < 2) {
+    return null;
+  }
+  const a = coordinates[0];
+  const b = coordinates[coordinates.length - 1];
+  if (a[0] === b[0] && a[1] === b[1] && coordinates.length === 2) {
+    return null;
+  }
+  return coordinates;
+}
+
+function bestSeedIndex(field, dem) {
+  const seeds = dem.seeds?.length ? dem.seeds : [{ x: dem.homeX, y: dem.homeY }];
+  let bestI = -1;
+  let bestA = Number.NEGATIVE_INFINITY;
+  for (const seed of seeds) {
+    if (seed.x < 0 || seed.y < 0 || seed.x >= dem.width || seed.y >= dem.height) {
+      continue;
+    }
+    const idx = seed.y * dem.width + seed.x;
+    if (field.mask?.[idx] !== 1) {
+      continue;
+    }
+    const arrival = field.arrivals?.[idx];
+    if (!Number.isFinite(arrival) || arrival < 0) {
+      continue;
+    }
+    if (arrival > bestA) {
+      bestA = arrival;
+      bestI = idx;
+    }
+  }
+  return bestI;
+}
+
+function arrivalFeatures(field, role) {
+  const coneState = hooks.getConeState();
+  const dem = coneState?.dem;
+  if (!field?.originX || !dem || !Number.isFinite(field.startLng)) {
+    return [];
+  }
+  const best = bestSeedIndex(field, dem);
+  const startIdx = field.startGj * dem.width + field.startGi;
+  if (best < 0 || best === startIdx) {
+    return [];
+  }
+  const endX = best % dem.width;
+  const endY = (best / dem.width) | 0;
+  const endPt = gridCellToLngLat(endX, endY, dem);
+  const coordinates = originPolyline(
+    field.originX,
+    field.originY,
+    dem,
+    field.startGi,
+    field.startGj,
+    { lng: field.startLng, lat: field.startLat },
+    endX,
+    endY,
+    endPt
+  );
+  const color = optionCellColor(startIdx);
+  return coordinates ? [lineFeature(role, "arrival", coordinates, color)] : [];
+}
+
+function panPinkFeatures(cell) {
+  const field = app.optionalField;
+  const coneState = hooks.getConeState();
+  const dem = coneState?.dem;
+  const end = app.lastInspectLngLat;
+  if (!field?.originX || !field?.mask || !dem || !cell || !end || !Number.isFinite(field.startLng)) {
+    return [];
+  }
+  if (distanceMetres(field.startLat, field.startLng, end.lat, end.lng) < PROBE_SEPARATION_M) {
+    return [];
+  }
+  const idx = cell.gj * dem.width + cell.gi;
+  if (field.mask[idx] !== 1) {
+    return [];
+  }
+  const coordinates = originPolyline(
+    field.originX,
+    field.originY,
+    dem,
+    field.startGi,
+    field.startGj,
+    { lng: field.startLng, lat: field.startLat },
+    cell.gi,
+    cell.gj,
+    end
+  );
+  return coordinates ? [lineFeature("inspect", "default", coordinates, optionCellColor(idx))] : [];
+}
+
+function aircraftLngLat() {
+  if (hooks.isGeoTrackingOn?.()) {
+    return hooks.getLastGeoLngLat?.() ?? null;
+  }
+  return app.simGlider ?? null;
+}
+
+function isNearAircraft(lngLat) {
+  const aircraft = aircraftLngLat();
+  if (!aircraft || !lngLat) {
+    return false;
+  }
+  return distanceMetres(aircraft.lat, aircraft.lng, lngLat.lat, lngLat.lng) < PROBE_SEPARATION_M;
 }
 
 export function traceOriginRelayPath(x, y, dem, originX, originY) {
@@ -304,64 +418,103 @@ export function traceGlidePath(gi, gj) {
 export function initGlidePath(h) {
   hooks = h;
   app = h.app;
+  hooks.setAircraftArrivalPath = (field) => {
+    aircraftArrival = arrivalFeatures(field, "geo");
+    if (app.lastInspectCell) {
+      panPink = panPinkFeatures(app.lastInspectCell);
+    }
+    syncPathSource();
+  };
+  hooks.setProbeArrivalPath = (field) => {
+    probeArrival = field ? arrivalFeatures(field, "inspect") : [];
+    syncPathSource();
+  };
+  hooks.clearArrivalPaths = () => {
+    aircraftArrival = [];
+    probeArrival = [];
+    panPink = [];
+    syncPathSource();
+  };
 }
 
-function setPathForRole(role, pathData) {
-  ensurePathLayer();
-  pathFeaturesByRole[role] = featuresFromPathData(pathData, role);
-  syncPathSource();
-}
-
-function clearPathForRole(role) {
-  pathFeaturesByRole[role] = [];
-  syncPathSource();
-}
-
-export function refreshGeoPath(cell) {
-  const path = traceGlidePath(cell.gi, cell.gj);
-  if (path.coordinates.length >= 2) {
-    setPathForRole("geo", path);
-  } else if (path.coordinates.length === 1) {
-    const pt = path.coordinates[0];
-    setPathForRole("geo", { coordinates: [pt, pt], cells: path.cells });
-  } else {
-    clearGeoPath();
+function styledRoute(cell, role, startLngLat, startAlt, panPath) {
+  const coneState = hooks.getConeState();
+  if (!coneState?.dem || !cell) {
+    return { lines: [], discs: [] };
   }
+  const path = traceGlidePath(cell.gi, cell.gj);
+  return styleUpwardRoute({
+    cells: path.cells,
+    dem: coneState.dem,
+    ground: coneState.ground,
+    altitudes: coneState.altitudes,
+    originX: coneState.originX,
+    originY: coneState.originY,
+    maxAltitude: coneState.maxAltitude,
+    glideRatio: coneState.glideRatio,
+    circuitHeight: coneState.circuitHeight,
+    startLngLat,
+    startAlt,
+    panPath,
+    role,
+  });
+}
+
+export function refreshGeoPath(cell, startLngLat, startAlt) {
+  const styled = styledRoute(cell, "geo", startLngLat, startAlt, false);
+  aircraftLines = styled.lines;
+  discsGeo = styled.discs;
+  syncPathSource();
 }
 
 export function refreshInspectPath(cell) {
-  const path = traceGlidePath(cell.gi, cell.gj);
-  if (path.coordinates.length >= 2) {
-    setPathForRole("inspect", path);
-    hooks.setLastPathScreenBounds(hooks.pathScreenBounds(path.coordinates));
-  } else if (path.coordinates.length === 1) {
-    const pt = path.coordinates[0];
-    setPathForRole("inspect", { coordinates: [pt, pt], cells: path.cells });
-    hooks.setLastPathScreenBounds(hooks.pathScreenBounds([pt, pt]));
+  const startLngLat = app.lastInspectLngLat;
+  if (isNearAircraft(startLngLat)) {
+    probeLines = [];
+    discsProbe = [];
+    panPink = [];
+    probeArrival = [];
+    clearProbeArrival();
+    syncPathSource();
+    hooks.setLastPathScreenBounds(null);
+    hooks.updateCellTooltip();
+    return;
+  }
+  const styled = styledRoute(cell, "inspect", startLngLat, null, true);
+  probeLines = styled.lines;
+  discsProbe = styled.discs;
+  panPink = panPinkFeatures(cell);
+  const coordinates = styled.lines.flatMap((feature) => feature.geometry.coordinates);
+  if (coordinates.length >= 2) {
+    hooks.setLastPathScreenBounds(hooks.pathScreenBounds(coordinates));
   } else {
-    clearInspectPath();
     hooks.setLastPathScreenBounds(null);
   }
+  syncPathSource();
+  scheduleProbeArrival(cell);
   hooks.updateCellTooltip();
 }
 
 export function clearGeoPath() {
-  if (!isPathLayerReady()) {
-    return;
-  }
-  clearPathForRole("geo");
+  aircraftLines = [];
+  aircraftArrival = [];
+  discsGeo = [];
+  syncPathSource();
 }
 
 export function clearInspectPath() {
-  if (!isPathLayerReady()) {
-    return;
-  }
-  clearPathForRole("inspect");
+  probeLines = [];
+  discsProbe = [];
+  panPink = [];
+  probeArrival = [];
+  clearProbeArrival();
+  syncPathSource();
 }
 
 export function clearAllGlidePaths() {
   clearGeoPath();
   clearInspectPath();
+  hooks.clearOptionalArea?.();
 }
 
 export function clearGlidePath() {

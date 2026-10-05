@@ -3,18 +3,23 @@ import { getOptionalOverlayOpacity, isDebugMode } from "./params/panel.js";
 import { dom } from "./dom.js";
 import { raisePathLayer } from "./map/layers.js";
 import { buildOptionalMask } from "./optional-area-mask.js";
+import { marginRgb } from "./glidecone/margin-color.js";
 import { gridIndexFromLngLat } from "./geo.js";
 import { bindLongPress } from "./ui/long-press.js";
 import { isGlideConesEnabled } from "./app-menu.js";
 
 const SOURCE_ID = "glide-optional";
 const LAYER_ID = "glide-optional";
-/** Full alpha in the image; layer raster-opacity comes from the Options slider. */
-const OPTIONAL_GREEN = [46, 204, 113, 255];
+const PROBE_DEBOUNCE_MS = 400;
 
 let hooks;
 let app;
 let shaderRequestId = 0;
+let optionalKey = "";
+let seenCone = null;
+let coneSerial = 0;
+let probeTimer = 0;
+let probeToken = 0;
 
 export function downwardMethod() {
   return app?.downwardMethod === "shader" ? "shader" : "dijkstra";
@@ -74,6 +79,13 @@ export function readEmulatedAltitudeM() {
   return Number.isFinite(fallback) ? fallback : null;
 }
 
+export function writeSimAltitudeM(meters) {
+  if (!Number.isFinite(meters)) {
+    return;
+  }
+  writeEmulatedAltitude(String(Math.round(meters)));
+}
+
 function writeEmulatedAltitude(value) {
   if (dom.emulatedAltitudeInput && dom.emulatedAltitudeInput.value !== value) {
     dom.emulatedAltitudeInput.value = value;
@@ -88,26 +100,46 @@ function writeEmulatedAltitude(value) {
 
 function onEmulatedAltitudeEdited(source) {
   writeEmulatedAltitude(source.value);
-  const cell = app.lastInspectCell;
-  if (cell && isDebugMode()) {
-    refreshOptionalArea(cell);
+  if (!hooks.isGeoTrackingOn?.()) {
+    hooks.updateGeoLocationPath?.();
   }
 }
 
-function maskToImageData(mask, width, height) {
+function paintOptionalImage(mask, arrivals, altitudes, maxAltitude, width, height) {
+  let maxMargin = 0;
+  const margins = new Float32Array(mask.length);
+  if (arrivals && altitudes) {
+    for (let i = 0; i < mask.length; i += 1) {
+      if (mask[i] !== 1) {
+        continue;
+      }
+      const cone = altitudes[i];
+      const arrival = arrivals[i];
+      if (!Number.isFinite(cone) || cone >= maxAltitude || !Number.isFinite(arrival)) {
+        continue;
+      }
+      const margin = arrival - cone;
+      margins[i] = margin;
+      if (margin > maxMargin) {
+        maxMargin = margin;
+      }
+    }
+  }
   const image = new ImageData(width, height);
   const data = image.data;
   for (let i = 0; i < mask.length; i += 1) {
     if (mask[i] !== 1) {
       continue;
     }
+    const t = maxMargin > 0 ? Math.max(0, Math.min(1, margins[i] / maxMargin)) : 0;
+    const [r, g, b] = marginRgb(t);
     const p = i * 4;
-    data[p] = OPTIONAL_GREEN[0];
-    data[p + 1] = OPTIONAL_GREEN[1];
-    data[p + 2] = OPTIONAL_GREEN[2];
-    data[p + 3] = OPTIONAL_GREEN[3];
+    data[p] = r;
+    data[p + 1] = g;
+    data[p + 2] = b;
+    data[p + 3] = 255;
   }
-  return image;
+  return { image, maxMargin };
 }
 
 function overlayCoordinates(dem) {
@@ -121,6 +153,13 @@ function overlayCoordinates(dem) {
 }
 
 export function clearOptionalArea() {
+  shaderRequestId += 1;
+  optionalKey = "";
+  if (app) {
+    app.optionalField = null;
+  }
+  clearProbeArrival();
+  hooks?.clearArrivalPaths?.();
   const map = hooks?.getMap?.();
   if (!map) {
     return;
@@ -167,20 +206,69 @@ function showOptionalImage(imageData, dem) {
   raisePathLayer();
 }
 
+function setSimManualOpen(open) {
+  const manual = dom.simManualEl;
+  const button = dom.simHelpBtn;
+  if (!manual) {
+    return;
+  }
+  manual.hidden = !open;
+  button?.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    dom.simManualCloseBtn?.focus();
+  }
+}
+
 export function syncEmulatedAltitudeBox() {
   const box = dom.emulatedAltBoxEl;
   if (!box) {
     return;
   }
-  const show = isDebugMode();
+  const sim = !hooks.isGeoTrackingOn?.();
+  const show = isDebugMode() || sim;
   box.hidden = !show;
-  if (!show) {
-    clearOptionalArea();
+  document.body.classList.toggle("sim-mode", Boolean(sim && show));
+  if (dom.simHelpBtn) {
+    dom.simHelpBtn.hidden = !sim;
+  }
+  if (!sim) {
+    setSimManualOpen(false);
   }
 }
 
-function showDijkstraMask(cell, coneState, startAlt) {
+function preferShader() {
+  if (isDebugMode()) {
+    return downwardMethod() === "shader";
+  }
+  return app?.computeHardwareSupported !== false && Boolean(app?.engine?.computeDownward);
+}
+
+async function computeField(cell, startAlt, coneState) {
   const { dem, altitudes, maxAltitude, glideRatio, groundClearance } = coneState;
+  if (preferShader()) {
+    try {
+      const { arrivals, originX, originY, iterations } = await app.engine.computeDownward(dem, {
+        glideRatio,
+        maxAltitude,
+        gi: cell.gi,
+        gj: cell.gj,
+        startAlt,
+        coneAltitudes: altitudes,
+      });
+      return {
+        mask: maskFromArrivals(arrivals, altitudes, maxAltitude),
+        arrivals,
+        originX,
+        originY,
+        iterations,
+        shader: true,
+      };
+    } catch (error) {
+      if (isDebugMode()) {
+        throw error;
+      }
+    }
+  }
   const mask = buildOptionalMask({
     dem,
     altitudes,
@@ -191,59 +279,167 @@ function showDijkstraMask(cell, coneState, startAlt) {
     glideRatio,
     groundClearance,
   });
-  showOptionalImage(maskToImageData(mask, dem.width, dem.height), dem);
+  return {
+    mask,
+    arrivals: mask.arrivals,
+    originX: mask.originX,
+    originY: mask.originY,
+    iterations: 0,
+    shader: false,
+  };
 }
 
-async function showShaderMask(cell, coneState, startAlt, requestId) {
-  const engine = app.engine;
-  if (!engine?.computeDownward) {
-    hooks.setStatus?.("Shader optional area needs WebGPU");
-    clearOptionalArea();
+function resolveAircraft() {
+  const cone = hooks.getConeState?.();
+  if (!cone?.dem) {
+    return null;
+  }
+  let lng;
+  let lat;
+  let alt;
+  let source;
+  if (hooks.isGeoTrackingOn?.()) {
+    const position = hooks.getLastGeoLngLat?.();
+    if (!position) {
+      return null;
+    }
+    lng = position.lng;
+    lat = position.lat;
+    alt = app.lastGeoAltitude;
+    source = "gps";
+  } else if (app.simGlider) {
+    lng = app.simGlider.lng;
+    lat = app.simGlider.lat;
+    alt = readEmulatedAltitudeM();
+    source = "sim";
+  } else {
+    return null;
+  }
+  const { gi, gj } = gridIndexFromLngLat(lng, lat, cone.dem);
+  if (gi < 0 || gj < 0 || gi >= cone.dem.width || gj >= cone.dem.height) {
+    return { outside: true };
+  }
+  return { gi, gj, lng, lat, alt, source, cone };
+}
+
+export function clearProbeArrival() {
+  if (probeTimer) {
+    clearTimeout(probeTimer);
+    probeTimer = 0;
+  }
+  probeToken += 1;
+  hooks?.setProbeArrivalPath?.(null);
+}
+
+export function scheduleProbeArrival(cell) {
+  if (probeTimer) {
+    clearTimeout(probeTimer);
+    probeTimer = 0;
+  }
+  const token = ++probeToken;
+  const coneState = hooks.getConeState?.();
+  const field = app.optionalField;
+  const dem = coneState?.dem;
+  hooks?.setProbeArrivalPath?.(null);
+  if (!cell || !field?.mask || !dem) {
     return;
   }
-  const { dem, altitudes, maxAltitude, glideRatio } = coneState;
-  hooks.setStatus?.("Shader optional area…");
+  const idx = cell.gj * dem.width + cell.gi;
+  const startAlt = field.arrivals?.[idx];
+  if (field.mask[idx] !== 1 || !Number.isFinite(startAlt)) {
+    return;
+  }
+  probeTimer = setTimeout(() => {
+    probeTimer = 0;
+    void runProbeArrival(token, cell, startAlt, coneState);
+  }, PROBE_DEBOUNCE_MS);
+}
+
+async function runProbeArrival(token, cell, startAlt, coneState) {
+  if (token !== probeToken) {
+    return;
+  }
   try {
-    const { arrivals, iterations } = await engine.computeDownward(dem, {
-      glideRatio,
-      maxAltitude,
-      gi: cell.gi,
-      gj: cell.gj,
-      startAlt,
-      coneAltitudes: altitudes,
-    });
-    if (requestId !== shaderRequestId) {
+    const liveCone = hooks.getConeState?.() ?? coneState;
+    const field = await computeField(cell, startAlt, liveCone);
+    if (token !== probeToken || !field) {
       return;
     }
-    showOptionalImage(maskToImageData(maskFromArrivals(arrivals, altitudes, maxAltitude), dem.width, dem.height), dem);
-    hooks.setStatus?.(`Shader optional area, ${iterations} iterations`);
+    const pointer = app.lastInspectLngLat;
+    hooks.setProbeArrivalPath?.({
+      ...field,
+      startGi: cell.gi,
+      startGj: cell.gj,
+      startLng: pointer?.lng,
+      startLat: pointer?.lat,
+    });
+  } catch {
+    if (token === probeToken) {
+      hooks.setProbeArrivalPath?.(null);
+    }
+  }
+}
+
+export async function refreshOptionalArea({ force = false } = {}) {
+  const aircraft = resolveAircraft();
+  if (!aircraft || aircraft.outside || !Number.isFinite(aircraft.alt)) {
+    if (app?.optionalField || optionalKey) {
+      clearOptionalArea();
+    }
+    return;
+  }
+  if (aircraft.cone !== seenCone) {
+    seenCone = aircraft.cone;
+    coneSerial += 1;
+  }
+  const method = preferShader() ? "shader" : "dijkstra";
+  const bucket = aircraft.source === "gps" ? Math.round(aircraft.alt / 30) : Math.round(aircraft.alt);
+  const key = `${method}:${coneSerial}:${aircraft.gi},${aircraft.gj}:${bucket}`;
+  if (!force && key === optionalKey) {
+    return;
+  }
+  optionalKey = key;
+  shaderRequestId += 1;
+  const requestId = shaderRequestId;
+  app.optionalField = null;
+  hooks.clearArrivalPaths?.();
+  const { cone } = aircraft;
+  try {
+    const field = await computeField({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone);
+    if (requestId !== shaderRequestId || !field) {
+      return;
+    }
+    const painted = paintOptionalImage(
+      field.mask,
+      field.arrivals,
+      cone.altitudes,
+      cone.maxAltitude,
+      cone.dem.width,
+      cone.dem.height
+    );
+    app.optionalField = {
+      ...field,
+      startGi: aircraft.gi,
+      startGj: aircraft.gj,
+      startLng: aircraft.lng,
+      startLat: aircraft.lat,
+      maxMargin: painted.maxMargin,
+    };
+    showOptionalImage(painted.image, cone.dem);
+    hooks.setAircraftArrivalPath?.(app.optionalField);
+    if (field.shader && aircraft.source !== "gps") {
+      hooks.setStatus?.(`Optional area, ${field.iterations} iterations`);
+    }
+    if (app.lastInspectCell) {
+      scheduleProbeArrival(app.lastInspectCell);
+    }
   } catch (error) {
     if (requestId !== shaderRequestId) {
       return;
     }
     clearOptionalArea();
-    hooks.setStatus?.(error?.message ?? "Shader optional area failed");
+    hooks.setStatus?.(error?.message ?? "Optional area failed");
   }
-}
-
-export function refreshOptionalArea(cell) {
-  shaderRequestId += 1;
-  const requestId = shaderRequestId;
-  if (!isDebugMode() || !cell) {
-    clearOptionalArea();
-    return;
-  }
-  const coneState = hooks.getConeState?.();
-  const startAlt = readEmulatedAltitudeM();
-  if (!coneState?.dem || !Number.isFinite(startAlt)) {
-    clearOptionalArea();
-    return;
-  }
-  if (downwardMethod() === "shader") {
-    void showShaderMask(cell, coneState, startAlt, requestId);
-    return;
-  }
-  showDijkstraMask(cell, coneState, startAlt);
 }
 
 export function initOptionalArea(h) {
@@ -259,9 +455,7 @@ export function initOptionalArea(h) {
   dom.downwardMethodBtn?.addEventListener("click", () => {
     app.downwardMethod = downwardMethod() === "shader" ? "dijkstra" : "shader";
     syncDownwardMethodButton();
-    if (app.lastInspectCell) {
-      refreshOptionalArea(app.lastInspectCell);
-    }
+    void refreshOptionalArea({ force: true });
   });
 
   dom.emulatedAltitudeInput?.addEventListener("input", () => {
@@ -290,21 +484,26 @@ export function initOptionalArea(h) {
     },
   });
 
+  dom.simHelpBtn?.addEventListener("click", () => {
+    setSimManualOpen(dom.simManualEl?.hidden !== false);
+  });
+  dom.simManualBackdropEl?.addEventListener("click", () => {
+    setSimManualOpen(false);
+  });
+  dom.simManualCloseBtn?.addEventListener("click", () => {
+    setSimManualOpen(false);
+    dom.simHelpBtn?.focus();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && dom.simManualEl && !dom.simManualEl.hidden) {
+      setSimManualOpen(false);
+      dom.simHelpBtn?.focus();
+    }
+  });
+
   syncEmulatedAltitudeBox();
   syncDownwardMethodButton();
   syncFlightShaderButton();
-}
-
-function cellFromCurrentPosition(dem) {
-  const position = hooks.getLastGeoLngLat?.();
-  if (!position) {
-    return null;
-  }
-  const { gi, gj } = gridIndexFromLngLat(position.lng, position.lat, dem);
-  if (gi < 0 || gj < 0 || gi >= dem.width || gj >= dem.height) {
-    return null;
-  }
-  return { gi, gj };
 }
 
 async function recomputeFlightShaderArea() {
@@ -312,25 +511,17 @@ async function recomputeFlightShaderArea() {
     return;
   }
   const coneState = hooks.getConeState?.();
-  const startAlt = app.lastGeoAltitude;
   if (!coneState?.dem) {
     hooks.setStatus?.("Compute a glide cone first");
     return;
   }
-  if (!Number.isFinite(startAlt)) {
-    hooks.setStatus?.("Need a current altitude");
+  const tracking = hooks.isGeoTrackingOn?.();
+  const alt = tracking ? app.lastGeoAltitude : readEmulatedAltitudeM();
+  if (!Number.isFinite(alt) || (tracking ? !hooks.getLastGeoLngLat?.() : !app.simGlider)) {
+    hooks.setStatus?.(tracking ? "Need a current altitude" : "Set an altitude, then click the map to place the glider");
     return;
   }
-  const cell = cellFromCurrentPosition(coneState.dem);
-  if (!cell) {
-    hooks.setStatus?.("Position is outside the glide cone");
-    return;
-  }
-  shaderRequestId += 1;
-  const requestId = shaderRequestId;
   dom.flightShaderBtn?.classList.add("is-busy");
-  await showShaderMask(cell, coneState, startAlt, requestId);
-  if (requestId === shaderRequestId) {
-    dom.flightShaderBtn?.classList.remove("is-busy");
-  }
+  await refreshOptionalArea({ force: true });
+  dom.flightShaderBtn?.classList.remove("is-busy");
 }

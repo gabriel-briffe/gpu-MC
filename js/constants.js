@@ -46,16 +46,26 @@ export const EMPTY_PATH = {
   properties: {},
 };
 
+export const GLIDE_PATH_LAYER_IDS = [
+  "glide-path-geo-casing",
+  "glide-path-geo",
+  "glide-path-geo-ground-casing",
+  "glide-path-geo-ground",
+  "glide-path-casing",
+  "glide-path",
+  "glide-path-ground-casing",
+  "glide-path-ground",
+  "glide-path-discs",
+  "glide-sim-glider",
+];
+
 export const MANUAL_AIRPORT_SELECT_HIDDEN_LAYER_IDS = [
   "glide-cone",
   "glide-contours-line",
   "glide-contours-label",
   "glide-sectors-line",
   "airports-cached-hit",
-  "glide-path",
-  "glide-path-ground",
-  "glide-path-geo",
-  "glide-path-geo-ground",
+  ...GLIDE_PATH_LAYER_IDS,
 ];
 
 export const CACHE_HIDDEN_LAYER_IDS = [
@@ -66,10 +76,7 @@ export const CACHE_HIDDEN_LAYER_IDS = [
   "airports-cached-hit",
   ...OPENAIP_VECTOR_LAYER_IDS,
   "pending-manual-airport-circle",
-  "glide-path",
-  "glide-path-ground",
-  "glide-path-geo",
-  "glide-path-geo-ground",
+  ...GLIDE_PATH_LAYER_IDS,
 ];
 
 export const COMPUTE_DONE_STATUS_CLEAR_MS = 2000;
@@ -109,11 +116,11 @@ export const VIZ_HINTS = {
   contours: "100 m isolines with labels; GeoJSON export after run.",
 };
 
-export const GLIDE_PATH_GROUND_FILTER = ["==", ["get", "segment"], "downhill-ground"];
+export const GLIDE_PATH_GROUND_FILTER = ["==", ["get", "segment"], "ground"];
 export const GLIDE_PATH_DEFAULT_FILTER = [
   "any",
   ["!", ["has", "segment"]],
-  ["!=", ["get", "segment"], "downhill-ground"],
+  ["!=", ["get", "segment"], "ground"],
 ];
 
 export function glidePathLayerFilter(role, ground = false) {
@@ -124,19 +131,52 @@ export function glidePathLayerFilter(role, ground = false) {
   ];
 }
 
+/** Pink relay, red when already below the cone. A feature color overrides that for option paths. */
 export const GLIDE_PATH_PAINT = {
-  "line-color": "#8b1515",
+  "line-color": [
+    "case",
+    ["has", "color"],
+    ["get", "color"],
+    [
+      "match",
+      ["get", "segment"],
+      "below-red",
+      "#ff0000",
+      "arrival",
+      "#00c000",
+      "#ff40b0",
+    ],
+  ],
   "line-width": 3,
-  "line-opacity": 0.95,
+  "line-opacity": 1,
+};
+
+export const GLIDE_PATH_CASING_PAINT = {
+  "line-color": "#ffffff",
+  "line-width": 5,
+  "line-opacity": 1,
 };
 
 export const GLIDE_PATH_GROUND_PAINT = {
   "line-color": "#111111",
   "line-width": 3,
-  "line-opacity": 0.95,
-  "line-dasharray": [0, 2.5],
+  "line-opacity": 1,
+  "line-dasharray": [2, 2],
+};
+
+export const GLIDE_PATH_GROUND_CASING_PAINT = {
+  "line-color": "#ffffff",
+  "line-width": 5,
+  "line-opacity": 1,
+  "line-dasharray": [2, 2],
 };
 
 export const GLIDE_PATH_GROUND_LAYOUT = {
   "line-cap": "round",
+  "line-join": "round",
+};
+
+export const GLIDE_PATH_LAYOUT = {
+  "line-cap": "round",
+  "line-join": "round",
 };

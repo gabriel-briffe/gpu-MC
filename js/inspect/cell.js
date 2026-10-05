@@ -14,7 +14,8 @@ import {
   clearAllGlidePaths,
   seedPathMetrics,
 } from "../glide-path.js";
-import { clearOptionalArea, refreshOptionalArea } from "../optional-area.js";
+import { readEmulatedAltitudeM, refreshOptionalArea, writeSimAltitudeM } from "../optional-area.js";
+import { requiredAltitudeAt } from "../glidecone/route-style.js";
 import { dom } from "../dom.js";
 
 let hooks;
@@ -256,7 +257,6 @@ export function clearCellInspect() {
   app.lastInspectCell = null;
   app.lastPathScreenBounds = null;
   clearInspectPath();
-  clearOptionalArea();
   app.inspectPinned = false;
   updateCellTooltip();
   hooks.updateParamsFooter();
@@ -323,7 +323,7 @@ async function showTerrainElevationInspect(
   }
 }
 
-export function showCellInspect(cell, anchorPoint = null, { temporary = false } = {}) {
+export function showCellInspect(cell, anchorPoint = null, { temporary = false, lngLat = null } = {}) {
   cancelTerrainElevationInspect();
   if (isCacheSelectMode()) {
     clearCellInspect();
@@ -337,7 +337,9 @@ export function showCellInspect(cell, anchorPoint = null, { temporary = false } 
   app.footerCellHtml = formatHoverTip(cell);
 
   const coneState = hooks.getConeState();
-  if (coneState?.dem) {
+  if (lngLat) {
+    app.lastInspectLngLat = { lng: lngLat.lng, lat: lngLat.lat };
+  } else if (coneState?.dem) {
     const pt = gridCellToLngLat(cell.gi, cell.gj, coneState.dem);
     app.lastInspectLngLat = { lng: pt.lng, lat: pt.lat };
   }
@@ -390,22 +392,39 @@ export function getGeoSampleCell() {
 }
 
 export function updateGeoLocationPath() {
+  hooks.syncEmulatedAltitudeBox?.();
   if (isCacheSelectMode()) {
     clearGeoPath();
     return;
   }
-  if (!hooks.isGeoTrackingOn() || !hooks.getConeState() || !hooks.getLastGeoLngLat()) {
-    clearGeoPath();
+
+  const coneState = hooks.getConeState();
+  if (hooks.isGeoTrackingOn() && coneState && hooks.getLastGeoLngLat()) {
+    const position = hooks.getLastGeoLngLat();
+    const cell = getGeoSampleCell();
+    if (!cell?.isReachable) {
+      clearGeoPath();
+    } else {
+      refreshGeoPath(cell, position, app.lastGeoAltitude);
+    }
+    void refreshOptionalArea();
     return;
   }
 
-  const cell = getGeoSampleCell();
-  if (!cell?.isReachable) {
-    clearGeoPath();
+  if (!hooks.isGeoTrackingOn() && app.simGlider && coneState) {
+    const { lng, lat } = app.simGlider;
+    const cell = sampleDemCell(lng, lat);
+    if (!cell?.isReachable) {
+      clearGeoPath();
+    } else {
+      refreshGeoPath(cell, { lng, lat }, readEmulatedAltitudeM());
+    }
+    void refreshOptionalArea();
     return;
   }
 
-  refreshGeoPath(cell);
+  clearGeoPath();
+  void refreshOptionalArea();
 }
 
 export function onMapMouseMove(event) {
@@ -415,8 +434,9 @@ export function onMapMouseMove(event) {
   if (!hooks.getInteraction().hoverPath) {
     return;
   }
-  // Desktop debug: path is click-only (no mouse follow).
-  if (isDebugMode()) {
+  // While following GPS, debug stays click-only. With tracking off the
+  // pointer explores from the placed glider, including in debug.
+  if (isDebugMode() && hooks.isGeoTrackingOn()) {
     return;
   }
 
@@ -428,7 +448,7 @@ export function onMapMouseMove(event) {
   const { lng, lat } = event.lngLat;
   const cell = sampleDemCell(lng, lat);
   if (cell !== null) {
-    showCellInspect(cell, event.point);
+    showCellInspect(cell, event.point, { lngLat: { lng, lat } });
     return;
   }
 
@@ -451,8 +471,8 @@ export function onMapClickInspect(event) {
   if (isCacheSelectMode()) {
     return;
   }
-  // Touch uses tapPath; desktop debug uses click instead of hover-follow.
-  if (!hooks.getInteraction().tapPath && !isDebugMode()) {
+  // Tracking: touch taps and debug clicks inspect. No tracking: any click places the glider.
+  if (hooks.isGeoTrackingOn() && !hooks.getInteraction().tapPath && !isDebugMode()) {
     return;
   }
 
@@ -462,22 +482,56 @@ export function onMapClickInspect(event) {
   }
 
   const { lng, lat } = event.lngLat;
+  if (!hooks.isGeoTrackingOn()) {
+    app.simGlider = { lng, lat };
+    const cell = sampleDemCell(lng, lat);
+    const cone = hooks.getConeState();
+    const required = cell && cone ? requiredAltitudeAt(cell.gi, cell.gj, cone) : null;
+    if (Number.isFinite(required)) {
+      writeSimAltitudeM(required + 200);
+    }
+    updateGeoLocationPath();
+    if (cell !== null) {
+      showCellInspect(cell, event.point, { lngLat: { lng, lat } });
+      return;
+    }
+    showTerrainElevationInspect(lng, lat, event.point, { temporary: true });
+    return;
+  }
+
   const cell = sampleDemCell(lng, lat);
   if (cell !== null) {
     const pin = isDebugMode();
-    showCellInspect(cell, event.point, { temporary: !pin });
+    showCellInspect(cell, event.point, { temporary: !pin, lngLat: { lng, lat } });
     app.inspectPinned = pin;
-    refreshOptionalArea(cell);
     return;
   }
   app.inspectPinned = false;
 
-  clearOptionalArea();
   showTerrainElevationInspect(lng, lat, event.point, { temporary: true });
 }
 
 export function hasActiveInspectTooltip() {
   return Boolean(app.footerCellHtml);
+}
+
+function syncSimCenterProbe() {
+  if (hooks.isGeoTrackingOn() || hooks.getInteraction().hoverPath || !app.simGlider) {
+    return;
+  }
+  const map = hooks.getMap();
+  const coneState = hooks.getConeState();
+  if (!map || !coneState) {
+    return;
+  }
+  const center = map.getCenter();
+  const cell = sampleDemCell(center.lng, center.lat);
+  if (!cell) {
+    clearCellInspect();
+    return;
+  }
+  const anchor = map.project([center.lng, center.lat]);
+  showCellInspect(cell, anchor, { lngLat: { lng: center.lng, lat: center.lat } });
 }
 
 export function syncPathsOnMapMove() {
@@ -486,6 +540,8 @@ export function syncPathsOnMapMove() {
   }
   if (hooks.isGeoTrackingOn()) {
     updateGeoLocationPath();
+  } else {
+    syncSimCenterProbe();
   }
   syncInspectOnMapMove();
 }

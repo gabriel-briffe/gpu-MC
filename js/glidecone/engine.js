@@ -219,13 +219,30 @@ export class GlideConeEngine {
       size: count * 4,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
+    const originBytes = count * 8;
+    const originReadBuffer = device.createBuffer({
+      size: originBytes,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
     const copy = device.createCommandEncoder();
     copy.copyBufferToBuffer(altRead, 0, altReadBuffer, 0, count * 4);
+    copy.copyBufferToBuffer(originRead, 0, originReadBuffer, 0, originBytes);
     device.queue.submit([copy.finish()]);
     await altReadBuffer.mapAsync(GPUMapMode.READ);
     const arrivals = new Float32Array(altReadBuffer.getMappedRange().slice(0));
     altReadBuffer.unmap();
-    return { arrivals, iterations };
+    altReadBuffer.destroy();
+    await originReadBuffer.mapAsync(GPUMapMode.READ);
+    const packedOrigins = new Int32Array(originReadBuffer.getMappedRange().slice(0));
+    originReadBuffer.unmap();
+    originReadBuffer.destroy();
+    const outOriginX = new Int32Array(count);
+    const outOriginY = new Int32Array(count);
+    for (let i = 0; i < count; i += 1) {
+      outOriginX[i] = packedOrigins[i * 2];
+      outOriginY[i] = packedOrigins[i * 2 + 1];
+    }
+    return { arrivals, originX: outOriginX, originY: outOriginY, iterations };
   }
 
   async compute(dem, params, options = {}) {

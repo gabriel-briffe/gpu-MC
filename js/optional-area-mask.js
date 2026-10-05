@@ -113,14 +113,25 @@ export function buildOptionalMask({
     return mask;
   }
 
+  const originX = new Int32Array(count).fill(-1);
+  const originY = new Int32Array(count).fill(-1);
+  const best = new Float32Array(count);
+  best.fill(Number.NEGATIVE_INFINITY);
+  const finish = () => {
+    mask.arrivals = best;
+    mask.originX = originX;
+    mask.originY = originY;
+    return mask;
+  };
+
   const startIdx = gj * width + gi;
   const startCone = coneAltAt(altitudes, maxAltitude, startIdx);
   if (!(startAlt > startCone)) {
-    return mask;
+    return finish();
   }
 
-  const best = new Float32Array(count);
-  best.fill(Number.NEGATIVE_INFINITY);
+  originX[startIdx] = gi;
+  originY[startIdx] = gj;
   best[startIdx] = startAlt;
   mask[startIdx] = 1;
 
@@ -157,11 +168,13 @@ export function buildOptionalMask({
         continue;
       }
       best[nIdx] = nextArrival;
+      originX[nIdx] = x;
+      originY[nIdx] = y;
       mask[nIdx] = 1;
       heap.push(nIdx, nextArrival);
     }
   }
 
-  return mask;
+  return finish();
 }
 

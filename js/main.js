@@ -61,7 +61,6 @@ import {
   initGlidePath,
   clearAllGlidePaths,
   clearGlidePath,
-  clearGeoPath,
   refreshInspectPath,
   seedPathMetrics,
 } from "./glide-path.js";
@@ -533,7 +532,7 @@ function syncAirspaceInfoBox() {
 }
 
 function isIncludeAirspaceEnabled() {
-  return includeAirspaceInput?.checked ?? true;
+  return includeAirspaceInput?.checked ?? false;
 }
 
 function syncAirspaceUi() {
@@ -937,8 +936,8 @@ app.geolocateControl.on("trackuserlocationend", () => {
   if (!isGeoTrackingOn()) {
     app.lastGeoLngLat = null;
     app.lastGeoAltitude = null;
-    clearGeoPath();
     clearGeoTrackingMarker();
+    updateGeoLocationPath();
     syncComputeContextBar();
   }
 });

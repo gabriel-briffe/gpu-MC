@@ -68,7 +68,7 @@ function getOptionalOverlayOpacity() {
   if (!Number.isFinite(value)) {
     return 0.5;
   }
-  return Math.max(0, Math.min(100, value)) / 100;
+  return Math.max(20, Math.min(100, value)) / 100;
 }
 
 export { getSectorsOverlayOpacity, getWeatherOverlayOpacity, getOptionalOverlayOpacity };
@@ -94,6 +94,12 @@ export function syncSectorsOpacityUi() {
 }
 
 export function syncOptionalOpacityUi() {
+  if (dom.optionalOpacityInput) {
+    const value = Number.parseInt(dom.optionalOpacityInput.value, 10);
+    if (Number.isFinite(value) && value < 20) {
+      dom.optionalOpacityInput.value = "20";
+    }
+  }
   if (dom.optionalOpacityHintEl && dom.optionalOpacityInput) {
     dom.optionalOpacityHintEl.textContent = `${dom.optionalOpacityInput.value}%`;
   }

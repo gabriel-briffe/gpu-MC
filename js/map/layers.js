@@ -2,9 +2,13 @@ import {
   REST_AIRSPACE_SOURCE,
   REST_AIRSPACE_FILL_LAYER,
   REST_AIRSPACE_LINE_LAYER,
+  GLIDE_PATH_LAYER_IDS,
   GLIDE_PATH_PAINT,
+  GLIDE_PATH_CASING_PAINT,
   GLIDE_PATH_GROUND_PAINT,
+  GLIDE_PATH_GROUND_CASING_PAINT,
   GLIDE_PATH_GROUND_LAYOUT,
+  GLIDE_PATH_LAYOUT,
   glidePathLayerFilter,
   CACHE_HIDDEN_LAYER_IDS,
   MANUAL_AIRPORT_SELECT_HIDDEN_LAYER_IDS,
@@ -55,10 +59,7 @@ const MAP_LAYER_ORDER = [
   REST_AIRSPACE_LINE_LAYER,
   ...OPENAIP_VECTOR_LAYER_IDS,
   "user-location-wedge",
-  "glide-path-geo",
-  "glide-path-geo-ground",
-  "glide-path",
-  "glide-path-ground",
+  ...GLIDE_PATH_LAYER_IDS,
   "cache-grid-fill",
   "cache-grid-line",
 ];
@@ -108,22 +109,59 @@ export function ensurePathLayer() {
   });
 
   const pathLayers = [
-    { id: "glide-path", role: "inspect", ground: false },
-    { id: "glide-path-ground", role: "inspect", ground: true },
-    { id: "glide-path-geo", role: "geo", ground: false },
-    { id: "glide-path-geo-ground", role: "geo", ground: true },
+    { id: "glide-path-geo-casing", role: "geo", ground: false, casing: true },
+    { id: "glide-path-geo", role: "geo", ground: false, casing: false },
+    { id: "glide-path-geo-ground-casing", role: "geo", ground: true, casing: true },
+    { id: "glide-path-geo-ground", role: "geo", ground: true, casing: false },
+    { id: "glide-path-casing", role: "inspect", ground: false, casing: true },
+    { id: "glide-path", role: "inspect", ground: false, casing: false },
+    { id: "glide-path-ground-casing", role: "inspect", ground: true, casing: true },
+    { id: "glide-path-ground", role: "inspect", ground: true, casing: false },
   ];
 
-  for (const { id, role, ground } of pathLayers) {
+  for (const { id, role, ground, casing } of pathLayers) {
+    let paint = GLIDE_PATH_PAINT;
+    if (ground && casing) {
+      paint = GLIDE_PATH_GROUND_CASING_PAINT;
+    } else if (ground) {
+      paint = GLIDE_PATH_GROUND_PAINT;
+    } else if (casing) {
+      paint = GLIDE_PATH_CASING_PAINT;
+    }
     map.addLayer({
       id,
       type: "line",
       source: "glide-path",
       filter: glidePathLayerFilter(role, ground),
-      paint: ground ? GLIDE_PATH_GROUND_PAINT : GLIDE_PATH_PAINT,
-      ...(ground ? { layout: GLIDE_PATH_GROUND_LAYOUT } : {}),
+      layout: ground ? GLIDE_PATH_GROUND_LAYOUT : GLIDE_PATH_LAYOUT,
+      paint,
     });
   }
+
+  map.addLayer({
+    id: "glide-path-discs",
+    type: "circle",
+    source: "glide-path",
+    filter: ["==", ["get", "kind"], "disc"],
+    paint: {
+      "circle-radius": 5,
+      "circle-color": "#ff0000",
+      "circle-opacity": 1,
+    },
+  });
+
+  map.addLayer({
+    id: "glide-sim-glider",
+    type: "circle",
+    source: "glide-path",
+    filter: ["==", ["get", "kind"], "glider"],
+    paint: {
+      "circle-radius": 7,
+      "circle-color": "#ffffff",
+      "circle-stroke-color": "#ff40b0",
+      "circle-stroke-width": 2,
+    },
+  });
 
   app.pathLayerReady = true;
   raisePathLayer();

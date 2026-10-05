@@ -368,7 +368,7 @@
                 <input
                   type="range"
                   id="optional-opacity"
-                  min="0"
+                  min="20"
                   max="100"
                   step="5"
                   value="50"
@@ -548,7 +548,7 @@
               <div class="param-field param-field-full">
                 <div class="param-label-row">
                   <label class="param-check" for="include-airspace">
-                    <input id="include-airspace" type="checkbox" checked />
+                    <input id="include-airspace" type="checkbox" />
                     <span>
                       Include prohibited airspace
                       <span class="param-check-detail">(prohibited, overflight restriction)</span>
@@ -741,8 +741,69 @@
     </div>
     <div id="param-help-popover" hidden role="tooltip"></div>
     <div id="emulated-alt-box" class="emulated-alt-box" hidden>
-      <label for="emulated-altitude">Emulated alt (m)</label>
-      <input id="emulated-altitude" type="number" inputmode="decimal" step="10" placeholder="MSL" />
+      <p id="sim-title" class="sim-title">Glide cone simulator</p>
+      <div class="sim-alt-row">
+        <label for="emulated-altitude">Altitude (m)</label>
+        <input id="emulated-altitude" type="number" inputmode="decimal" step="10" placeholder="MSL" />
+      </div>
+    </div>
+    <button type="button" id="sim-help-btn" class="sim-help-btn" hidden aria-haspopup="dialog" aria-expanded="false">
+      Help
+    </button>
+    <div id="sim-manual" class="sim-manual" hidden>
+      <div class="sim-manual-backdrop" id="sim-manual-backdrop"></div>
+      <div
+        class="sim-manual-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sim-manual-title"
+      >
+        <h2 id="sim-manual-title" class="sim-manual-title">Glide cone simulator</h2>
+        <div class="sim-manual-body">
+          <p>
+            This is the same picture as the glide cone in XCSoar. The white dot with the pink ring is the glider. It stays where you put it.
+          </p>
+          <h3>Place the glider</h3>
+          <p>
+            Click or tap the map to place the glider. The altitude is set 200 m above the height the cone requires there, so an option zone appears. You can type a different altitude afterwards. Paths show after a glide cone has been computed. Use the glide button at the top left: tap it until cones are on, and long-press it for L/D and the other settings.
+          </p>
+          <h3>What the colours mean</h3>
+          <ul class="sim-manual-key">
+            <li>
+              <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-pink"></span></span>
+              <span>Pink path: the worst-case path. It is the lowest you can be everywhere and still reach the airport. Along a mountain you can sometimes go downhill a fair way before you have to glide back.</span>
+            </li>
+            <li>
+              <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-ground"></span></span>
+              <span>Dotted black: those downhill segments of the worst-case path. You are on the ground, going down, before the glide has to climb back toward the airport.</span>
+            </li>
+            <li>
+              <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-margin"></span></span>
+              <span>Coloured path: the path of highest arrival at the airport, or to a point you choose and back. The colour is the height left above the cone at that point. The largest margin is green, zero is red.</span>
+            </li>
+            <li>
+              <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-area"></span></span>
+              <span>Option area: when you are above the minimum altitude, you can afford some detours. Every point you can pass through and still reach the airport is filled the same way: green where you have the most height left, red where you have none.</span>
+            </li>
+            <li>
+              <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-disc"></span></span>
+              <span>Red discs: critical points, mostly passes or limiting ridges. The worst-case path is flown again at 80% of the selected L/D. Each time that weaker glide meets a pass that limits the path and does not clear it, that point is critical. The weaker glide then restarts from the pass altitude and continues. If you make this pass, are you easy until the end, or is there another ridge that can still stop you?</span>
+            </li>
+          </ul>
+          <h3>Look around</h3>
+          <p>
+            On a computer, move the mouse. The glider stays put. The pointer draws a path to that point, and from there back to the airport. Both use the colour of the point.
+          </p>
+          <p>
+            On a phone, drag the map. The centre of the screen is that look-around point.
+          </p>
+          <h3>Live position</h3>
+          <p>
+            Turn on Find my location and the simulator steps aside. The glider is then your GPS position, and this title and Help button hide.
+          </p>
+        </div>
+        <button type="button" class="action-btn btn-blue" id="sim-manual-close">Close</button>
+      </div>
     </div>
     <div id="cell-tooltip" hidden aria-live="polite"></div>
     <div id="compute-context-bar" hidden aria-live="polite">
