@@ -2226,6 +2226,12 @@
         margin: 0;
       }
 
+      .glide-mode-help-icon {
+        display: block;
+        width: 40px;
+        height: 40px;
+      }
+
       .sim-manual-key {
         list-style: none;
         margin: 0;

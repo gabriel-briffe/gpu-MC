@@ -775,8 +775,26 @@
           </p>
           <h3>Place the glider</h3>
           <p>
-            Click or tap the map to place the glider. The altitude is set 200 m above the height the cone requires there, so an option zone appears. You can type a different altitude afterwards. Paths show after a glide cone has been computed. Use the glide button at the top left: tap it until cones are on, and long-press it for L/D and the other settings.
+            Click or tap the map to place the glider. The altitude is set 200 m above the height the cone requires there, so an option zone appears. You can type a different altitude afterwards. Paths show after a glide cone has been computed.
           </p>
+          <h3>Glide button</h3>
+          <p>
+            The button at the top left cycles through three states. Long-press it for L/D and the other settings.
+          </p>
+          <ul class="sim-manual-key">
+            <li>
+              <img class="glide-mode-help-icon" src="icons/mode-none.svg" alt="" />
+              <span>Off: nothing is computed.</span>
+            </li>
+            <li>
+              <img class="glide-mode-help-icon" src="icons/mode-single.svg" alt="" />
+              <span>One: click an airport, and that one is computed.</span>
+            </li>
+            <li>
+              <img class="glide-mode-help-icon" src="icons/mode-auto.svg" alt="" />
+              <span>All in the window: every airport in view is computed, except the ones you have turned off.</span>
+            </li>
+          </ul>
           <h3>What the colours mean</h3>
           <ul class="sim-manual-key">
             <li>
@@ -793,7 +811,7 @@
             </li>
             <li>
               <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-area"></span></span>
-              <span>Option area: when you are above the minimum altitude, you can afford some detours. Every point you can pass through and still reach the airport is filled the same way: green where you have the most height left, red where you have none.</span>
+              <span>Option area: every point you can pass through and still reach the airport. Margin above the cone: green where you have the most height left, red where you have none. Degraded masks: still reachable at 20% less L/D is green, lost only at 20% less is yellow, lost at 10% less is red.</span>
             </li>
             <li>
               <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-disc"></span></span>
