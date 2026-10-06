@@ -2,10 +2,10 @@
  * Ridge-soaring escape along the upward cone path.
  *
  * Above the cone, options start at the glider. Below it, options exist only
- * when the cone path still has a ground run and a pure glide arrives above
- * the cone at the last ground cell before the first air cell. That cell is
- * the options seed. A below-cone glider whose next cone cell is already air
- * has no options.
+ * when the next cone cell is still ground. The glider is flown along that
+ * first ground-only run, and options start at the first ground cell where the
+ * arrival is above the cone. A below-cone glider whose next cone cell is
+ * already air has no options.
  */
 
 function coneAt(altitudes, maxAltitude, idx) {
@@ -78,6 +78,7 @@ export function ridgeEscapeSeed({
   const seen = new Set([`${gi},${gj}`]);
   let x = gi;
   let y = gj;
+  let distanceM = 0;
   const maxSteps = width + height;
   for (let step = 0; step < maxSteps; step += 1) {
     const idx = y * width + x;
@@ -90,30 +91,24 @@ export function ridgeEscapeSeed({
     if (seen.has(key)) {
       return none;
     }
-    seen.add(key);
     if (!isGround(ground, ny * width + nx)) {
-      break;
+      return none;
     }
+    seen.add(key);
+    distanceM += hopDistanceM(x, y, nx, ny, dem.cellSizeM);
+    const arrival = startAlt - distanceM / glideRatio;
     cells.push({ x: nx, y: ny });
+    if (arrival > coneAt(altitudes, maxAltitude, ny * width + nx)) {
+      return {
+        kind: "escape",
+        gi: nx,
+        gj: ny,
+        arrival,
+        cells,
+      };
+    }
     x = nx;
     y = ny;
   }
-
-  let distanceM = 0;
-  for (let i = 1; i < cells.length; i += 1) {
-    distanceM += hopDistanceM(cells[i - 1].x, cells[i - 1].y, cells[i].x, cells[i].y, dem.cellSizeM);
-  }
-  const last = cells[cells.length - 1];
-  const lastIdx = last.y * width + last.x;
-  const arrival = startAlt - distanceM / glideRatio;
-  if (!(arrival > coneAt(altitudes, maxAltitude, lastIdx))) {
-    return none;
-  }
-  return {
-    kind: "escape",
-    gi: last.x,
-    gj: last.y,
-    arrival,
-    cells,
-  };
+  return none;
 }

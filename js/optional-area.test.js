@@ -111,27 +111,27 @@ test("below the cone with an air next cell has no options", () => {
   assert.equal(decision.kind, "none");
 });
 
-test("escape seed is the last ground cell when the glide arrives above it", () => {
+test("escape seed is the first cleared ground cell, not the last", () => {
   const decision = ridgeEscapeSeed({
-    dem: coneDem(3, 1, 400),
-    altitudes: new Float32Array([1800, 1950, 2080]),
-    originX: new Int32Array([0, 0, 1]),
-    originY: new Int32Array([0, 0, 0]),
-    ground: new Uint32Array([0, 1, 1]),
+    dem: coneDem(4, 1, 400),
+    altitudes: new Float32Array([1800, 1700, 2000, 2100]),
+    originX: new Int32Array([0, 0, 1, 2]),
+    originY: new Int32Array([0, 0, 0, 0]),
+    ground: new Uint32Array([0, 1, 1, 1]),
     maxAltitude: 5000,
-    gi: 2,
+    gi: 3,
     gj: 0,
-    startAlt: 2000,
+    startAlt: 2050,
     glideRatio: 20,
   });
   assert.equal(decision.kind, "escape");
-  assert.equal(decision.gi, 1);
+  assert.equal(decision.gi, 2);
   assert.equal(decision.gj, 0);
-  assert.ok(decision.arrival > 1950);
+  assert.ok(decision.arrival > 2000);
   assert.equal(decision.cells.length, 2);
 });
 
-test("no options when the glide is still below the last ground cell", () => {
+test("no options when no ground cell on the run is cleared", () => {
   const decision = ridgeEscapeSeed({
     dem: coneDem(3, 1, 1000),
     altitudes: new Float32Array([1800, 1950, 2080]),
