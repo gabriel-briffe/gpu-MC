@@ -97,44 +97,23 @@
         display: none;
       }
 
-      .chrome-longpress-hint {
-        position: fixed;
-        z-index: 4;
-        margin: 0;
-        max-width: min(14rem, calc(100vw - 5.5rem));
-        padding: 0.35rem 0.55rem;
-        border-radius: 0.45rem;
-        background: rgba(18, 22, 28, 0.82);
-        color: #b8c4d4;
-        font-size: 0.72rem;
-        font-weight: 500;
-        letter-spacing: 0.01em;
-        line-height: 1.3;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
-        pointer-events: none;
-        transform: translateY(-50%);
+      body.glidecones-disabled .sim-bottom-chrome {
+        display: none !important;
       }
 
-      .chrome-longpress-hint[hidden] {
-        display: none;
-      }
-
-      body.app-menu-open .chrome-longpress-hint,
-      body.glidecones-disabled .sim-bottom-chrome,
-      body.glidecones-disabled .sim-top-cluster {
+      /* Keep mode boxes + tip visible before compute; hide legend / stop only. */
+      body.glidecones-disabled .sim-top-cluster > :not(.session-mode-box):not(#cell-tooltip) {
         display: none !important;
       }
 
       body.cache-select-mode .emulated-alt-box,
+      body.cache-select-mode .flight-mode-box,
+      body.cache-select-mode .viewer-mode-box,
       body.cache-select-mode .sim-top-cluster,
       body.cache-select-mode .sim-bottom-chrome,
       body.cache-select-mode .sim-help-btn,
       body.cache-select-mode .sim-manual {
         display: none !important;
-      }
-
-      body.cache-select-mode .chrome-longpress-hint {
-        display: none;
       }
 
       .app-menu-backdrop {
@@ -1359,9 +1338,25 @@
         backdrop-filter: blur(8px);
         font-size: 0.78rem;
         line-height: 1.4;
-        white-space: pre-line;
         font-variant-numeric: tabular-nums;
         pointer-events: none;
+      }
+
+      #cell-tooltip .tooltip-line {
+        white-space: nowrap;
+      }
+
+      #cell-tooltip .tooltip-line--gap {
+        height: 0.45rem;
+      }
+
+      #cell-tooltip .tooltip-mode-icon {
+        display: inline-block;
+        width: 1.15rem;
+        height: 1.15rem;
+        margin: 0 0.15rem;
+        vertical-align: -0.22rem;
+        border-radius: 3px;
       }
 
       #cell-tooltip.cell-tooltip--parked {
@@ -1369,8 +1364,15 @@
         z-index: 6;
         left: auto;
         top: auto;
-        max-width: min(18rem, calc(100vw - 9rem));
-        flex: 0 1 auto;
+        max-width: none;
+        width: max-content;
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 0;
+        text-align: left;
       }
 
       #cell-tooltip[hidden] {
@@ -1653,42 +1655,6 @@
 
       #compute-stop-bar[hidden] {
         display: none !important;
-      }
-
-      .mode-airport-hint {
-        position: fixed;
-        left: 50%;
-        bottom: max(1rem, env(safe-area-inset-bottom));
-        z-index: 2;
-        transform: translateX(-50%);
-        max-width: min(22rem, calc(100vw - 2rem));
-        padding: 0.4rem 0.75rem;
-        border-radius: 0.5rem;
-        background: rgba(18, 22, 28, 0.82);
-        color: #b8c4d4;
-        font-size: 0.78rem;
-        font-weight: 500;
-        letter-spacing: 0.01em;
-        line-height: 1.35;
-        text-align: center;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
-        pointer-events: none;
-      }
-
-      .mode-airport-hint[hidden] {
-        display: none;
-      }
-
-      body.has-compute-context .mode-airport-hint {
-        bottom: calc(
-          var(--compute-context-bar-height, 3.5rem) + max(0.75rem, env(safe-area-inset-bottom))
-        );
-      }
-
-      body.cache-select-mode .mode-airport-hint,
-      body.manual-airport-select-mode .mode-airport-hint,
-      body.app-menu-open .mode-airport-hint {
-        display: none;
       }
 
       #compute-context-bar {
@@ -2109,11 +2075,16 @@
         max-width: min(36rem, calc(100vw - 7.5rem));
       }
 
+      .session-mode-box,
       .emulated-alt-box {
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 0.4rem;
-        padding: 0.35rem 0.45rem 0.35rem 0.6rem;
+        justify-content: center;
+        gap: 0.35rem;
+        width: max-content;
+        max-width: min(22rem, 100%);
+        padding: 0.55rem 0.85rem 0.5rem;
         border-radius: 12px;
         background: rgba(18, 22, 28, 0.92);
         border: 1px solid rgba(46, 204, 113, 0.45);
@@ -2121,37 +2092,53 @@
         box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
       }
 
+      .session-mode-title,
       .sim-title {
-        display: none;
+        display: block;
         margin: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        font: inherit;
         font-size: 1rem;
         font-weight: 700;
         letter-spacing: 0.01em;
         text-align: center;
         color: #f5f7fa;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .session-mode-title:hover,
+      .sim-title:hover {
+        color: #ffffff;
+      }
+
+      .session-mode-title:focus-visible,
+      .sim-title:focus-visible {
+        outline: 2px solid rgba(46, 204, 113, 0.7);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+
+      .session-mode-subtitle {
+        margin: 0;
+        font-size: 0.72rem;
+        letter-spacing: 0.01em;
+        color: #b7c4b8;
+        white-space: nowrap;
+        text-align: center;
+      }
+
+      .session-mode-subtitle[hidden] {
+        display: none !important;
       }
 
       .sim-alt-row {
         display: flex;
         align-items: center;
-        gap: 0.4rem;
-      }
-
-      body.sim-mode .emulated-alt-box {
-        flex-direction: column;
-        align-items: center;
-        gap: 0.35rem;
-        width: max-content;
-        max-width: min(22rem, 100%);
-        padding: 0.55rem 0.85rem 0.5rem;
-      }
-
-      body.sim-mode .sim-alt-row {
         justify-content: center;
-      }
-
-      body.sim-mode .sim-title {
-        display: block;
+        gap: 0.4rem;
       }
 
       .sim-readout {
@@ -2170,6 +2157,7 @@
         scroll-margin-top: 8.5rem;
       }
 
+      .session-mode-box[hidden],
       .emulated-alt-box[hidden] {
         display: none !important;
       }
@@ -2255,6 +2243,7 @@
       .options-degraded-legend {
         display: flex;
         flex-direction: column;
+        align-items: stretch;
         justify-content: center;
         gap: 0.3rem;
         padding: 0.45rem 0.65rem;
@@ -2314,13 +2303,21 @@
         accent-color: #f0c14a;
       }
 
-      .igc-slider:disabled {
-        opacity: 0.45;
+      .igc-slider[hidden],
+      .igc-play[hidden],
+      .igc-speed[hidden],
+      .igc-clear[hidden] {
+        display: none !important;
       }
 
       .igc-play,
       .igc-speed {
         min-width: 3.1rem;
+        padding: 0 0.55rem;
+      }
+
+      .igc-clear {
+        min-width: 44px;
         padding: 0 0.55rem;
       }
 
@@ -2460,6 +2457,12 @@
         background: #ff40b0;
       }
 
+      .path-seg-pink::after {
+        top: 0;
+        height: 5px;
+        background: #ff40b0;
+      }
+
       .path-seg-margin::after {
         background: linear-gradient(90deg, #00c000, #ffd600, #ff0000);
       }
@@ -2547,22 +2550,5 @@
         border-color: rgba(46, 204, 113, 0.7);
         background: rgba(46, 204, 113, 0.22);
         color: #d8ffe8;
-      }
-
-      #app-menu-chrome .flight-shader-btn {
-        width: 40px;
-        height: 40px;
-        font-size: 0.95rem;
-        font-weight: 700;
-        border-color: rgba(46, 204, 113, 0.55);
-        color: #d8ffe8;
-      }
-
-      #app-menu-chrome .flight-shader-btn[hidden] {
-        display: none !important;
-      }
-
-      #app-menu-chrome .flight-shader-btn.is-busy {
-        opacity: 0.55;
       }
 

@@ -36,7 +36,6 @@ export function scheduleSingleAirportCompute(pick, { debounce = false } = {}) {
   if (pick?.id) {
     app.singleLastPick = pick;
     hooks.updateParamsFooter?.();
-    hooks.syncModeAirportHint?.();
   }
   const target = pick?.id ? pick : app.singleLastPick;
   if (!target?.id) {

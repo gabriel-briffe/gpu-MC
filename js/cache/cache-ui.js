@@ -152,7 +152,6 @@ function syncCacheSelectBar() {
   hooks.updateParamsFooter?.();
   hooks.syncComputeContextBar?.();
   hooks.syncGlideModeCycleButton?.();
-  hooks.syncModeAirportHint?.();
 }
 
 function enterCacheSelectMode({ focusMap = false } = {}) {

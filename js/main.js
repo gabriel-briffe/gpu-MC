@@ -62,12 +62,15 @@ import {
   clearAllGlidePaths,
   clearGlidePath,
   refreshInspectPath,
-  seedPathMetrics,
+  aircraftPathMetrics,
 } from "./glide-path.js";
 import {
   initCellInspect,
   showCellInspect,
   clearCellInspect,
+  showAirportHoverTip,
+  clearAirportHoverTip,
+  syncPlaceGliderTip,
   getLastInspectCell,
   getGeoSampleCell,
   sampleDemCell,
@@ -100,7 +103,6 @@ import {
   initComputeAirports,
 } from "./airports/compute-airports.js";
 import { initDisabledAirports } from "./airports/disabled.js";
-import { getHasCycledAirport } from "./airports/auto-disable-tip.js";
 import {
   addManualAirportsToStore,
   getManualAirportCount,
@@ -218,7 +220,6 @@ const {
   paramsScrollEl,
   computeStopBar,
   computeStopMessageEl,
-  modeAirportHintEl,
   pathInputHintEl,
   glideSettingsModeHintEl,
   openCacheDataBtn,
@@ -255,6 +256,7 @@ function detectInteractionMode() {
   app.interaction.tapPath = coarse;
 
   updateInteractionHints();
+  syncPlaceGliderTip();
 }
 
 function updateInteractionHints() {
@@ -293,7 +295,7 @@ function updateGlideSettingsModeHint() {
     case "auto":
       glideSettingsModeHintEl.hidden = false;
       glideSettingsModeHintEl.textContent =
-        "In auto mode, click an airport to enable or disable it from compute.";
+        "In combined mode, click an airport to enable or disable it from compute.";
       break;
     default:
       glideSettingsModeHintEl.hidden = true;
@@ -417,37 +419,6 @@ function syncComputeStopBar() {
   if (computeStopMessageEl) {
     computeStopMessageEl.hidden = !hasMessage || computing;
   }
-}
-
-const SINGLE_AIRPORT_HINT = "Click airport to compute";
-const AUTO_DISABLE_HINT =
-  "Click an airport in the computed box to disable it, see the result, then click again to re-enable it";
-
-/** Bottom hint for single (pick airport) or auto (disable tip) modes. */
-function syncModeAirportHint() {
-  if (!modeAirportHintEl) {
-    return;
-  }
-  const chromeClear =
-    isGlideConesEnabled() &&
-    !app.cacheSelectMode &&
-    !getManualAirportSelectMode() &&
-    !app.appMenuOpen;
-
-  let text = "";
-  if (chromeClear && isSingleParamsMode() && !app.singleLastPick?.id) {
-    text = SINGLE_AIRPORT_HINT;
-  } else if (chromeClear && isAutoParamsMode() && !getHasCycledAirport()) {
-    text = AUTO_DISABLE_HINT;
-  }
-
-  if (text) {
-    modeAirportHintEl.textContent = text;
-    modeAirportHintEl.hidden = false;
-  } else {
-    modeAirportHintEl.hidden = true;
-  }
-  app.hooks.syncGlideSettingsLongpressHint?.();
 }
 
 function updateParamsFooter() {
@@ -732,6 +703,9 @@ app.hooks = {
   },
   computeContextBarEl,
   clearCellInspect,
+  showAirportHoverTip,
+  clearAirportHoverTip,
+  syncPlaceGliderTip,
   clearGlidePath,
   setDownloadContoursVisible,
   downloadContourGeojson,
@@ -819,7 +793,6 @@ app.hooks = {
   clearCacheGridLayers,
   updateCacheGridData,
   syncComputeContextBar,
-  syncModeAirportHint,
 };
 
 initDisabledAirports(app.hooks);
@@ -837,7 +810,6 @@ initComputeVisualization(app.hooks);
 initComputeSession(app.hooks);
 initParamsPanel(app, dom);
 syncAppMenuUi();
-syncModeAirportHint();
 
 if (typeof maplibregl !== "undefined") {
   maplibregl.setWorkerUrl(assetUrl("vendor/maplibre-gl/maplibre-gl-csp-worker.js"));
@@ -1374,7 +1346,8 @@ function syncComputeContextBar() {
   const positioned = positionedAircraft();
   const geoCell = positioned?.cell ?? null;
   const userAlt = positioned?.userAlt;
-  const metrics = geoCell?.isReachable ? seedPathMetrics(geoCell) : null;
+  // Dest / req L/D follow the highest-arrival airport when options exist.
+  const metrics = aircraftPathMetrics(geoCell);
   const proofAlt =
     geoCell?.isReachable && app.coneState
       ? requiredAltitudeAt(geoCell.gi, geoCell.gj, app.coneState)

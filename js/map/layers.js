@@ -3,13 +3,19 @@ import {
   REST_AIRSPACE_FILL_LAYER,
   REST_AIRSPACE_LINE_LAYER,
   GLIDE_PATH_LAYER_IDS,
-  GLIDE_PATH_PAINT,
-  GLIDE_PATH_CASING_PAINT,
-  GLIDE_PATH_GROUND_PAINT,
-  GLIDE_PATH_GROUND_CASING_PAINT,
+  GLIDE_PATH_WORST_PAINT,
+  GLIDE_PATH_WORST_GROUND_PAINT,
+  GLIDE_PATH_GLIDER_ARRIVAL_CASING_PAINT,
+  GLIDE_PATH_GLIDER_ARRIVAL_PAINT,
+  GLIDE_PATH_GLIDER_ARRIVAL_GROUND_CASING_PAINT,
+  GLIDE_PATH_GLIDER_ARRIVAL_GROUND_PAINT,
+  GLIDE_PATH_OPTION_CASING_PAINT,
+  GLIDE_PATH_OPTION_PAINT,
+  GLIDE_PATH_OPTION_GROUND_CASING_PAINT,
+  GLIDE_PATH_OPTION_GROUND_PAINT,
   GLIDE_PATH_GROUND_LAYOUT,
   GLIDE_PATH_LAYOUT,
-  glidePathLayerFilter,
+  glidePathGroupFilter,
   CACHE_HIDDEN_LAYER_IDS,
   MANUAL_AIRPORT_SELECT_HIDDEN_LAYER_IDS,
   AIRPORT_PICK_HIT_PX,
@@ -108,31 +114,134 @@ export function ensurePathLayer() {
     data: { type: "FeatureCollection", features: [] },
   });
 
+  // Each coloured path is its own group: white casing, then colour on top.
   const pathLayers = [
-    { id: "glide-path-geo-casing", role: "geo", ground: false, casing: true },
-    { id: "glide-path-geo", role: "geo", ground: false, casing: false },
-    { id: "glide-path-geo-ground-casing", role: "geo", ground: true, casing: true },
-    { id: "glide-path-geo-ground", role: "geo", ground: true, casing: false },
-    { id: "glide-path-casing", role: "inspect", ground: false, casing: true },
-    { id: "glide-path", role: "inspect", ground: false, casing: false },
-    { id: "glide-path-ground-casing", role: "inspect", ground: true, casing: true },
-    { id: "glide-path-ground", role: "inspect", ground: true, casing: false },
+    {
+      id: "glide-path-glider-worst",
+      filter: glidePathGroupFilter({ role: "geo", colored: false }),
+      paint: GLIDE_PATH_WORST_PAINT,
+    },
+    {
+      id: "glide-path-glider-worst-ground",
+      filter: glidePathGroupFilter({ role: "geo", ground: true, colored: false }),
+      paint: GLIDE_PATH_WORST_GROUND_PAINT,
+      ground: true,
+    },
+    {
+      id: "glide-path-glider-arrival-casing",
+      filter: glidePathGroupFilter({ role: "geo", colored: true, arrival: true }),
+      paint: GLIDE_PATH_GLIDER_ARRIVAL_CASING_PAINT,
+    },
+    {
+      id: "glide-path-glider-arrival",
+      filter: glidePathGroupFilter({ role: "geo", colored: true, arrival: true }),
+      paint: GLIDE_PATH_GLIDER_ARRIVAL_PAINT,
+    },
+    {
+      id: "glide-path-glider-arrival-ground-casing",
+      filter: glidePathGroupFilter({
+        role: "geo",
+        ground: true,
+        colored: true,
+        arrival: true,
+      }),
+      paint: GLIDE_PATH_GLIDER_ARRIVAL_GROUND_CASING_PAINT,
+      ground: true,
+    },
+    {
+      id: "glide-path-glider-arrival-ground",
+      filter: glidePathGroupFilter({
+        role: "geo",
+        ground: true,
+        colored: true,
+        arrival: true,
+      }),
+      paint: GLIDE_PATH_GLIDER_ARRIVAL_GROUND_PAINT,
+      ground: true,
+    },
+    {
+      id: "glide-path-pointer-worst",
+      filter: glidePathGroupFilter({ role: "inspect", colored: false }),
+      paint: GLIDE_PATH_WORST_PAINT,
+    },
+    {
+      id: "glide-path-pointer-worst-ground",
+      filter: glidePathGroupFilter({ role: "inspect", ground: true, colored: false }),
+      paint: GLIDE_PATH_WORST_GROUND_PAINT,
+      ground: true,
+    },
+    {
+      id: "glide-path-glider-option-casing",
+      filter: glidePathGroupFilter({ role: "inspect", colored: true, arrival: false }),
+      paint: GLIDE_PATH_OPTION_CASING_PAINT,
+    },
+    {
+      id: "glide-path-glider-option",
+      filter: glidePathGroupFilter({ role: "inspect", colored: true, arrival: false }),
+      paint: GLIDE_PATH_OPTION_PAINT,
+    },
+    {
+      id: "glide-path-glider-option-ground-casing",
+      filter: glidePathGroupFilter({
+        role: "inspect",
+        ground: true,
+        colored: true,
+        arrival: false,
+      }),
+      paint: GLIDE_PATH_OPTION_GROUND_CASING_PAINT,
+      ground: true,
+    },
+    {
+      id: "glide-path-glider-option-ground",
+      filter: glidePathGroupFilter({
+        role: "inspect",
+        ground: true,
+        colored: true,
+        arrival: false,
+      }),
+      paint: GLIDE_PATH_OPTION_GROUND_PAINT,
+      ground: true,
+    },
+    {
+      id: "glide-path-option-arrival-casing",
+      filter: glidePathGroupFilter({ role: "inspect", colored: true, arrival: true }),
+      paint: GLIDE_PATH_OPTION_CASING_PAINT,
+    },
+    {
+      id: "glide-path-option-arrival",
+      filter: glidePathGroupFilter({ role: "inspect", colored: true, arrival: true }),
+      paint: GLIDE_PATH_OPTION_PAINT,
+    },
+    {
+      id: "glide-path-option-arrival-ground-casing",
+      filter: glidePathGroupFilter({
+        role: "inspect",
+        ground: true,
+        colored: true,
+        arrival: true,
+      }),
+      paint: GLIDE_PATH_OPTION_GROUND_CASING_PAINT,
+      ground: true,
+    },
+    {
+      id: "glide-path-option-arrival-ground",
+      filter: glidePathGroupFilter({
+        role: "inspect",
+        ground: true,
+        colored: true,
+        arrival: true,
+      }),
+      paint: GLIDE_PATH_OPTION_GROUND_PAINT,
+      ground: true,
+    },
   ];
 
-  for (const { id, role, ground, casing } of pathLayers) {
-    let paint = GLIDE_PATH_PAINT;
-    if (ground && casing) {
-      paint = GLIDE_PATH_GROUND_CASING_PAINT;
-    } else if (ground) {
-      paint = GLIDE_PATH_GROUND_PAINT;
-    } else if (casing) {
-      paint = GLIDE_PATH_CASING_PAINT;
-    }
+  for (const { id, filter, paint, ground } of pathLayers) {
     map.addLayer({
       id,
       type: "line",
       source: "glide-path",
-      filter: glidePathLayerFilter(role, ground),
+      filter,
       layout: ground ? GLIDE_PATH_GROUND_LAYOUT : GLIDE_PATH_LAYOUT,
       paint,
     });
@@ -144,7 +253,7 @@ export function ensurePathLayer() {
     source: "glide-path",
     filter: ["==", ["get", "kind"], "disc"],
     paint: {
-      "circle-radius": 5,
+      "circle-radius": 10,
       "circle-color": "#ff0000",
       "circle-opacity": 1,
     },
@@ -363,7 +472,7 @@ export function ensureCachedAirportMapLayers() {
         "#5a5a5a",
         ["boolean", ["get", "manual"], false],
         "#2d8a4e",
-        "#bf2d2d",
+        "#1e6fd9",
       ],
       "circle-stroke-width": 1,
       "circle-stroke-color": "#ffffff",

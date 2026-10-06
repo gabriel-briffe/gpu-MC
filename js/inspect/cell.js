@@ -3,6 +3,7 @@ import { MANUAL_INSPECT_MS } from "../constants.js";
 import {
   formatGroundElevationTip,
   formatHoverTip as formatHoverTipCore,
+  formatPlaceGliderTip,
 } from "../compute/format.js";
 import { sampleTerrainElevationAtLngLat } from "../terrain-tiles.js";
 import { isDebugMode } from "../params/panel.js";
@@ -13,10 +14,13 @@ import {
   clearGeoPath,
   clearAllGlidePaths,
   seedPathMetrics,
+  optionViaPathMetrics,
+  isOptionAreaCell,
 } from "../glide-path.js";
 import { readEmulatedAltitudeM, refreshOptionalArea, writeSimAltitudeM } from "../optional-area.js";
 import { requiredAltitudeAt } from "../glidecone/route-style.js";
 import { dom } from "../dom.js";
+import { isIgcPlaying } from "../igc-replay-ui.js";
 import { isFlightSession, isSimulatorSession, isViewerSession } from "../session-mode.js";
 
 let hooks;
@@ -26,6 +30,7 @@ let terrainInspectRequestId = 0;
 export function initCellInspect(h) {
   hooks = h;
   app = h.app;
+  hooks.refreshInspectTooltip = refreshInspectTooltip;
 }
 
 export function getLastInspectCell() {
@@ -142,13 +147,30 @@ function formatHoverTip(cell) {
     cell?.isReachable && coneState
       ? requiredAltitudeAt(cell.gi, cell.gj, coneState)
       : null;
+  const showOptionVia =
+    isSimulatorSession() &&
+    Boolean(app.simGlider) &&
+    isOptionAreaCell(cell) &&
+    !isIgcPlaying();
   return formatHoverTipCore(cell, {
     groundClearance: coneState?.groundClearance ?? 100,
     debugMode: isDebugMode(),
     metrics: seedPathMetrics(cell),
     glideRatio: coneState?.glideRatio ?? 20,
     proofAlt,
+    showOptionVia,
+    optionVia: showOptionVia ? optionViaPathMetrics(cell) : null,
+    userAlt: showOptionVia ? readEmulatedAltitudeM() : null,
   });
+}
+
+/** Rebuild parked tip HTML (e.g. when option→airport probe finishes). */
+export function refreshInspectTooltip() {
+  if (!app.lastInspectCell || app.airportHoverTipActive) {
+    return;
+  }
+  app.footerCellHtml = formatHoverTip(app.lastInspectCell);
+  updateCellTooltip();
 }
 
 export function sampleDemCell(lng, lat) {
@@ -191,9 +213,40 @@ function cancelTerrainElevationInspect() {
   terrainInspectRequestId += 1;
 }
 
+function shouldShowPlaceGliderTip() {
+  return (
+    isSimulatorSession() &&
+    !app.simGlider &&
+    !isCacheSelectMode() &&
+    !hooks.getManualAirportSelectMode?.()
+  );
+}
+
+/** Parked tip: place the glider (Simulator, no glider yet). */
+export function syncPlaceGliderTip() {
+  if (app.airportHoverTipActive) {
+    return;
+  }
+  if (!shouldShowPlaceGliderTip()) {
+    return;
+  }
+  cancelTerrainElevationInspect();
+  clearManualInspectTimer();
+  app.lastInspectCell = null;
+  app.lastInspectLngLat = null;
+  app.lastInspectAnchor = null;
+  app.lastPathScreenBounds = null;
+  clearInspectPath();
+  app.inspectPinned = false;
+  const touch = Boolean(hooks.getInteraction?.()?.tapPath);
+  app.footerCellHtml = formatPlaceGliderTip({ touch });
+  updateCellTooltip();
+}
+
 export function clearCellInspect() {
   cancelTerrainElevationInspect();
   clearManualInspectTimer();
+  app.airportHoverTipActive = false;
   app.footerCellHtml = null;
   app.lastInspectAnchor = null;
   app.lastInspectLngLat = null;
@@ -201,8 +254,49 @@ export function clearCellInspect() {
   app.lastPathScreenBounds = null;
   clearInspectPath();
   app.inspectPinned = false;
-  updateCellTooltip();
+  if (shouldShowPlaceGliderTip()) {
+    syncPlaceGliderTip();
+  } else {
+    updateCellTooltip();
+  }
   hooks.updateParamsFooter();
+}
+
+/** Parked tip while hovering an airport marker. */
+export function showAirportHoverTip(airport) {
+  if (!airport) {
+    clearAirportHoverTip();
+    return;
+  }
+  cancelTerrainElevationInspect();
+  clearManualInspectTimer();
+  app.lastInspectCell = null;
+  app.lastInspectLngLat = null;
+  app.lastInspectAnchor = null;
+  app.lastPathScreenBounds = null;
+  clearInspectPath();
+  app.inspectPinned = false;
+  const html = hooks.airportActionTipHtml?.(airport);
+  if (!html) {
+    clearAirportHoverTip();
+    return;
+  }
+  app.airportHoverTipActive = true;
+  app.footerCellHtml = html;
+  updateCellTooltip();
+}
+
+export function clearAirportHoverTip() {
+  if (!app.airportHoverTipActive) {
+    return;
+  }
+  app.airportHoverTipActive = false;
+  if (shouldShowPlaceGliderTip()) {
+    syncPlaceGliderTip();
+    return;
+  }
+  app.footerCellHtml = null;
+  updateCellTooltip();
 }
 
 function isPointerOverParams(clientX, clientY) {
@@ -252,6 +346,7 @@ async function showTerrainElevationInspect(
       clearCellInspect();
       return;
     }
+    app.airportHoverTipActive = false;
     app.footerCellHtml = formatGroundElevationTip(groundElev);
     updateCellTooltip();
     if (temporary) {
@@ -277,6 +372,7 @@ export function showCellInspect(cell, anchorPoint = null, { temporary = false, l
     return;
   }
 
+  app.airportHoverTipActive = false;
   app.footerCellHtml = formatHoverTip(cell);
 
   const coneState = hooks.getConeState();
@@ -334,6 +430,28 @@ export function getGeoSampleCell() {
   return sampleDemCell(lastGeoLngLat.lng, lastGeoLngLat.lat);
 }
 
+/** First place often happens before a cone exists; fill altitude once the cone is ready. */
+function ensureSimAltitudeFromCone(coneState) {
+  if (!isSimulatorSession() || !app.simGlider || !coneState) {
+    return readEmulatedAltitudeM();
+  }
+  const existing = readEmulatedAltitudeM();
+  if (Number.isFinite(existing)) {
+    return existing;
+  }
+  const cell = sampleDemCell(app.simGlider.lng, app.simGlider.lat);
+  if (!cell) {
+    return existing;
+  }
+  const required = requiredAltitudeAt(cell.gi, cell.gj, coneState);
+  if (!Number.isFinite(required)) {
+    return existing;
+  }
+  const alt = required + 200;
+  writeSimAltitudeM(alt);
+  return alt;
+}
+
 export function updateGeoLocationPath() {
   hooks.syncEmulatedAltitudeBox?.();
   if (isCacheSelectMode() || isViewerSession()) {
@@ -342,6 +460,7 @@ export function updateGeoLocationPath() {
       void refreshOptionalArea();
     }
     updateCellTooltip();
+    hooks.syncComputeContextBar?.();
     return;
   }
 
@@ -356,29 +475,44 @@ export function updateGeoLocationPath() {
     }
     void refreshOptionalArea();
     updateCellTooltip();
+    hooks.syncComputeContextBar?.();
     return;
   }
 
   if (isSimulatorSession() && app.simGlider && coneState) {
     const { lng, lat } = app.simGlider;
+    const hadAltitude = Number.isFinite(readEmulatedAltitudeM());
+    const alt = ensureSimAltitudeFromCone(coneState);
     const cell = sampleDemCell(lng, lat);
     if (!cell?.isReachable) {
       clearGeoPath();
     } else {
-      refreshGeoPath(cell, { lng, lat }, readEmulatedAltitudeM());
+      refreshGeoPath(cell, { lng, lat }, alt);
     }
-    void refreshOptionalArea();
+    // First place often lands before altitude exists; force options once it's filled.
+    void refreshOptionalArea({ force: !hadAltitude && Number.isFinite(alt) });
     updateCellTooltip();
+    hooks.syncComputeContextBar?.();
     return;
   }
 
   clearGeoPath();
   void refreshOptionalArea();
+  if (shouldShowPlaceGliderTip()) {
+    syncPlaceGliderTip();
+    hooks.syncComputeContextBar?.();
+    return;
+  }
   updateCellTooltip();
+  hooks.syncComputeContextBar?.();
 }
 
 export function onMapMouseMove(event) {
   if (isCacheSelectMode()) {
+    return;
+  }
+  if (shouldShowPlaceGliderTip()) {
+    syncPlaceGliderTip();
     return;
   }
   if (!hooks.getInteraction().hoverPath) {
@@ -410,6 +544,7 @@ export function placeSimGlider(lng, lat, point) {
   }
 
   app.simGlider = { lng, lat };
+  hooks.onAutoModeAnchorMoved?.(lng, lat);
   const cell = sampleDemCell(lng, lat);
   const cone = hooks.getConeState();
   const required = cell && cone ? requiredAltitudeAt(cell.gi, cell.gj, cone) : null;
@@ -426,6 +561,10 @@ export function placeSimGlider(lng, lat, point) {
 
 export function onMapMouseLeave() {
   if (isCacheSelectMode()) {
+    return;
+  }
+  if (shouldShowPlaceGliderTip()) {
+    syncPlaceGliderTip();
     return;
   }
   if (!hooks.getInteraction().hoverPath) {

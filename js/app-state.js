@@ -44,6 +44,7 @@ export function createApp() {
     overlayVisibilityBeforeCache: null,
     overlayVisibilityBeforeManualAirport: null,
     footerCellHtml: null,
+    airportHoverTipActive: false,
     lastInspectAnchor: null,
     lastInspectLngLat: null,
     lastPathScreenBounds: null,
@@ -58,7 +59,7 @@ export function createApp() {
     mapLongPressFired: false,
     suppressNextMapClick: false,
     appMenuOpen: false,
-    glideConesEnabled: false,
+    glideConesEnabled: true,
     /** null until probed; false disables glide cones + ICON-CH. */
     computeHardwareSupported: null,
     baseMapRaster: "osm",

@@ -1,11 +1,15 @@
 import { formatAirportLabel, normalizeComputeAirport } from "../airport-label.js";
+import { assetUrl } from "../asset-url.js";
+import { formatAirportActionTip } from "../compute/format.js";
 import { isAutoParamsMode, isSingleParamsMode } from "../params/panel.js";
 import {
   airportIdFromComputeAirport,
   airportIdFromFeature,
 } from "./airport-id.js";
 
-const AIRPORT_PICK_LAYERS = ["airports-cached-hit"];
+const AIRPORT_PICK_LAYERS = ["airports-cached-hit", "airports-cached"];
+/** Screen-space pad so hover tips match the visible airport dots. */
+const AIRPORT_HOVER_HIT_PAD_PX = 16;
 
 let hooks;
 let app;
@@ -18,8 +22,10 @@ export function initComputeAirports(h) {
   hooks.clearComputeAirports = clearComputeAirports;
   hooks.airportIdFromComputeAirport = airportIdFromComputeAirport;
   hooks.pickAirportAtMapPoint = pickAirportAtMapPoint;
+  hooks.peekAirportAtMapPoint = peekAirportAtMapPoint;
   hooks.toggleComputeAirportAt = toggleComputeAirportAt;
   hooks.isAirportPickMode = isAirportPickMode;
+  hooks.airportActionTipHtml = airportActionTipHtml;
 }
 
 function getComputeAirports() {
@@ -71,9 +77,14 @@ function featurePickDistanceSq(map, point, feature) {
   return dx * dx + dy * dy;
 }
 
-export function pickAirportAtMapPoint(point) {
+function queryAirportFeatureAtPoint(point) {
   const map = hooks.getMap();
-  if (!map || !isAirportPickMode()) {
+  if (
+    !map ||
+    !point ||
+    hooks.getManualAirportSelectMode?.() ||
+    hooks.getCacheSelectMode?.()
+  ) {
     return null;
   }
 
@@ -82,7 +93,14 @@ export function pickAirportAtMapPoint(point) {
     return null;
   }
 
-  const features = map.queryRenderedFeatures(point, { layers });
+  // Prefer a padded box + the visible circle layer: opacity-0 hit circles are
+  // often omitted by queryRenderedFeatures.
+  const pad = AIRPORT_HOVER_HIT_PAD_PX;
+  const box = [
+    [point.x - pad, point.y - pad],
+    [point.x + pad, point.y + pad],
+  ];
+  const features = map.queryRenderedFeatures(box, { layers });
   if (!features.length) {
     return null;
   }
@@ -94,7 +112,50 @@ export function pickAirportAtMapPoint(point) {
     }))
     .sort((a, b) => a.distanceSq - b.distanceSq);
 
-  return pickFromFeature(ranked[0].feature);
+  return ranked[0].feature;
+}
+
+/** Airport under the pointer for hover tips (works in none / combined / single). */
+export function peekAirportAtMapPoint(point) {
+  const feature = queryAirportFeatureAtPoint(point);
+  if (!feature) {
+    return null;
+  }
+  const pick = pickFromFeature(feature);
+  return {
+    ...pick,
+    disabled: Boolean(feature.properties?.disabled),
+  };
+}
+
+export function pickAirportAtMapPoint(point) {
+  if (!isAirportPickMode()) {
+    return null;
+  }
+  const feature = queryAirportFeatureAtPoint(point);
+  return feature ? pickFromFeature(feature) : null;
+}
+
+function airportChromeMode() {
+  if (!hooks.isGlideConesEnabled?.()) {
+    return "none";
+  }
+  if (isSingleParamsMode()) {
+    return "single";
+  }
+  if (isAutoParamsMode()) {
+    return "auto";
+  }
+  return "none";
+}
+
+export function airportActionTipHtml(airport) {
+  return formatAirportActionTip({
+    mode: airportChromeMode(),
+    disabled: Boolean(airport?.disabled),
+    combinedIconUrl: assetUrl("icons/mode-auto.svg"),
+    singleIconUrl: assetUrl("icons/mode-single.svg"),
+  });
 }
 
 export function toggleComputeAirportAt(pick) {

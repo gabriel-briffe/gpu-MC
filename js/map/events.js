@@ -88,17 +88,18 @@ export function bindMapEvents(app, hooks) {
       return;
     }
 
-    if (hooks.isAirportPickMode?.()) {
-      const map = hooks.getMap();
-      const pickable = hooks.pickAirportAtMapPoint?.(event.point);
+    const airport = hooks.peekAirportAtMapPoint?.(event.point);
+    if (airport) {
       if (map) {
-        map.getCanvas().style.cursor = pickable ? "pointer" : "";
+        map.getCanvas().style.cursor = hooks.isAirportPickMode?.() ? "pointer" : "";
       }
-      if (pickable) {
-        hooks.onMapMouseLeave?.();
-        return;
-      }
+      hooks.showAirportHoverTip?.(airport);
+      return;
     }
+    if (map) {
+      map.getCanvas().style.cursor = "";
+    }
+    hooks.clearAirportHoverTip?.();
 
     if (hooks.getCacheSelectMode()) {
       return;
@@ -128,6 +129,10 @@ export function bindMapEvents(app, hooks) {
   });
 
   map.on("mouseleave", () => {
+    hooks.clearAirportHoverTip?.();
+    if (map) {
+      map.getCanvas().style.cursor = "";
+    }
     if (!app.interaction.hoverPath) {
       return;
     }

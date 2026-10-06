@@ -46,15 +46,24 @@ export const EMPTY_PATH = {
   properties: {},
 };
 
+/** Bottom → top. Each coloured path is casing then stroke (a group). */
 export const GLIDE_PATH_LAYER_IDS = [
-  "glide-path-geo-casing",
-  "glide-path-geo",
-  "glide-path-geo-ground-casing",
-  "glide-path-geo-ground",
-  "glide-path-casing",
-  "glide-path",
-  "glide-path-ground-casing",
-  "glide-path-ground",
+  "glide-path-glider-worst",
+  "glide-path-glider-worst-ground",
+  "glide-path-glider-arrival-casing",
+  "glide-path-glider-arrival",
+  "glide-path-glider-arrival-ground-casing",
+  "glide-path-glider-arrival-ground",
+  "glide-path-pointer-worst",
+  "glide-path-pointer-worst-ground",
+  "glide-path-glider-option-casing",
+  "glide-path-glider-option",
+  "glide-path-glider-option-ground-casing",
+  "glide-path-glider-option-ground",
+  "glide-path-option-arrival-casing",
+  "glide-path-option-arrival",
+  "glide-path-option-arrival-ground-casing",
+  "glide-path-option-arrival-ground",
   "glide-path-discs",
   "glide-sim-glider",
 ];
@@ -94,9 +103,9 @@ export const PARAM_HELP = {
   "terrain-zoom":
     "Mapterhorn DEM tile zoom (7–10). Leave at 7. zoom 8 has about 2X better resolution but takes 4X more time, zoom 9: 16x and so on.",
   "auto-window-size":
-    "In auto mode, the computed window is following the position of the center of the screen. Bigger window, longer wait during updates..",
+    "In Combined mode, the compute window follows the map centre (or the glider in Simulator). Bigger window, longer wait during updates.",
   "auto-window-from-glide":
-    "In auto mode, the computed window is following the position of the center of the screen. Bigger window, longer wait during updates. \n\nSets window half-width to 1.25 × max altitude (m) × L/D",
+    "In Combined mode, the compute window follows the map centre (or the glider in Simulator). Bigger window, longer wait during updates. \n\nSets window half-width to 1.25 × max altitude (m) × L/D",
   "include-airspace":
     "Include prohibited/overflight-restriction airspace types from OpenAIP so that trajectories go above or around.",
   "viz-mode":
@@ -117,59 +126,108 @@ export const VIZ_HINTS = {
 };
 
 export const GLIDE_PATH_GROUND_FILTER = ["==", ["get", "segment"], "ground"];
-export const GLIDE_PATH_DEFAULT_FILTER = [
+export const GLIDE_PATH_AIR_FILTER = [
   "any",
   ["!", ["has", "segment"]],
   ["!=", ["get", "segment"], "ground"],
 ];
 
-export function glidePathLayerFilter(role, ground = false) {
-  return [
-    "all",
+/** @param {{ role: string, ground?: boolean, colored?: boolean, arrival?: boolean }} opts */
+export function glidePathGroupFilter({ role, ground = false, colored = false, arrival = false }) {
+  const parts = [
     ["==", ["get", "role"], role],
-    ground ? GLIDE_PATH_GROUND_FILTER : GLIDE_PATH_DEFAULT_FILTER,
+    ground ? GLIDE_PATH_GROUND_FILTER : GLIDE_PATH_AIR_FILTER,
   ];
+  if (colored) {
+    parts.push(["has", "color"]);
+  } else {
+    parts.push(["!", ["has", "color"]]);
+  }
+  if (arrival) {
+    parts.push(["==", ["get", "segment"], "arrival"]);
+  } else if (colored) {
+    parts.push(["!=", ["get", "segment"], "arrival"]);
+  }
+  return ["all", ...parts];
 }
 
-/** Pink relay, red when already below the cone. A feature color overrides that for option paths. */
-export const GLIDE_PATH_PAINT = {
-  "line-color": [
-    "case",
-    ["has", "color"],
-    ["get", "color"],
-    [
-      "match",
-      ["get", "segment"],
-      "below-red",
-      "#ff0000",
-      "arrival",
-      "#00c000",
-      "#ff40b0",
-    ],
-  ],
-  "line-width": 3,
+/** Wide pink worst-case (air). */
+export const GLIDE_PATH_WORST_PAINT = {
+  "line-color": "#ff40b0",
+  "line-width": 6,
   "line-opacity": 1,
 };
 
-export const GLIDE_PATH_CASING_PAINT = {
-  "line-color": "#ffffff",
-  "line-width": 5,
-  "line-opacity": 1,
-};
-
-export const GLIDE_PATH_GROUND_PAINT = {
+/** Wide dotted black worst-case (ground). */
+export const GLIDE_PATH_WORST_GROUND_PAINT = {
   "line-color": "#111111",
+  "line-width": 6,
+  "line-opacity": 1,
+  "line-dasharray": [2, 2],
+};
+
+/** Glider→airport arrival: thicker white, stroke matches worst-case width. */
+export const GLIDE_PATH_GLIDER_ARRIVAL_CASING_PAINT = {
+  "line-color": "#ffffff",
+  "line-width": 12,
+  "line-opacity": 1,
+};
+
+export const GLIDE_PATH_GLIDER_ARRIVAL_PAINT = {
+  "line-color": ["coalesce", ["get", "color"], "#00c000"],
+  "line-width": 6,
+  "line-opacity": 1,
+};
+
+export const GLIDE_PATH_GLIDER_ARRIVAL_GROUND_CASING_PAINT = {
+  "line-color": "#ffffff",
+  "line-width": 12,
+  "line-opacity": 1,
+  "line-dasharray": [2, 2],
+};
+
+export const GLIDE_PATH_GLIDER_ARRIVAL_GROUND_PAINT = {
+  "line-color": ["coalesce", ["get", "color"], "#00c000"],
+  "line-width": 6,
+  "line-opacity": 1,
+  "line-dasharray": [2, 2],
+};
+
+/** Glider→option / option→airport: thinner white + narrower colour. */
+export const GLIDE_PATH_OPTION_CASING_PAINT = {
+  "line-color": "#ffffff",
+  "line-width": 6,
+  "line-opacity": 1,
+};
+
+export const GLIDE_PATH_OPTION_PAINT = {
+  "line-color": ["coalesce", ["get", "color"], "#00c000"],
+  "line-width": 3,
+  "line-opacity": 1,
+};
+
+export const GLIDE_PATH_OPTION_GROUND_CASING_PAINT = {
+  "line-color": "#ffffff",
+  "line-width": 6,
+  "line-opacity": 1,
+  "line-dasharray": [2, 2],
+};
+
+export const GLIDE_PATH_OPTION_GROUND_PAINT = {
+  "line-color": ["coalesce", ["get", "color"], "#00c000"],
   "line-width": 3,
   "line-opacity": 1,
   "line-dasharray": [2, 2],
 };
 
-export const GLIDE_PATH_GROUND_CASING_PAINT = {
-  "line-color": "#ffffff",
-  "line-width": 5,
-  "line-opacity": 1,
-  "line-dasharray": [2, 2],
-};
+// Back-compat aliases (unused by grouped layers; kept for any stray imports).
+export const GLIDE_PATH_PAINT = GLIDE_PATH_OPTION_PAINT;
+export const GLIDE_PATH_CASING_PAINT = GLIDE_PATH_OPTION_CASING_PAINT;
+export const GLIDE_PATH_GROUND_PAINT = GLIDE_PATH_WORST_GROUND_PAINT;
+export const GLIDE_PATH_GROUND_CASING_PAINT = GLIDE_PATH_OPTION_GROUND_CASING_PAINT;
+export function glidePathLayerFilter(role, ground = false) {
+  return glidePathGroupFilter({ role, ground, colored: false, arrival: false });
+}
 
 export const GLIDE_PATH_GROUND_LAYOUT = {
   "line-cap": "round",

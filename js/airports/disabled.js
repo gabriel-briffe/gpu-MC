@@ -3,11 +3,6 @@ import {
   airportIdFromManualPlacement,
   airportIdFromStoredAirport,
 } from "./airport-id.js";
-import {
-  noteAirportDisabledForTip,
-  noteAirportEnabledForTip,
-} from "./auto-disable-tip.js";
-
 const DISABLED_AIRPORTS_STORAGE_KEY = "gpu-mc-disabled-airports-v2";
 
 /** @type {Map<string, { id: string, lng: number, lat: number, label?: string }>} */
@@ -92,21 +87,17 @@ export function toggleDisabledAirportAt({ id, lng, lat, label } = {}) {
   if (disabledAirports.has(id)) {
     disabledAirports.delete(id);
     persistDisabledAirports();
-    noteAirportEnabledForTip(id);
     hooks.refreshCachedAirportMapLayer?.();
     hooks.setStatus(label ? `Enabled ${label}` : "Airport enabled");
     hooks.scheduleAutoCompute?.({ debounce: false });
-    hooks.syncModeAirportHint?.();
     return true;
   }
 
   disabledAirports.set(id, { id, lng, lat, label });
   persistDisabledAirports();
-  noteAirportDisabledForTip(id);
   hooks.refreshCachedAirportMapLayer?.();
   hooks.setStatus(label ? `Disabled ${label}` : "Airport disabled");
   hooks.scheduleAutoCompute?.({ debounce: false });
-  hooks.syncModeAirportHint?.();
   return true;
 }
 

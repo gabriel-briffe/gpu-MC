@@ -22,7 +22,21 @@ export function initSessionMode(h) {
       void setSessionMode(btn.dataset.sessionMode);
     });
   }
+  for (const title of document.querySelectorAll(".session-mode-title")) {
+    title.addEventListener("click", () => {
+      void cycleSessionMode();
+    });
+  }
   syncSessionModeUi();
+}
+
+const MODE_ORDER = [SESSION_FLIGHT, SESSION_VIEWER, SESSION_SIMULATOR];
+
+export async function cycleSessionMode() {
+  const current = getSessionMode();
+  const index = MODE_ORDER.indexOf(current);
+  const next = MODE_ORDER[(index + 1) % MODE_ORDER.length];
+  await setSessionMode(next);
 }
 
 function sessionModeButtons() {
@@ -88,6 +102,11 @@ export async function setSessionMode(mode) {
   if (mode !== SESSION_VIEWER) {
     void hooks.refreshOptionalArea?.({ force: true });
   }
+  if (mode === SESSION_SIMULATOR && app.simGlider) {
+    hooks.onAutoModeAnchorMoved?.(app.simGlider.lng, app.simGlider.lat);
+  } else if (mode !== SESSION_SIMULATOR && hooks.isAutoParamsMode?.()) {
+    hooks.scheduleAutoCompute?.({ debounce: false, refreshAirports: true });
+  }
 }
 
 function clearSimulatorAircraft() {
@@ -116,16 +135,44 @@ export function syncSessionModeUi() {
     btn.setAttribute("aria-pressed", active ? "true" : "false");
   }
 
+  // Mode box is always available (mode toggle); Help / IGC / tip stay tied to glide cones.
+  const showModeBox = !cache;
   const showChrome = !cache && glideOn;
   if (dom.simHelpBtn) {
     dom.simHelpBtn.hidden = !showChrome;
   }
   if (dom.emulatedAltBoxEl) {
-    dom.emulatedAltBoxEl.hidden = !(showChrome && mode === SESSION_SIMULATOR);
+    dom.emulatedAltBoxEl.hidden = !(showModeBox && mode === SESSION_SIMULATOR);
+  }
+  syncFlightModeBox(showModeBox && mode === SESSION_FLIGHT);
+  if (dom.viewerModeBoxEl) {
+    dom.viewerModeBoxEl.hidden = !(showModeBox && mode === SESSION_VIEWER);
   }
   hooks.syncIgcReplayBar?.(showChrome && mode === SESSION_SIMULATOR);
   if (mode !== SESSION_SIMULATOR) {
     hooks.setSimManualOpen?.(false);
   }
   hooks.syncOptionalVizHint?.();
+  hooks.syncPlaceGliderTip?.();
+}
+
+function syncFlightModeBox(show) {
+  const box = dom.flightModeBoxEl;
+  if (!box) {
+    return;
+  }
+  box.hidden = !show;
+  if (!show) {
+    return;
+  }
+  const subtitle = dom.flightModeSubtitleEl;
+  if (!subtitle) {
+    return;
+  }
+  const geo = hooks.getLastGeoLngLat?.();
+  const hasPosition = Boolean(geo && Number.isFinite(geo.lng) && Number.isFinite(geo.lat));
+  subtitle.hidden = hasPosition;
+  if (!hasPosition) {
+    subtitle.textContent = "No position…";
+  }
 }

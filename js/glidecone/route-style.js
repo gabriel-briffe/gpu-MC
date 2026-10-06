@@ -88,10 +88,9 @@ function pushDisc(discs, lngLat, role) {
 }
 
 /**
- * Upward relay styled like XCSoar: pink, black dashed downhill-ground,
- * red prefix when already below the cone and steeper than 80% L/D,
- * red discs where an 80% pretend altitude meets the ground.
- * panPath uses the pan rules (first ground contact, no red prefix).
+ * Upward relay styled like XCSoar: wide pink in the air, black dashed downhill-ground,
+ * red discs where an 80% pretend altitude meets the ground (critical points).
+ * panPath uses the pan rules (first ground contact).
  */
 export function styleUpwardRoute({
   cells,
@@ -202,7 +201,6 @@ export function styleUpwardRoute({
     const to = cells[i];
     const geoFrom = i === 1 && startLngLat ? startLngLat : gridCellToLngLat(from.x, from.y, dem);
     const geoTo = gridCellToLngLat(to.x, to.y, dem);
-    const inBelow = belowCritSeg > 0 && i <= belowCritSeg;
     const pastResume = belowCritSeg === 0 || i >= belowCritSeg;
     const dist = distanceMetres(geoFrom.lat, geoFrom.lng, geoTo.lat, geoTo.lng);
     if (pastResume && trackAlt && safetyLd > 0) {
@@ -224,7 +222,8 @@ export function styleUpwardRoute({
       }
     }
 
-    const nextSegment = inBelow ? "below-red" : isDownhillGround(from, to, ground, dem) ? "ground" : "default";
+    // Path stroke is only pink or dotted black; critical points are red discs only.
+    const nextSegment = isDownhillGround(from, to, ground, dem) ? "ground" : "default";
     const fromCoord = [geoFrom.lng, geoFrom.lat];
     const toCoord = [geoTo.lng, geoTo.lat];
     if (segment === nextSegment && coordinates.length > 0) {

@@ -3,6 +3,7 @@ import { seedAtGridCell } from "./airport-label.js";
 import { ensurePathLayer, raisePathLayer } from "./map/layers.js";
 import { styleUpwardRoute } from "./glidecone/route-style.js";
 import { clearProbeArrival, optionAreaCellColor, scheduleProbeArrival } from "./optional-area.js";
+import { isIgcPlaying } from "./igc-replay-ui.js";
 import { isFlightSession, isSimulatorSession, sessionHasAircraft } from "./session-mode.js";
 
 const PATH_SOURCE_ID = "glide-path";
@@ -15,6 +16,7 @@ let aircraftArrival = [];
 let probeLines = [];
 let panPink = [];
 let probeArrival = [];
+let lastProbeArrivalField = null;
 let discsGeo = [];
 let discsProbe = [];
 
@@ -182,6 +184,122 @@ function bestSeedIndex(field, dem) {
   return bestI;
 }
 
+/** Path + seed metrics for the airport with the highest arrival (options field). */
+export function highestArrivalPathMetrics() {
+  const field = app?.optionalField;
+  const coneState = hooks.getConeState();
+  const dem = coneState?.dem;
+  if (!field?.originX || !field?.arrivals || !dem || !Number.isFinite(field.startLng)) {
+    return null;
+  }
+  const { glideRatio, circuitHeight, ground } = coneState;
+  const best = bestSeedIndex(field, dem);
+  const startIdx = field.startGj * dem.width + field.startGi;
+  if (best < 0 || best === startIdx) {
+    return null;
+  }
+  const endX = best % dem.width;
+  const endY = (best / dem.width) | 0;
+  const endPt = gridCellToLngLat(endX, endY, dem);
+  const coordinates = originPolyline(
+    field.originX,
+    field.originY,
+    dem,
+    field.startGi,
+    field.startGj,
+    { lng: field.startLng, lat: field.startLat },
+    endX,
+    endY,
+    endPt
+  );
+  const prefixed = prefixEscapeSegment(field, dem, coordinates);
+  if (!prefixed || prefixed.length < 2) {
+    return null;
+  }
+  let distanceM = 0;
+  for (let i = 1; i < prefixed.length; i += 1) {
+    const a = prefixed[i - 1];
+    const b = prefixed[i];
+    distanceM += distanceMetres(a[1], a[0], b[1], b[0]);
+  }
+  const seedAlt = seedAltitudeAt(dem, best, circuitHeight);
+  const seed = seedAtGridCell(dem, endX, endY);
+  return {
+    distanceM,
+    requiredAlt: seedAlt + distanceM / glideRatio,
+    seedAlt,
+    seedIcao: seed?.icao ?? null,
+    seedName: seed?.name ?? seed?.label ?? null,
+    isGroundSeed: ground[best] === 1,
+    complete: true,
+    maxSegmentLd: null,
+  };
+}
+
+/** Prefer highest-arrival airport; fall back to upward-cone seed path. */
+export function aircraftPathMetrics(cell) {
+  return highestArrivalPathMetrics() ?? (cell?.isReachable ? seedPathMetrics(cell) : null);
+}
+
+function coordinatesDistanceM(coordinates) {
+  if (!coordinates || coordinates.length < 2) {
+    return 0;
+  }
+  let distanceM = 0;
+  for (let i = 1; i < coordinates.length; i += 1) {
+    const a = coordinates[i - 1];
+    const b = coordinates[i];
+    distanceM += distanceMetres(a[1], a[0], b[1], b[0]);
+  }
+  return distanceM;
+}
+
+/** Glider→option + option→airport (highest arrival). Null until both legs exist. */
+export function optionViaPathMetrics(cell) {
+  if (!cell || !sessionHasAircraft() || !aircraftLngLat() || !isPointerInOptionArea(cell)) {
+    return null;
+  }
+  const coneState = hooks.getConeState();
+  const dem = coneState?.dem;
+  if (!dem) {
+    return null;
+  }
+
+  const toOption = panPinkFeatures(cell);
+  const optionCoords = toOption[0]?.geometry?.coordinates;
+  if (!optionCoords || optionCoords.length < 2) {
+    return null;
+  }
+
+  const field = lastProbeArrivalField;
+  if (!field || field.startGi !== cell.gi || field.startGj !== cell.gj) {
+    return null;
+  }
+  const best = bestSeedIndex(field, dem);
+  if (best < 0) {
+    return null;
+  }
+  const toAirport = arrivalFeatures(field, "inspect");
+  const airportCoords = toAirport[0]?.geometry?.coordinates;
+  if (!airportCoords || airportCoords.length < 2) {
+    return null;
+  }
+
+  const endX = best % dem.width;
+  const endY = (best / dem.width) | 0;
+  const seed = seedAtGridCell(dem, endX, endY);
+  return {
+    distanceM: coordinatesDistanceM(optionCoords) + coordinatesDistanceM(airportCoords),
+    seedAlt: seedAltitudeAt(dem, best, coneState.circuitHeight),
+    seedIcao: seed?.icao ?? null,
+    seedName: seed?.name ?? seed?.label ?? null,
+  };
+}
+
+export function isOptionAreaCell(cell) {
+  return isPointerInOptionArea(cell);
+}
+
 function arrivalFeatures(field, role) {
   const coneState = hooks.getConeState();
   const dem = coneState?.dem;
@@ -207,7 +325,9 @@ function arrivalFeatures(field, role) {
     endY,
     endPt
   );
-  const color = optionCellColor(startIdx);
+  // Degraded masks: colour by the destination airport cell (red / yellow / green).
+  const degraded = field.mask10 != null || field.mask20 != null;
+  const color = optionCellColor(degraded ? best : startIdx);
   const prefixed = prefixEscapeSegment(field, dem, coordinates);
   return prefixed ? [lineFeature(role, "arrival", prefixed, color)] : [];
 }
@@ -285,18 +405,26 @@ function isNearAircraft(lngLat) {
   return distanceMetres(aircraft.lat, aircraft.lng, lngLat.lat, lngLat.lng) < PROBE_SEPARATION_M;
 }
 
-/** With a glider and an option area, the mouse worst-case path stays inside that area. */
-function optionAreaHidesMouseWorstPath(cell) {
-  if (!sessionHasAircraft() || !aircraftLngLat()) {
-    return false;
-  }
+/** True when the pointer cell is inside the active option area. */
+function isPointerInOptionArea(cell) {
   const field = app.optionalField;
   const dem = hooks.getConeState()?.dem;
   if (!field?.mask || !dem || !cell) {
     return false;
   }
   const idx = cell.gj * dem.width + cell.gi;
-  return field.mask[idx] !== 1;
+  return field.mask[idx] === 1;
+}
+
+/** With a glider and options, mouse paths are only drawn on option cells. */
+function optionAreaBlocksMousePaths(cell) {
+  if (!sessionHasAircraft() || !aircraftLngLat()) {
+    return false;
+  }
+  if (!app.optionalField?.mask) {
+    return false;
+  }
+  return !isPointerInOptionArea(cell);
 }
 
 export function traceOriginRelayPath(x, y, dem, originX, originY) {
@@ -458,20 +586,28 @@ export function initGlidePath(h) {
   app = h.app;
   hooks.setAircraftArrivalPath = (field) => {
     aircraftArrival = arrivalFeatures(field, "geo");
-    if (app.lastInspectCell) {
+    if (app.lastInspectCell && !isIgcPlaying()) {
       panPink = panPinkFeatures(app.lastInspectCell);
+    } else {
+      panPink = [];
     }
     syncPathSource();
+    hooks.syncComputeContextBar?.();
   };
+  hooks.clearOptionInspectPaths = clearOptionInspectPaths;
   hooks.setProbeArrivalPath = (field) => {
+    lastProbeArrivalField = field;
     probeArrival = field ? arrivalFeatures(field, "inspect") : [];
     syncPathSource();
+    hooks.refreshInspectTooltip?.();
   };
   hooks.clearArrivalPaths = () => {
     aircraftArrival = [];
     probeArrival = [];
+    lastProbeArrivalField = null;
     panPink = [];
     syncPathSource();
+    hooks.syncComputeContextBar?.();
   };
 }
 
@@ -505,19 +641,55 @@ export function refreshGeoPath(cell, startLngLat, startAlt) {
   syncPathSource();
 }
 
+/** Drop glider→option / option→airport; keep aircraft highest-arrival. */
+export function clearOptionInspectPaths() {
+  panPink = [];
+  probeArrival = [];
+  lastProbeArrivalField = null;
+  clearProbeArrival();
+  syncPathSource();
+  hooks.setLastPathScreenBounds(null);
+  hooks.refreshInspectTooltip?.();
+}
+
 export function refreshInspectPath(cell) {
   const startLngLat = app.lastInspectLngLat;
-  if (isNearAircraft(startLngLat) || optionAreaHidesMouseWorstPath(cell)) {
+  if (isNearAircraft(startLngLat) || optionAreaBlocksMousePaths(cell)) {
     probeLines = [];
     discsProbe = [];
-    panPink = [];
-    probeArrival = [];
-    clearProbeArrival();
-    syncPathSource();
-    hooks.setLastPathScreenBounds(null);
-    hooks.updateCellTooltip();
+    clearOptionInspectPaths();
     return;
   }
+
+  // IGC playing: highest arrival only — no option paths or probe compute.
+  if (isIgcPlaying()) {
+    probeLines = [];
+    discsProbe = [];
+    clearOptionInspectPaths();
+    return;
+  }
+
+  // Option cell with aircraft: glider→option + highest arrival from there (no worst-case).
+  if (
+    sessionHasAircraft() &&
+    aircraftLngLat() &&
+    isPointerInOptionArea(cell)
+  ) {
+    probeLines = [];
+    discsProbe = [];
+    panPink = panPinkFeatures(cell);
+    const panCoords = panPink.flatMap((feature) => feature.geometry.coordinates);
+    if (panCoords.length >= 2) {
+      hooks.setLastPathScreenBounds(hooks.pathScreenBounds(panCoords));
+    } else {
+      hooks.setLastPathScreenBounds(null);
+    }
+    syncPathSource();
+    scheduleProbeArrival(cell);
+    hooks.refreshInspectTooltip?.();
+    return;
+  }
+
   const styled = styledRoute(cell, "inspect", startLngLat, null, true);
   probeLines = styled.lines;
   discsProbe = styled.discs;
@@ -530,7 +702,7 @@ export function refreshInspectPath(cell) {
   }
   syncPathSource();
   scheduleProbeArrival(cell);
-  hooks.updateCellTooltip();
+  hooks.refreshInspectTooltip?.();
 }
 
 export function clearGeoPath() {
@@ -544,6 +716,7 @@ export function clearInspectPath() {
   discsProbe = [];
   panPink = [];
   probeArrival = [];
+  lastProbeArrivalField = null;
   clearProbeArrival();
   syncPathSource();
 }

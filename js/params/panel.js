@@ -208,7 +208,6 @@ export function setParamsMode(mode, { initial = false } = {}) {
   app.hooks.persistParamsState?.();
   app.hooks.updateParamsFooter?.();
   app.hooks.syncGlideModeCycleButton?.();
-  app.hooks.syncModeAirportHint?.();
 }
 
 export function syncDebugUi() {
@@ -217,7 +216,6 @@ export function syncDebugUi() {
   document.body.classList.toggle("debug-mode", debug);
   app.hooks.syncEmulatedAltitudeBox?.();
   app.hooks.syncDownwardMethodButton?.();
-  app.hooks.syncFlightShaderButton?.();
   app.hooks.syncDownloadContoursButton();
   app.hooks.syncBaseMapTerrainMaxZoom?.();
   syncVizModeDebugOptions();

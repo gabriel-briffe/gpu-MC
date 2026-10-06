@@ -15,6 +15,7 @@ import { getManualAirportsInBounds } from "../airports/manual-airports.js";
 import { airportIdFromStoredAirport } from "../airports/airport-id.js";
 import { formatAirportLabel } from "../airport-label.js";
 import { isAutoParamsMode } from "../params/panel.js";
+import { isSimulatorSession } from "../session-mode.js";
 
 let hooks;
 let app;
@@ -26,9 +27,27 @@ export function initAutoCompute(h) {
   hooks.flushAutoCompute = flushAutoCompute;
   hooks.cancelPendingAutoCompute = cancelPendingAutoCompute;
   hooks.onAutoModeMapMoveEnd = onAutoModeMapMoveEnd;
+  hooks.onAutoModeAnchorMoved = onAutoModeAnchorMoved;
   hooks.syncAutoWindowSizeUi = syncAutoWindowSizeUi;
   hooks.getAutoComputePending = () => app.autoComputePending;
   hooks.clearAutoComputeScheduling = clearAutoComputeScheduling;
+}
+
+/** Combined-mode window center: glider in Simulator, else map center. */
+function getAutoComputeAnchorLngLat(map) {
+  if (isSimulatorSession()) {
+    const glider = app.simGlider;
+    if (
+      glider &&
+      Number.isFinite(glider.lng) &&
+      Number.isFinite(glider.lat)
+    ) {
+      return { lng: glider.lng, lat: glider.lat };
+    }
+    return null;
+  }
+  const center = map.getCenter();
+  return { lng: center.lng, lat: center.lat };
 }
 
 export function clearAutoComputeScheduling() {
@@ -133,7 +152,12 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
   }
 
   const windowSizeKm = getAutoWindowSizeKm();
-  const center = map.getCenter();
+  const center = getAutoComputeAnchorLngLat(map);
+  if (!center) {
+    hooks.clearComputeResults?.();
+    hooks.setStatus("Auto: place the glider to set the compute window");
+    return;
+  }
   const requestedBounds = kmBoxAroundLngLat(center.lng, center.lat, windowSizeKm);
   app.autoComputeRegion = { ...requestedBounds, windowSizeKm };
 
@@ -164,11 +188,13 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
     }))
   );
 
+  const emptyWindowHint = isSimulatorSession()
+    ? `Auto: no airports in ${windowSizeKm * 2} km window around the glider — move glider or cache cells first`
+    : `Auto: no airports in ${windowSizeKm * 2} km window — pan map or cache cells first`;
+
   if (airportsInWindow.length === 0) {
     hooks.clearComputeResults?.();
-    hooks.setStatus(
-      `Auto: no airports in ${windowSizeKm * 2} km window — pan map or cache cells first`
-    );
+    hooks.setStatus(emptyWindowHint);
     return;
   }
 
@@ -180,9 +206,7 @@ async function runAutoComputation({ refreshAirports = false } = {}) {
         `Auto: all airports in window disabled — click one on the map to enable`
       );
     } else {
-      hooks.setStatus(
-        `Auto: no airports in ${windowSizeKm * 2} km window — pan map or cache cells first`
-      );
+      hooks.setStatus(emptyWindowHint);
     }
     return;
   }
@@ -252,21 +276,35 @@ export async function flushAutoCompute() {
 }
 
 export function onAutoModeMapMoveEnd() {
-  if (
-    !isAutoParamsMode() ||
-    hooks.getCacheSelectMode() ||
-    !app.autoComputeRegion ||
-    hooks.isComputing() ||
-    !hooks.isGlideConesEnabled?.()
-  ) {
+  // Simulator combined window follows the glider, not the map.
+  if (isSimulatorSession()) {
     return;
   }
   const map = hooks.getMap();
+  if (!map) {
+    return;
+  }
   const center = map.getCenter();
+  onAutoModeAnchorMoved(center.lng, center.lat);
+}
+
+/** Recompute when the combined-mode anchor (map center or glider) leaves the stay zone. */
+export function onAutoModeAnchorMoved(lng, lat) {
   if (
+    !isAutoParamsMode() ||
+    hooks.getCacheSelectMode() ||
+    hooks.isComputing() ||
+    !hooks.isGlideConesEnabled?.() ||
+    !Number.isFinite(lng) ||
+    !Number.isFinite(lat)
+  ) {
+    return;
+  }
+  if (
+    app.autoComputeRegion &&
     isInsideKmBoxInnerZone(
-      center.lng,
-      center.lat,
+      lng,
+      lat,
       app.autoComputeRegion,
       AUTO_MAX_OFFSET_FROM_CENTER
     )

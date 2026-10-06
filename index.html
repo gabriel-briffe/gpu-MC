@@ -35,13 +35,6 @@
       </button>
       <button
         type="button"
-        id="flight-shader-btn"
-        class="iconch1-step-btn flight-shader-btn"
-        hidden
-        aria-label="Shader optional area from current position. Long press opens the options area visualisation."
-      >S</button>
-      <button
-        type="button"
         id="downward-method-btn"
         class="iconch1-step-btn downward-method-btn"
         hidden
@@ -50,12 +43,6 @@
       >D</button>
     </div>
     <p id="capability-warning" class="capability-warning" hidden role="status"></p>
-    <p id="glide-settings-longpress-hint" class="chrome-longpress-hint" hidden>
-      ← long click here to change glide parameters and visualisation
-    </p>
-    <p id="gradient-settings-longpress-hint" class="chrome-longpress-hint" hidden>
-      ← long click here to change gradient parameters
-    </p>
     <div id="app-menu-backdrop" class="app-menu-backdrop" hidden></div>
 
     <div id="cache-select-bar" class="map-select-bar" hidden>
@@ -154,8 +141,6 @@
         </button>
       </div>
     </div>
-
-    <div id="mode-airport-hint" class="mode-airport-hint" hidden aria-live="polite"></div>
 
     <div id="iconch1-chrome" hidden>
       <header class="iconch1-time-header" id="iconch1-time-header" aria-label="Forecast time">
@@ -346,7 +331,7 @@
           Single
         </button>
         <button type="button" class="params-mode-btn" id="params-mode-auto" aria-pressed="true">
-          Auto
+          Combined
         </button>
       </div>
           <div id="glidecones-settings" class="app-menu-subsection" hidden>
@@ -627,29 +612,6 @@
           </div>
 
           <div class="params-section">
-            <div class="params-section-actions">
-              <button type="button" class="action-btn btn-blue" id="add-manual-airports">
-                Add manual airports
-              </button>
-            </div>
-            <div class="include-manual-airports-row" id="include-manual-airports-field" hidden>
-              <label class="param-check" for="include-manual-airports">
-                <input id="include-manual-airports" type="checkbox" />
-                <span>Include manual airports</span>
-              </label>
-            </div>
-            <div class="include-manual-airports-row" id="disable-imported-airports-field" hidden>
-              <label class="param-check" for="disable-imported-airports">
-                <input id="disable-imported-airports" type="checkbox" />
-                <span>Disable imported airports</span>
-              </label>
-            </div>
-            <div class="params-section-actions">
-              <button type="button" class="action-btn btn-blue" id="open-cache-data">
-                Add data
-              </button>
-            </div>
-            <hr class="params-section-divider" />
             <div class="params-fields">
               <div class="param-field param-field-full" id="debug-mode-field">
                 <label class="param-check" for="debug-mode">
@@ -757,17 +719,58 @@
             </div>
           </div>
         </section>
+
+        <hr class="app-menu-divider" id="data-divider" />
+
+        <section class="app-menu-section" id="data-section">
+          <h2 class="app-menu-section-title">Data</h2>
+          <div class="params-section-actions">
+            <button type="button" class="action-btn btn-blue" id="add-manual-airports">
+              Add manual airports
+            </button>
+          </div>
+          <div class="include-manual-airports-row" id="include-manual-airports-field" hidden>
+            <label class="param-check" for="include-manual-airports">
+              <input id="include-manual-airports" type="checkbox" />
+              <span>Include manual airports</span>
+            </label>
+          </div>
+          <div class="include-manual-airports-row" id="disable-imported-airports-field" hidden>
+            <label class="param-check" for="disable-imported-airports">
+              <input id="disable-imported-airports" type="checkbox" />
+              <span>Disable imported airports</span>
+            </label>
+          </div>
+          <div class="params-section-actions">
+            <button type="button" class="action-btn btn-blue" id="open-cache-data">
+              Add data
+            </button>
+          </div>
+        </section>
       </div>
     </div>
     <div id="param-help-popover" hidden role="tooltip"></div>
     <div id="sim-top-cluster" class="sim-top-cluster">
-      <div id="emulated-alt-box" class="emulated-alt-box" hidden>
-        <p id="sim-title" class="sim-title">Glide cone simulator</p>
+      <div id="emulated-alt-box" class="session-mode-box emulated-alt-box" hidden>
+        <button type="button" id="sim-title" class="session-mode-title" aria-label="Cycle session mode">
+          Simulator
+        </button>
         <div class="sim-alt-row">
           <label for="emulated-altitude">Altitude (m)</label>
           <input id="emulated-altitude" type="number" inputmode="decimal" step="10" placeholder="MSL" />
         </div>
         <p id="sim-readout" class="sim-readout" hidden></p>
+      </div>
+      <div id="flight-mode-box" class="session-mode-box flight-mode-box" hidden>
+        <button type="button" class="session-mode-title session-mode-title-toggle" aria-label="Cycle session mode">
+          Flight
+        </button>
+        <p id="flight-mode-subtitle" class="session-mode-subtitle">No position…</p>
+      </div>
+      <div id="viewer-mode-box" class="session-mode-box viewer-mode-box" hidden>
+        <button type="button" class="session-mode-title session-mode-title-toggle" aria-label="Cycle session mode">
+          Viewer
+        </button>
       </div>
       <div id="cell-tooltip" hidden aria-live="polite"></div>
       <div id="options-degraded-legend" class="options-degraded-legend" hidden aria-label="Degraded masks legend">
@@ -796,9 +799,12 @@
       <div id="sim-replay" class="sim-replay" hidden>
         <button type="button" id="igc-btn" class="sim-help-btn igc-btn">IGC</button>
         <input id="igc-file" type="file" accept=".igc,text/plain,.txt" hidden />
-        <input id="igc-slider" class="igc-slider" type="range" min="0" max="0" step="1" value="0" disabled aria-label="Flight time" />
-        <button type="button" id="igc-play" class="sim-help-btn igc-play" disabled aria-label="Play flight">Play</button>
-        <button type="button" id="igc-speed" class="sim-help-btn igc-speed" disabled aria-label="Playback speed">1x</button>
+        <button type="button" id="igc-clear" class="sim-help-btn igc-clear" hidden aria-label="Remove IGC flight">
+          🗑
+        </button>
+        <input id="igc-slider" class="igc-slider" type="range" min="0" max="0" step="1" value="0" hidden disabled aria-label="Flight time" />
+        <button type="button" id="igc-play" class="sim-help-btn igc-play" hidden aria-label="Play flight">Play</button>
+        <button type="button" id="igc-speed" class="sim-help-btn igc-speed" hidden aria-label="Playback speed">1x</button>
       </div>
     </div>
     <div id="sim-manual" class="sim-manual" hidden>
@@ -814,23 +820,29 @@
           <p>
             This is the same picture as the glide cone in XCSoar. The white dot with the pink ring is the glider. In Simulator mode it stays where you put it.
           </p>
-          <h3>Glide button</h3>
-          <p>The button at the top left cycles through three states.</p>
+          <h3>Top-left buttons</h3>
+          <p>
+            <strong>Glide button</strong> — tap to cycle Combined → Single → Off. Long-press opens glide parameters and visualisation.
+          </p>
           <ul class="sim-manual-key">
             <li>
-              <img class="glide-mode-help-icon" src="icons/mode-none.svg" alt="" />
-              <span>Off: nothing is computed.</span>
+              <img class="glide-mode-help-icon" src="icons/mode-auto.svg" alt="" />
+              <span>
+                <strong>Combined:</strong> every airport in view is computed. Click an airport in the cone to turn it off or on again.
+              </span>
             </li>
             <li>
               <img class="glide-mode-help-icon" src="icons/mode-single.svg" alt="" />
-              <span>One: click an airport, and that one is computed.</span>
+              <span><strong>Single:</strong> click an airport to compute that one only.</span>
             </li>
             <li>
-              <img class="glide-mode-help-icon" src="icons/mode-auto.svg" alt="" />
-              <span>All in the window: every airport in view is computed, except the ones you have turned off.</span>
+              <img class="glide-mode-help-icon" src="icons/mode-none.svg" alt="" />
+              <span><strong>Off:</strong> nothing is computed.</span>
             </li>
           </ul>
-          <p>A long press on this button opens the glide cone parameters and the options area visualisation.</p>
+          <p>
+            <strong>Basemap button</strong> — tap to cycle map styles. On the altitude gradient style, long-press opens gradient min/max settings.
+          </p>
           <h3>On a computer</h3>
           <p>Mouse over shows the worst-case path back.</p>
           <p>Click places the glider.</p>

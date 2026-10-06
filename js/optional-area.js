@@ -4,12 +4,10 @@ import { dom } from "./dom.js";
 import { raisePathLayer } from "./map/layers.js";
 import { buildOptionalMask } from "./optional-area-mask.js";
 import { ridgeEscapeSeed } from "./ridge-escape.js";
-import { initIgcReplay, isIgcReplayOn } from "./igc-replay-ui.js";
+import { initIgcReplay, isIgcPlaying, isIgcReplayOn } from "./igc-replay-ui.js";
 import { cellMarginT, marginHex, marginRgb } from "./glidecone/margin-color.js";
 import { requiredAltitudeAt } from "./glidecone/route-style.js";
 import { gridCellToLngLat, gridIndexFromLngLat } from "./geo.js";
-import { bindLongPress } from "./ui/long-press.js";
-import { isGlideConesEnabled } from "./app-menu.js";
 import { isFlightSession, isSimulatorSession, isViewerSession, sessionHasAircraft } from "./session-mode.js";
 
 const SOURCE_ID = "glide-optional";
@@ -27,15 +25,6 @@ let probeToken = 0;
 
 export function downwardMethod() {
   return app?.downwardMethod === "shader" ? "shader" : "dijkstra";
-}
-
-function syncFlightShaderButton() {
-  const button = dom.flightShaderBtn;
-  if (!button) {
-    return;
-  }
-  const show = !isDebugMode() && isGlideConesEnabled() && app?.computeHardwareSupported !== false && !app?.cacheSelectMode;
-  button.hidden = !show;
 }
 
 function syncDownwardMethodButton() {
@@ -746,6 +735,9 @@ export function scheduleProbeArrival(cell) {
   const field = app.optionalField;
   const dem = coneState?.dem;
   hooks?.setProbeArrivalPath?.(null);
+  if (isIgcPlaying()) {
+    return;
+  }
   if (!cell || !field?.mask || !dem) {
     return;
   }
@@ -955,7 +947,7 @@ async function runOptionalRefresh({ force = false } = {}) {
         viz === "degraded" ? "Optional area, degraded masks" : `Optional area, ${field.iterations} iterations`
       );
     }
-    if (app.lastInspectCell) {
+    if (app.lastInspectCell && !isIgcPlaying()) {
       scheduleProbeArrival(app.lastInspectCell);
     }
     finishOptionsTiming(timingToken, startedAt);
@@ -976,7 +968,6 @@ export function initOptionalArea(h) {
   app = h.app;
   hooks.syncEmulatedAltitudeBox = syncEmulatedAltitudeBox;
   hooks.syncDownwardMethodButton = syncDownwardMethodButton;
-  hooks.syncFlightShaderButton = syncFlightShaderButton;
   hooks.clearOptionalArea = clearOptionalArea;
   hooks.refreshOptionalArea = refreshOptionalArea;
   hooks.syncOptionalVizHint = syncOptionalVizHint;
@@ -1014,15 +1005,6 @@ export function initOptionalArea(h) {
     onEmulatedAltitudeEdited(dom.emulatedAltitudeMenuInput);
   });
 
-  bindLongPress(dom.flightShaderBtn, {
-    onShort: () => {
-      void recomputeFlightShaderArea();
-    },
-    onLong: () => {
-      hooks.openGlideSettings?.({ scrollToOptionalViz: true });
-    },
-  });
-
   dom.simHelpBtn?.addEventListener("click", () => {
     setSimManualOpen(dom.simManualEl?.hidden !== false);
   });
@@ -1054,26 +1036,5 @@ export function initOptionalArea(h) {
   initIgcReplay(hooks);
   syncEmulatedAltitudeBox();
   syncDownwardMethodButton();
-  syncFlightShaderButton();
   syncOptionalVizHint();
-}
-
-async function recomputeFlightShaderArea() {
-  if (isDebugMode() || !isGlideConesEnabled() || isViewerSession()) {
-    return;
-  }
-  const coneState = hooks.getConeState?.();
-  if (!coneState?.dem) {
-    hooks.setStatus?.("Compute a glide cone first");
-    return;
-  }
-  const flight = isFlightSession();
-  const alt = flight ? app.lastGeoAltitude : readEmulatedAltitudeM();
-  if (!Number.isFinite(alt) || (flight ? !hooks.getLastGeoLngLat?.() : !app.simGlider)) {
-    hooks.setStatus?.(flight ? "Need a current altitude" : "Set an altitude, then click the map to place the glider");
-    return;
-  }
-  dom.flightShaderBtn?.classList.add("is-busy");
-  await refreshOptionalArea({ force: true });
-  dom.flightShaderBtn?.classList.remove("is-busy");
 }

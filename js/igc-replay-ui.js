@@ -27,14 +27,20 @@ function duration() {
 
 function setTransportEnabled(enabled) {
   if (dom.igcSlider) {
+    dom.igcSlider.hidden = !enabled;
     dom.igcSlider.disabled = !enabled;
     dom.igcSlider.max = String(Math.max(0, Math.round(duration())));
   }
   if (dom.igcPlayBtn) {
+    dom.igcPlayBtn.hidden = !enabled;
     dom.igcPlayBtn.disabled = !enabled;
   }
   if (dom.igcSpeedBtn) {
+    dom.igcSpeedBtn.hidden = !enabled;
     dom.igcSpeedBtn.disabled = !enabled;
+  }
+  if (dom.igcClearBtn) {
+    dom.igcClearBtn.hidden = !enabled;
   }
 }
 
@@ -51,6 +57,7 @@ function applyFix(second) {
   if (dom.igcSlider && document.activeElement !== dom.igcSlider) {
     dom.igcSlider.value = String(Math.round(seconds));
   }
+  hooks.onAutoModeAnchorMoved?.(fix.lng, fix.lat);
   hooks.updateGeoLocationPath?.();
   hooks.syncComputeContextBar?.();
   if (playing) {
@@ -96,6 +103,8 @@ function play() {
     dom.igcPlayBtn.textContent = "Pause";
     dom.igcPlayBtn.setAttribute("aria-label", "Pause flight");
   }
+  // During play: highest arrival only — drop glider→option / option→airport.
+  hooks.clearOptionInspectPaths?.();
   frame = requestAnimationFrame(tick);
 }
 
@@ -132,8 +141,22 @@ function isTypingTarget(target) {
   );
 }
 
+function clearLoadedIgc() {
+  stopIgcReplay();
+  if (hooks?.app) {
+    hooks.app.simGlider = null;
+  }
+  hooks?.updateGeoLocationPath?.();
+  hooks?.syncComputeContextBar?.();
+  hooks?.setStatus?.("IGC cleared");
+}
+
 export function isIgcReplayOn() {
   return fixes.length > 0;
+}
+
+export function isIgcPlaying() {
+  return playing;
 }
 
 export function stopIgcReplay() {
@@ -164,6 +187,9 @@ export function initIgcReplay(h) {
   setTransportEnabled(false);
   dom.igcBtn?.addEventListener("click", () => {
     dom.igcFileInput?.click();
+  });
+  dom.igcClearBtn?.addEventListener("click", () => {
+    clearLoadedIgc();
   });
   dom.igcFileInput?.addEventListener("change", async () => {
     const file = dom.igcFileInput.files?.[0];
