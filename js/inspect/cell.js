@@ -17,6 +17,7 @@ import {
 import { readEmulatedAltitudeM, refreshOptionalArea, writeSimAltitudeM } from "../optional-area.js";
 import { requiredAltitudeAt } from "../glidecone/route-style.js";
 import { dom } from "../dom.js";
+import { isFlightSession, isSimulatorSession, isViewerSession } from "../session-mode.js";
 
 let hooks;
 let app;
@@ -86,25 +87,10 @@ function viewportInsets() {
   };
 }
 
-function positionDebugCellTooltip(cellTooltipEl) {
-  const width = cellTooltipEl.offsetWidth;
-  const height = cellTooltipEl.offsetHeight;
-  const { left: minLeft, top: minTop, right: maxRight, bottom: maxBottom } = viewportInsets();
-  const gap = 8;
-  const box = dom.emulatedAltBoxEl;
-  let left = maxRight - width;
-  let top = minTop + gap;
-
-  if (box && !box.hidden) {
-    const rect = box.getBoundingClientRect();
-    left = rect.right - width;
-    top = rect.bottom + gap;
-  }
-
-  left = Math.max(minLeft, Math.min(left, maxRight - width));
-  top = Math.max(minTop, Math.min(top, maxBottom - height));
-  cellTooltipEl.style.left = `${left}px`;
-  cellTooltipEl.style.top = `${top}px`;
+function positionParkedCellTooltip(cellTooltipEl) {
+  // Flex layout in #sim-top-cluster places it left of the legend.
+  cellTooltipEl.style.left = "";
+  cellTooltipEl.style.top = "";
 }
 
 export function positionCellTooltip() {
@@ -112,59 +98,7 @@ export function positionCellTooltip() {
   if (!cellTooltipEl || cellTooltipEl.hidden) {
     return;
   }
-
-  // Debug: park under the emulated-alt box (right), don't follow the pointer.
-  if (isDebugMode()) {
-    positionDebugCellTooltip(cellTooltipEl);
-    return;
-  }
-
-  if (!app.lastInspectAnchor) {
-    return;
-  }
-
-  const { x, y } = app.lastInspectAnchor;
-  const gap = 16;
-  const width = cellTooltipEl.offsetWidth;
-  const height = cellTooltipEl.offsetHeight;
-  const { left: minLeft, top: minTop, right: maxRight, bottom: maxBottom } = viewportInsets();
-
-  const placements = [
-    { left: x + gap, top: y + gap },
-    { left: x - gap - width, top: y + gap },
-    { left: x + gap, top: y - gap - height },
-    { left: x - gap - width, top: y - gap - height },
-  ];
-
-  let chosen = placements.find(
-    (place) =>
-      place.left >= minLeft &&
-      place.top >= minTop &&
-      place.left + width <= maxRight &&
-      place.top + height <= maxBottom &&
-      !tooltipOverlapsPath(place.left, place.top, width, height)
-  );
-
-  if (!chosen && app.lastPathScreenBounds) {
-    const pcx = (app.lastPathScreenBounds.minX + app.lastPathScreenBounds.maxX) / 2;
-    const pcy = (app.lastPathScreenBounds.minY + app.lastPathScreenBounds.maxY) / 2;
-    const dx = x - pcx;
-    const dy = y - pcy;
-    const len = Math.hypot(dx, dy) || 1;
-    const push = Math.max(width, height) / 2 + gap + 24;
-    chosen = {
-      left: x + (dx / len) * push - width / 2,
-      top: y + (dy / len) * push - height / 2,
-    };
-  }
-
-  chosen ??= placements[0];
-
-  chosen.left = Math.max(minLeft, Math.min(chosen.left, maxRight - width));
-  chosen.top = Math.max(minTop, Math.min(chosen.top, maxBottom - height));
-
-  cellTooltipEl.style.left = `${chosen.left}px`;
-  cellTooltipEl.style.top = `${chosen.top}px`;
+  positionParkedCellTooltip(cellTooltipEl);
 }
 
 export function updateCellTooltip() {
@@ -175,11 +109,15 @@ export function updateCellTooltip() {
   if (!app.footerCellHtml) {
     cellTooltipEl.hidden = true;
     cellTooltipEl.innerHTML = "";
+    cellTooltipEl.classList.remove("cell-tooltip--parked");
+    cellTooltipEl.style.left = "";
+    cellTooltipEl.style.top = "";
     return;
   }
 
   cellTooltipEl.innerHTML = app.footerCellHtml;
   cellTooltipEl.hidden = false;
+  cellTooltipEl.classList.add("cell-tooltip--parked");
   positionCellTooltip();
 }
 
@@ -200,11 +138,16 @@ function scheduleManualInspectClear() {
 
 function formatHoverTip(cell) {
   const coneState = hooks.getConeState();
+  const proofAlt =
+    cell?.isReachable && coneState
+      ? requiredAltitudeAt(cell.gi, cell.gj, coneState)
+      : null;
   return formatHoverTipCore(cell, {
     groundClearance: coneState?.groundClearance ?? 100,
     debugMode: isDebugMode(),
     metrics: seedPathMetrics(cell),
     glideRatio: coneState?.glideRatio ?? 20,
+    proofAlt,
   });
 }
 
@@ -393,13 +336,17 @@ export function getGeoSampleCell() {
 
 export function updateGeoLocationPath() {
   hooks.syncEmulatedAltitudeBox?.();
-  if (isCacheSelectMode()) {
+  if (isCacheSelectMode() || isViewerSession()) {
     clearGeoPath();
+    if (isViewerSession()) {
+      void refreshOptionalArea();
+    }
+    updateCellTooltip();
     return;
   }
 
   const coneState = hooks.getConeState();
-  if (hooks.isGeoTrackingOn() && coneState && hooks.getLastGeoLngLat()) {
+  if (isFlightSession() && coneState && hooks.getLastGeoLngLat()) {
     const position = hooks.getLastGeoLngLat();
     const cell = getGeoSampleCell();
     if (!cell?.isReachable) {
@@ -408,10 +355,11 @@ export function updateGeoLocationPath() {
       refreshGeoPath(cell, position, app.lastGeoAltitude);
     }
     void refreshOptionalArea();
+    updateCellTooltip();
     return;
   }
 
-  if (!hooks.isGeoTrackingOn() && app.simGlider && coneState) {
+  if (isSimulatorSession() && app.simGlider && coneState) {
     const { lng, lat } = app.simGlider;
     const cell = sampleDemCell(lng, lat);
     if (!cell?.isReachable) {
@@ -420,11 +368,13 @@ export function updateGeoLocationPath() {
       refreshGeoPath(cell, { lng, lat }, readEmulatedAltitudeM());
     }
     void refreshOptionalArea();
+    updateCellTooltip();
     return;
   }
 
   clearGeoPath();
   void refreshOptionalArea();
+  updateCellTooltip();
 }
 
 export function onMapMouseMove(event) {
@@ -432,11 +382,6 @@ export function onMapMouseMove(event) {
     return;
   }
   if (!hooks.getInteraction().hoverPath) {
-    return;
-  }
-  // While following GPS, debug stays click-only. With tracking off the
-  // pointer explores from the placed glider, including in debug.
-  if (isDebugMode() && hooks.isGeoTrackingOn()) {
     return;
   }
 
@@ -460,7 +405,7 @@ export function inspectMapPoint(lng, lat, point) {
 }
 
 export function placeSimGlider(lng, lat, point) {
-  if (isCacheSelectMode() || hooks.isGeoTrackingOn() || hooks.isComputing()) {
+  if (isCacheSelectMode() || !isSimulatorSession() || hooks.isComputing()) {
     return;
   }
 
@@ -495,9 +440,9 @@ export function onMapClickInspect(event) {
   if (isCacheSelectMode()) {
     return;
   }
-  // Tracking: touch taps and debug clicks inspect. No tracking: a click places the glider.
-  // On a phone the tap is handled as inspect, and a long press places the glider.
-  if (hooks.isGeoTrackingOn() && !hooks.getInteraction().tapPath && !isDebugMode()) {
+  // Simulator: click places the glider. Flight / viewer: click inspects.
+  // On a phone the tap is handled as inspect, and a long press places the glider (simulator only).
+  if (!isSimulatorSession() && !hooks.getInteraction().tapPath && !isDebugMode()) {
     return;
   }
 
@@ -507,7 +452,7 @@ export function onMapClickInspect(event) {
   }
 
   const { lng, lat } = event.lngLat;
-  if (!hooks.isGeoTrackingOn()) {
+  if (isSimulatorSession()) {
     placeSimGlider(lng, lat, event.point);
     return;
   }
@@ -532,7 +477,7 @@ export function syncPathsOnMapMove() {
   if (isCacheSelectMode()) {
     return;
   }
-  if (hooks.isGeoTrackingOn()) {
+  if (isFlightSession() || isSimulatorSession()) {
     updateGeoLocationPath();
   }
   syncInspectOnMapMove();

@@ -3,6 +3,7 @@ import { seedAtGridCell } from "./airport-label.js";
 import { ensurePathLayer, raisePathLayer } from "./map/layers.js";
 import { styleUpwardRoute } from "./glidecone/route-style.js";
 import { clearProbeArrival, optionAreaCellColor, scheduleProbeArrival } from "./optional-area.js";
+import { isFlightSession, isSimulatorSession, sessionHasAircraft } from "./session-mode.js";
 
 const PATH_SOURCE_ID = "glide-path";
 const PROBE_SEPARATION_M = 50;
@@ -46,7 +47,7 @@ function isSeedCell(x, y, dem) {
 }
 
 function gliderFeatures() {
-  if (!app?.simGlider || hooks.isGeoTrackingOn?.()) {
+  if (!isSimulatorSession() || !app?.simGlider) {
     return [];
   }
   const { lng, lat } = app.simGlider;
@@ -267,10 +268,13 @@ function panPinkFeatures(cell) {
 }
 
 function aircraftLngLat() {
-  if (hooks.isGeoTrackingOn?.()) {
+  if (isFlightSession()) {
     return hooks.getLastGeoLngLat?.() ?? null;
   }
-  return app.simGlider ?? null;
+  if (isSimulatorSession()) {
+    return app.simGlider ?? null;
+  }
+  return null;
 }
 
 function isNearAircraft(lngLat) {
@@ -281,9 +285,9 @@ function isNearAircraft(lngLat) {
   return distanceMetres(aircraft.lat, aircraft.lng, lngLat.lat, lngLat.lng) < PROBE_SEPARATION_M;
 }
 
-/** Sim mode: with a glider and an option area, the mouse worst-case path stays inside that area. */
+/** With a glider and an option area, the mouse worst-case path stays inside that area. */
 function optionAreaHidesMouseWorstPath(cell) {
-  if (hooks.isGeoTrackingOn?.() || !app.simGlider) {
+  if (!sessionHasAircraft() || !aircraftLngLat()) {
     return false;
   }
   const field = app.optionalField;

@@ -22,14 +22,37 @@ export function formatGroundElevationTip(groundElevM) {
   return `ground elevation: ${tooltipNum(Math.round(groundElevM))}`;
 }
 
-export function formatHoverTip(cell, { groundClearance, debugMode, metrics, glideRatio = 20 }) {
+/** Navbox / tip label for cone height. Ground cells show proof altitude in parentheses. */
+export function formatMinimumAltLabel({ minAlt, proofAlt, onGround }) {
+  if (onGround && Number.isFinite(proofAlt)) {
+    return `GND (${Math.round(proofAlt)} m)`;
+  }
+  if (onGround) {
+    return "GND";
+  }
+  if (minAlt !== null && Number.isFinite(minAlt)) {
+    return `${Math.round(minAlt)} m`;
+  }
+  return "—";
+}
+
+export function formatHoverTip(
+  cell,
+  { groundClearance, debugMode, metrics, glideRatio = 20, proofAlt = null }
+) {
   const minAltVal = cell.alt;
-  const minAlt = minAltVal !== null ? tooltipNum(Math.round(minAltVal)) : "—";
+  const onGround = Boolean(cell.isGround && Number.isFinite(proofAlt));
+  const minAlt = onGround
+    ? `GND (${tooltipNum(Math.round(proofAlt))})`
+    : minAltVal !== null
+      ? tooltipNum(Math.round(minAltVal))
+      : "—";
   const groundElev = tooltipNum(Math.round(cell.groundElev));
 
   let aboveGroundLine = "—";
-  if (minAltVal !== null) {
-    const aboveGround = Math.round(minAltVal - cell.groundElev);
+  const heightRef = onGround ? proofAlt : minAltVal;
+  if (Number.isFinite(heightRef)) {
+    const aboveGround = Math.round(heightRef - cell.groundElev);
     const warn = aboveGround < 1.2 * groundClearance;
     aboveGroundLine = tooltipNum(aboveGround, { warn });
   }
@@ -40,8 +63,8 @@ export function formatHoverTip(cell, { groundClearance, debugMode, metrics, glid
     metrics !== null ? tooltipNum(Math.round(metrics.requiredAlt)) : "—";
 
   let deltaLine = "—";
-  if (minAltVal !== null && metrics !== null) {
-    const delta = Math.round(minAltVal - metrics.requiredAlt);
+  if (Number.isFinite(heightRef) && metrics !== null) {
+    const delta = Math.round(heightRef - metrics.requiredAlt);
     const sign = delta > 0 ? "+" : "";
     const cls = delta >= 0 ? "delta-pos" : "delta-neg";
     deltaLine = `<span class="${cls} tooltip-num">${sign}${delta} m</span>`;

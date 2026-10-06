@@ -12,7 +12,6 @@
     <link rel="stylesheet" href="app.min.css" />
   </head>
   <body>
-    <div class="beta-banner">Beta — ridge escape. Production site is unchanged.</div>
     <div id="app-menu-chrome" class="map-top-chrome">
       <button type="button" id="app-menu-btn" class="iconch1-step-btn" aria-label="Menu" aria-expanded="false">
         ☰
@@ -154,11 +153,6 @@
           Done
         </button>
       </div>
-    </div>
-
-    <div id="compute-stop-bar" class="map-select-bar map-select-bar--compact" hidden>
-      <p id="compute-stop-message" class="map-select-status compute-stop-message" hidden></p>
-      <button type="button" id="stop-compute" hidden>Stop</button>
     </div>
 
     <div id="mode-airport-hint" class="mode-airport-hint" hidden aria-live="polite"></div>
@@ -304,6 +298,35 @@
 
         <section class="app-menu-section" id="glidecones-section">
           <h2 class="app-menu-section-title">Glide Cones</h2>
+          <div class="session-mode-buttons" role="group" aria-label="Session mode">
+            <button
+              type="button"
+              class="session-mode-btn"
+              id="session-mode-flight"
+              data-session-mode="flight"
+              aria-pressed="false"
+            >
+              Flight
+            </button>
+            <button
+              type="button"
+              class="session-mode-btn"
+              id="session-mode-viewer"
+              data-session-mode="viewer"
+              aria-pressed="false"
+            >
+              Viewer
+            </button>
+            <button
+              type="button"
+              class="session-mode-btn is-active"
+              id="session-mode-simulator"
+              data-session-mode="simulator"
+              aria-pressed="true"
+            >
+              Simulator / IGC
+            </button>
+          </div>
           <div class="app-menu-section-head">
             <button type="button" class="module-enable-btn is-active" id="glidecones-enable" aria-pressed="true">
               Glide cones
@@ -388,10 +411,10 @@
                   <label class="param-label" for="optional-viz">Options area</label>
                 </div>
                 <select id="optional-viz">
-                  <option value="margin" selected>Margin above glide cone</option>
-                  <option value="degraded">Degraded masks (10% / 20%)</option>
+                  <option value="margin">Margin above glide cone</option>
+                  <option value="degraded" selected>Degraded masks (10% / 20%)</option>
                 </select>
-                <span class="param-hint" id="optional-viz-hint">Largest margin above the cone is green, zero is red.</span>
+                <span class="param-hint" id="optional-viz-hint">Still reachable at 20% less L/D is green. Lost only at 20% less is yellow. Lost at 10% less is red.</span>
               </div>
               <div class="param-field">
                 <div class="param-label-row">
@@ -758,23 +781,46 @@
       </div>
     </div>
     <div id="param-help-popover" hidden role="tooltip"></div>
-    <div id="emulated-alt-box" class="emulated-alt-box" hidden>
-      <p id="sim-title" class="sim-title">Glide cone simulator</p>
-      <div class="sim-alt-row">
-        <label for="emulated-altitude">Altitude (m)</label>
-        <input id="emulated-altitude" type="number" inputmode="decimal" step="10" placeholder="MSL" />
+    <div id="sim-top-cluster" class="sim-top-cluster">
+      <div id="emulated-alt-box" class="emulated-alt-box" hidden>
+        <p id="sim-title" class="sim-title">Glide cone simulator</p>
+        <div class="sim-alt-row">
+          <label for="emulated-altitude">Altitude (m)</label>
+          <input id="emulated-altitude" type="number" inputmode="decimal" step="10" placeholder="MSL" />
+        </div>
+        <p id="sim-readout" class="sim-readout" hidden></p>
       </div>
-      <p id="sim-readout" class="sim-readout">Margin — · Options —</p>
+      <div id="cell-tooltip" hidden aria-live="polite"></div>
+      <div id="options-degraded-legend" class="options-degraded-legend" hidden aria-label="Degraded masks legend">
+        <div class="options-degraded-legend-row">
+          <span class="options-degraded-swatch options-degraded-swatch--green" aria-hidden="true"></span>
+          <span class="options-degraded-legend-value">—</span>
+        </div>
+        <div class="options-degraded-legend-row">
+          <span class="options-degraded-swatch options-degraded-swatch--yellow" aria-hidden="true"></span>
+          <span class="options-degraded-legend-value">—</span>
+        </div>
+        <div class="options-degraded-legend-row">
+          <span class="options-degraded-swatch options-degraded-swatch--red" aria-hidden="true"></span>
+          <span class="options-degraded-legend-value">—</span>
+        </div>
+      </div>
+      <div id="compute-stop-bar" class="map-select-bar map-select-bar--compact sim-top-stop" hidden>
+        <p id="compute-stop-message" class="map-select-status compute-stop-message" hidden></p>
+        <button type="button" id="stop-compute" hidden>Stop</button>
+      </div>
     </div>
-    <div id="sim-replay" class="sim-replay" hidden>
+    <div id="sim-bottom-chrome" class="sim-bottom-chrome">
       <button type="button" id="sim-help-btn" class="sim-help-btn" aria-haspopup="dialog" aria-expanded="false">
         Help
       </button>
-      <button type="button" id="igc-btn" class="sim-help-btn igc-btn">IGC</button>
-      <input id="igc-file" type="file" accept=".igc,text/plain,.txt" hidden />
-      <input id="igc-slider" class="igc-slider" type="range" min="0" max="0" step="1" value="0" disabled aria-label="Flight time" />
-      <button type="button" id="igc-play" class="sim-help-btn igc-play" disabled aria-label="Play flight">Play</button>
-      <button type="button" id="igc-speed" class="sim-help-btn igc-speed" disabled aria-label="Playback speed">1x</button>
+      <div id="sim-replay" class="sim-replay" hidden>
+        <button type="button" id="igc-btn" class="sim-help-btn igc-btn">IGC</button>
+        <input id="igc-file" type="file" accept=".igc,text/plain,.txt" hidden />
+        <input id="igc-slider" class="igc-slider" type="range" min="0" max="0" step="1" value="0" disabled aria-label="Flight time" />
+        <button type="button" id="igc-play" class="sim-help-btn igc-play" disabled aria-label="Play flight">Play</button>
+        <button type="button" id="igc-speed" class="sim-help-btn igc-speed" disabled aria-label="Playback speed">1x</button>
+      </div>
     </div>
     <div id="sim-manual" class="sim-manual" hidden>
       <div class="sim-manual-backdrop" id="sim-manual-backdrop"></div>
@@ -787,7 +833,7 @@
         <h2 id="sim-manual-title" class="sim-manual-title">Glide cone simulator</h2>
         <div class="sim-manual-body">
           <p>
-            This is the same picture as the glide cone in XCSoar. The simulator is available only when location tracking is off. The white dot with the pink ring is the glider. It stays where you put it.
+            This is the same picture as the glide cone in XCSoar. The white dot with the pink ring is the glider. In Simulator mode it stays where you put it.
           </p>
           <h3>Glide button</h3>
           <p>The button at the top left cycles through three states.</p>
@@ -817,36 +863,51 @@
           <ul class="sim-manual-key">
             <li>
               <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-pink"></span></span>
-              <span>Pink path: the worst-case path. It is the lowest you can be everywhere and still reach the airport. Along a mountain you can sometimes go downhill a fair way before you have to glide back.</span>
+              <span>Pink path: the lowest altitude you would have to be in the air at to be in reach of the airport.</span>
             </li>
             <li>
               <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-ground"></span></span>
-              <span>Dotted black: those downhill segments of the worst-case path. You are on the ground, going down, before the glide has to climb back toward the airport.</span>
+              <span>Dotted black: you stand by foot on the mountain; from there you would be in reach of the airport in a glider.</span>
             </li>
             <li>
               <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-margin"></span></span>
-              <span>Coloured path: the path of highest arrival at the airport, or to a point you choose and back. The colour is the height left above the cone at that point. The largest margin is green, zero is red.</span>
+              <span>Coloured path: path of highest arrival at the airport, or at an option. Colour according to context, otherwise green.</span>
             </li>
             <li>
               <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-area"></span></span>
-              <span>Option area: every point you can pass through and still reach the airport. Margin above the cone: green where you have the most height left, red where you have none. Degraded masks: still reachable at 20% less L/D is green, lost only at 20% less is yellow, lost at 10% less is red.</span>
+              <div>
+                <p>Option area: every point you can pass through and still reach the airport. Two visualisation modes:</p>
+                <ul class="sim-manual-sub">
+                  <li><strong>Margin:</strong> green where you have the most height left above the cone, red where you have none.</li>
+                  <li>
+                    <strong>Degraded masks:</strong>
+                    <ul class="sim-manual-sub">
+                      <li><strong>Red:</strong> reachable only at full L/D</li>
+                      <li><strong>Yellow:</strong> still reachable at 90% L/D</li>
+                      <li><strong>Green:</strong> still reachable at 80% L/D</li>
+                    </ul>
+                  </li>
+                </ul>
+              </div>
             </li>
             <li>
               <span class="swatch-box" aria-hidden="true"><span class="path-seg path-seg-disc"></span></span>
-              <span>Red discs: critical points, mostly passes or limiting ridges. The worst-case path is flown again at 80% of the selected L/D. Each time that weaker glide meets a pass that limits the path and does not clear it, that point is critical. The weaker glide then restarts from the pass altitude and continues. If you make this pass, are you easy until the end, or is there another ridge that can still stop you?</span>
+              <span>Red discs: critical points — ridges or passes you would make at L/D, and that you would not make at 80% L/D.</span>
             </li>
           </ul>
           <h3>Live position</h3>
           <p>
-            The simulator is available only when location tracking is off. Turn on Find my location and it steps aside: the glider is then your GPS position, and this title and Help button hide.
+            Use Flight, Viewer, or Simulator / IGC in the Glide Cones menu. Help stays available in every mode.
           </p>
+          <ul class="sim-manual-sub">
+            <li><strong>Flight:</strong> GPS is the glider. Navboxes and options follow you. Pointer explores.</li>
+            <li><strong>Viewer:</strong> no glider. Pointer explores the cone (minimum alt, elevation, height above cone).</li>
+            <li><strong>Simulator / IGC:</strong> place the glider or load a log. Navboxes and options follow the glider. Pointer explores options.</li>
+          </ul>
         </div>
-          <h3>IGC replay</h3>
-          <p>IGC, to the right of Help, loads a flight log. The slider jumps to a moment. Play follows the track, and the speed button cycles from 1x to 10x. Altitude comes from the log.</p>
         <button type="button" class="action-btn btn-blue" id="sim-manual-close">Close</button>
       </div>
     </div>
-    <div id="cell-tooltip" hidden aria-live="polite"></div>
     <div id="compute-context-bar" hidden aria-live="polite">
       <div id="compute-context-geo-stats" class="compute-context-geo-stats" hidden>
         <div class="compute-context-stat-row" id="compute-context-dest-row">

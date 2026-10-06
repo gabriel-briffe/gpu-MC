@@ -4,12 +4,13 @@ import { dom } from "./dom.js";
 import { raisePathLayer } from "./map/layers.js";
 import { buildOptionalMask } from "./optional-area-mask.js";
 import { ridgeEscapeSeed } from "./ridge-escape.js";
-import { initIgcReplay, syncIgcReplayBar } from "./igc-replay-ui.js";
+import { initIgcReplay, isIgcReplayOn } from "./igc-replay-ui.js";
 import { cellMarginT, marginHex, marginRgb } from "./glidecone/margin-color.js";
 import { requiredAltitudeAt } from "./glidecone/route-style.js";
 import { gridCellToLngLat, gridIndexFromLngLat } from "./geo.js";
 import { bindLongPress } from "./ui/long-press.js";
 import { isGlideConesEnabled } from "./app-menu.js";
+import { isFlightSession, isSimulatorSession, isViewerSession, sessionHasAircraft } from "./session-mode.js";
 
 const SOURCE_ID = "glide-optional";
 const LAYER_ID = "glide-optional";
@@ -69,6 +70,43 @@ function maskFromArrivals(arrivals, altitudes, maxAltitude) {
   return mask;
 }
 
+/**
+ * Options floor heights: stored cone on air cells; on ground cells the walked-back
+ * proof altitude when it is lower than stored terrain (so a clear ridge can seed).
+ */
+function optionsConeFloors(coneState, glideRatio) {
+  const { dem, altitudes, ground, originX, originY, maxAltitude, circuitHeight } = coneState;
+  const floors = Float32Array.from(altitudes);
+  if (!dem || !ground || !originX || !originY || !(glideRatio > 0)) {
+    return floors;
+  }
+  const ctx = {
+    dem,
+    altitudes,
+    ground,
+    originX,
+    originY,
+    maxAltitude,
+    glideRatio,
+    circuitHeight,
+  };
+  const width = dem.width;
+  for (let i = 0; i < floors.length; i += 1) {
+    if (ground[i] !== 1) {
+      continue;
+    }
+    const stored = altitudes[i];
+    if (!Number.isFinite(stored) || stored >= maxAltitude) {
+      continue;
+    }
+    const proof = requiredAltitudeAt(i % width, (i / width) | 0, ctx);
+    if (Number.isFinite(proof) && proof < stored) {
+      floors[i] = proof;
+    }
+  }
+  return floors;
+}
+
 export function readEmulatedAltitudeM() {
   const primary = Number.parseFloat(dom.emulatedAltitudeInput?.value ?? "");
   if (Number.isFinite(primary)) {
@@ -103,7 +141,7 @@ function writeEmulatedAltitude(value) {
 
 function onEmulatedAltitudeEdited(source) {
   writeEmulatedAltitude(source.value);
-  if (!hooks.isGeoTrackingOn?.()) {
+  if (isSimulatorSession()) {
     hooks.updateGeoLocationPath?.();
   }
 }
@@ -158,6 +196,38 @@ function syncOptionalVizHint() {
   if (dom.optionalVizHintEl) {
     dom.optionalVizHintEl.textContent = OPTIONAL_VIZ_HINTS[optionalVizMode()];
   }
+  syncDegradedLegend();
+}
+
+function formatLdValue(n) {
+  if (!Number.isFinite(n) || n <= 0) {
+    return "—";
+  }
+  const rounded = Math.round(n * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function syncDegradedLegend() {
+  const el = dom.optionsDegradedLegendEl;
+  if (!el) {
+    return;
+  }
+  const show =
+    sessionHasAircraft() &&
+    optionalVizMode() === "degraded" &&
+    !app?.cacheSelectMode;
+  el.hidden = !show;
+  if (!show) {
+    return;
+  }
+  const ld = Number.parseFloat(document.getElementById("ld")?.value ?? "");
+  const values = el.querySelectorAll(".options-degraded-legend-value");
+  if (values.length < 3) {
+    return;
+  }
+  values[0].textContent = formatLdValue(ld * 0.8);
+  values[1].textContent = formatLdValue(ld * 0.9);
+  values[2].textContent = formatLdValue(ld);
 }
 
 function fieldMaxMargin(mask, arrivals, altitudes, maxAltitude) {
@@ -250,6 +320,7 @@ export function clearOptionalArea() {
   }
   clearProbeArrival();
   hooks?.clearArrivalPaths?.();
+  paintSimReadout();
   const map = hooks?.getMap?.();
   if (!map) {
     return;
@@ -310,22 +381,191 @@ function setSimManualOpen(open) {
 }
 
 export function syncEmulatedAltitudeBox() {
-  const box = dom.emulatedAltBoxEl;
-  if (!box) {
-    return;
+  hooks.syncSessionModeUi?.();
+}
+
+function summarizeEscape(decision) {
+  if (!decision || decision.kind !== "escape") {
+    return decision ?? null;
   }
-  const cache = Boolean(app?.cacheSelectMode);
-  const sim = !cache && !hooks.isGeoTrackingOn?.();
-  const show = !cache && (isDebugMode() || sim);
-  box.hidden = !show;
-  document.body.classList.toggle("sim-mode", Boolean(sim && show));
-  if (dom.simHelpBtn) {
-    dom.simHelpBtn.hidden = !sim;
+  const cells = decision.cells ?? [];
+  const maxCells = 48;
+  return {
+    kind: decision.kind,
+    gi: decision.gi,
+    gj: decision.gj,
+    arrival: decision.arrival,
+    cellCount: cells.length,
+    cells:
+      cells.length <= maxCells
+        ? cells
+        : [...cells.slice(0, 24), { truncated: cells.length - 48 }, ...cells.slice(-24)],
+  };
+}
+
+function cellDebugAt(gi, gj, cone) {
+  const dem = cone?.dem;
+  if (!dem || gi < 0 || gj < 0 || gi >= dem.width || gj >= dem.height) {
+    return null;
   }
-  syncIgcReplayBar(sim);
-  if (!sim) {
-    setSimManualOpen(false);
+  const idx = gj * dem.width + gi;
+  const stored = cone.altitudes?.[idx];
+  const ox = cone.originX?.[idx];
+  const oy = cone.originY?.[idx];
+  const nextIdx =
+    Number.isInteger(ox) && Number.isInteger(oy) && ox >= 0 && oy >= 0
+      ? oy * dem.width + ox
+      : null;
+  return {
+    gi,
+    gj,
+    idx,
+    isGround: cone.ground?.[idx] === 1,
+    storedAlt: Number.isFinite(stored) && stored < cone.maxAltitude ? stored : null,
+    groundElev: dem.terrainMsl
+      ? dem.terrainMsl[idx]
+      : dem.elevation?.[idx] != null
+        ? dem.elevation[idx] - dem.groundClearance
+        : null,
+    origin: ox >= 0 && oy >= 0 ? { gi: ox, gj: oy } : null,
+    nextIsGround: nextIdx == null ? null : cone.ground?.[nextIdx] === 1,
+    nextStoredAlt:
+      nextIdx == null
+        ? null
+        : Number.isFinite(cone.altitudes?.[nextIdx]) && cone.altitudes[nextIdx] < cone.maxAltitude
+          ? cone.altitudes[nextIdx]
+          : null,
+  };
+}
+
+export function buildSimGliderDebugSnapshot() {
+  const aircraft = resolveAircraft();
+  const cone = aircraft?.cone ?? hooks.getConeState?.();
+  const field = app?.optionalField;
+  if (!aircraft || aircraft.outside || !cone?.dem) {
+    return {
+      kind: "gpu-mc-sim-glider-debug",
+      version: 1,
+      error: !cone?.dem ? "no-cone" : aircraft?.outside ? "outside-cone-grid" : "no-glider",
+      glider: app?.simGlider ?? null,
+      altitude: readEmulatedAltitudeM(),
+      igcReplay: isIgcReplayOn(),
+    };
   }
+
+  const cell = cellDebugAt(aircraft.gi, aircraft.gj, cone);
+  const proof = requiredAltitudeAt(aircraft.gi, aircraft.gj, cone);
+  const decision = ridgeEscapeSeed({
+    dem: cone.dem,
+    altitudes: cone.altitudes,
+    originX: cone.originX,
+    originY: cone.originY,
+    ground: cone.ground,
+    maxAltitude: cone.maxAltitude,
+    gi: aircraft.gi,
+    gj: aircraft.gj,
+    startAlt: aircraft.alt,
+    glideRatio: cone.glideRatio,
+    proofAltitude: Number.isFinite(proof) ? proof : null,
+  });
+  const seed = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone);
+  const fieldIdx = field ? aircraft.gj * cone.dem.width + aircraft.gi : null;
+
+  return {
+    kind: "gpu-mc-sim-glider-debug",
+    version: 1,
+    when: new Date().toISOString(),
+    mapHash: typeof location !== "undefined" ? location.hash : null,
+    igcReplay: isIgcReplayOn(),
+    optionsEnabled: optionsEnabled(),
+    optionsViz: optionalVizMode(),
+    optionsKey: optionalKey || null,
+    lastOptionsMs,
+    glider: {
+      lng: aircraft.lng,
+      lat: aircraft.lat,
+      alt: aircraft.alt,
+      source: aircraft.source,
+    },
+    cell,
+    proofAltitude: Number.isFinite(proof) ? proof : null,
+    marginVsProof: Number.isFinite(proof) && Number.isFinite(aircraft.alt) ? aircraft.alt - proof : null,
+    marginVsStored:
+      cell?.storedAlt != null && Number.isFinite(aircraft.alt) ? aircraft.alt - cell.storedAlt : null,
+    ridgeEscape: summarizeEscape(decision),
+    optionsSeed: seed
+      ? {
+          kind: seed.escape ? "escape" : "normal",
+          seedGi: seed.cell.gi,
+          seedGj: seed.cell.gj,
+          startAlt: seed.startAlt,
+          escape: summarizeEscape(seed.escape),
+        }
+      : { kind: "none" },
+    optionalArea: field
+      ? {
+          present: true,
+          startGi: field.startGi,
+          startGj: field.startGj,
+          startLng: field.startLng,
+          startLat: field.startLat,
+          gliderLng: field.gliderLng,
+          gliderLat: field.gliderLat,
+          maskAtGlider: fieldIdx != null ? field.mask?.[fieldIdx] === 1 : null,
+          arrivalAtGlider: fieldIdx != null ? field.arrivals?.[fieldIdx] ?? null : null,
+          escapeCellCount: field.escapeCells?.length ?? 0,
+        }
+      : { present: false },
+    cone: {
+      glideRatio: cone.glideRatio,
+      maxAltitude: cone.maxAltitude,
+      circuitHeight: cone.circuitHeight,
+      groundClearance: cone.groundClearance,
+      dem: {
+        zoom: cone.dem.zoom,
+        width: cone.dem.width,
+        height: cone.dem.height,
+        cellSizeM: cone.dem.cellSizeM,
+        gx0: cone.dem.gx0,
+        gy0: cone.dem.gy0,
+      },
+    },
+  };
+}
+
+const GLIDER_DEBUG_HIT_PX = 28;
+
+/** Computer only: right-click near the glider copies options debug JSON. */
+export function copySimGliderDebugAt(domEvent) {
+  if (!isSimulatorSession() || !app?.simGlider) {
+    return false;
+  }
+  const map = hooks.getMap?.();
+  if (!map) {
+    return false;
+  }
+  const rect = map.getCanvas().getBoundingClientRect();
+  const x = domEvent.clientX - rect.left;
+  const y = domEvent.clientY - rect.top;
+  const glider = map.project([app.simGlider.lng, app.simGlider.lat]);
+  const dx = x - glider.x;
+  const dy = y - glider.y;
+  if (dx * dx + dy * dy > GLIDER_DEBUG_HIT_PX * GLIDER_DEBUG_HIT_PX) {
+    return false;
+  }
+
+  const snapshot = buildSimGliderDebugSnapshot();
+  const text = JSON.stringify(snapshot, null, 2);
+  const write = navigator.clipboard?.writeText?.(text);
+  if (write && typeof write.then === "function") {
+    void write
+      .then(() => hooks.setStatus?.("Glider debug copied — paste it in chat"))
+      .catch(() => hooks.setStatus?.("Could not copy glider debug"));
+  } else {
+    hooks.setStatus?.("Clipboard unavailable");
+    return false;
+  }
+  return true;
 }
 
 function preferShader() {
@@ -340,6 +580,16 @@ function gridIndexLngLat(gi, gj, dem) {
 }
 
 function optionsSeed(cell, startAlt, coneState, glideRatio = coneState.glideRatio) {
+  const proof = requiredAltitudeAt(cell.gi, cell.gj, {
+    dem: coneState.dem,
+    altitudes: coneState.altitudes,
+    ground: coneState.ground,
+    originX: coneState.originX,
+    originY: coneState.originY,
+    maxAltitude: coneState.maxAltitude,
+    glideRatio,
+    circuitHeight: coneState.circuitHeight,
+  });
   const decision = ridgeEscapeSeed({
     dem: coneState.dem,
     altitudes: coneState.altitudes,
@@ -351,6 +601,7 @@ function optionsSeed(cell, startAlt, coneState, glideRatio = coneState.glideRati
     gj: cell.gj,
     startAlt,
     glideRatio,
+    proofAltitude: Number.isFinite(proof) ? proof : null,
   });
   if (decision.kind === "none") {
     return null;
@@ -366,7 +617,8 @@ function optionsSeed(cell, startAlt, coneState, glideRatio = coneState.glideRati
 }
 
 async function computeField(cell, startAlt, coneState, glideRatio = coneState.glideRatio) {
-  const { dem, altitudes, maxAltitude, groundClearance } = coneState;
+  const { dem, maxAltitude, groundClearance } = coneState;
+  const floors = optionsConeFloors(coneState, glideRatio);
   if (preferShader()) {
     try {
       const { arrivals, originX, originY, iterations } = await app.engine.computeDownward(dem, {
@@ -375,10 +627,10 @@ async function computeField(cell, startAlt, coneState, glideRatio = coneState.gl
         gi: cell.gi,
         gj: cell.gj,
         startAlt,
-        coneAltitudes: altitudes,
+        coneAltitudes: floors,
       });
       return {
-        mask: maskFromArrivals(arrivals, altitudes, maxAltitude),
+        mask: maskFromArrivals(arrivals, floors, maxAltitude),
         arrivals,
         originX,
         originY,
@@ -393,7 +645,7 @@ async function computeField(cell, startAlt, coneState, glideRatio = coneState.gl
   }
   const mask = buildOptionalMask({
     dem,
-    altitudes,
+    altitudes: floors,
     maxAltitude,
     gi: cell.gi,
     gj: cell.gj,
@@ -412,36 +664,30 @@ async function computeField(cell, startAlt, coneState, glideRatio = coneState.gl
 }
 
 const OPTIONS_ENABLED_KEY = "gpu-mc-options-enabled";
+const IGC_OPTIONS_MIN_MS = 1000;
 let lastOptionsMs = null;
 let readoutToken = 0;
+let igcOptionsTimer = null;
+let igcOptionsLastRunAt = 0;
+let igcOptionsPending = null;
 
 function optionsEnabled() {
   return dom.optionsEnabledInput?.checked !== false;
 }
 
-function formatMargin(aircraft) {
-  if (!aircraft || aircraft.outside || !Number.isFinite(aircraft.alt) || !aircraft.cone) {
-    return "—";
-  }
-  // Same as XCSoar's InfoBox: on ground cells walk back to the first air cell
-  // and add distance / L/D, so the ridge does not show a huge negative margin.
-  const proof = requiredAltitudeAt(aircraft.gi, aircraft.gj, aircraft.cone);
-  if (!Number.isFinite(proof)) {
-    return "no cone";
-  }
-  const margin = Math.round(aircraft.alt - proof);
-  return `${margin > 0 ? "+" : ""}${margin} m`;
-}
-
-function paintSimReadout(aircraft) {
+function paintSimReadout() {
   const el = dom.simReadoutEl;
   if (!el) {
     return;
   }
+  if (!optionsEnabled() || !app?.optionalField) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
   const timing = lastOptionsMs == null ? "—" : `${Math.round(lastOptionsMs)} ms`;
-  el.textContent = optionsEnabled()
-    ? `Margin ${formatMargin(aircraft)} · Options ${timing}`
-    : `Margin ${formatMargin(aircraft)} · Options off`;
+  el.hidden = false;
+  el.textContent = `Options ${timing}`;
 }
 
 function finishOptionsTiming(token, startedAt) {
@@ -450,21 +696,21 @@ function finishOptionsTiming(token, startedAt) {
       return;
     }
     lastOptionsMs = performance.now() - startedAt;
-    paintSimReadout(resolveAircraft());
+    paintSimReadout();
   };
   apply();
   requestAnimationFrame(() => requestAnimationFrame(apply));
 }
 function resolveAircraft() {
   const cone = hooks.getConeState?.();
-  if (!cone?.dem) {
+  if (!cone?.dem || isViewerSession()) {
     return null;
   }
   let lng;
   let lat;
   let alt;
   let source;
-  if (hooks.isGeoTrackingOn?.()) {
+  if (isFlightSession()) {
     const position = hooks.getLastGeoLngLat?.();
     if (!position) {
       return null;
@@ -473,7 +719,7 @@ function resolveAircraft() {
     lat = position.lat;
     alt = app.lastGeoAltitude;
     source = "gps";
-  } else if (app.simGlider) {
+  } else if (isSimulatorSession() && app.simGlider) {
     lng = app.simGlider.lng;
     lat = app.simGlider.lat;
     alt = readEmulatedAltitudeM();
@@ -555,12 +801,56 @@ function waitForDisplayed() {
   });
 }
 
+function clearIgcOptionsThrottle() {
+  if (igcOptionsTimer) {
+    clearTimeout(igcOptionsTimer);
+    igcOptionsTimer = null;
+  }
+  igcOptionsPending = null;
+}
+
+function scheduleIgcOptionsThrottle(force) {
+  igcOptionsPending = {
+    force: Boolean(igcOptionsPending?.force || force),
+  };
+  if (igcOptionsTimer) {
+    return;
+  }
+  const wait = Math.max(0, IGC_OPTIONS_MIN_MS - (performance.now() - igcOptionsLastRunAt));
+  igcOptionsTimer = window.setTimeout(() => {
+    igcOptionsTimer = null;
+    const pending = igcOptionsPending ?? { force: false };
+    igcOptionsPending = null;
+    void refreshOptionalArea(pending);
+  }, wait);
+}
+
 export async function refreshOptionalArea({ force = false } = {}) {
+  if (isViewerSession()) {
+    if (app?.optionalField || optionalKey) {
+      clearOptionalArea();
+    }
+    paintSimReadout();
+    return;
+  }
+  if (force) {
+    clearIgcOptionsThrottle();
+  } else if (isIgcReplayOn()) {
+    const elapsed = performance.now() - igcOptionsLastRunAt;
+    if (elapsed < IGC_OPTIONS_MIN_MS) {
+      scheduleIgcOptionsThrottle(force);
+      return;
+    }
+  } else {
+    clearIgcOptionsThrottle();
+  }
+
   if (optionsBusy) {
     queuedRefresh = { force: Boolean(queuedRefresh?.force || force) };
     return;
   }
   optionsBusy = true;
+  igcOptionsLastRunAt = performance.now();
   let waitForPaint = false;
   try {
     waitForPaint = await runOptionalRefresh({ force });
@@ -579,7 +869,7 @@ export async function refreshOptionalArea({ force = false } = {}) {
 
 async function runOptionalRefresh({ force = false } = {}) {
   const aircraft = resolveAircraft();
-  paintSimReadout(aircraft);
+  paintSimReadout();
   if (!optionsEnabled()) {
     if (app?.optionalField || optionalKey) {
       clearOptionalArea();
@@ -696,6 +986,10 @@ export function initOptionalArea(h) {
   hooks.syncFlightShaderButton = syncFlightShaderButton;
   hooks.clearOptionalArea = clearOptionalArea;
   hooks.refreshOptionalArea = refreshOptionalArea;
+  hooks.syncOptionalVizHint = syncOptionalVizHint;
+  hooks.setSimManualOpen = setSimManualOpen;
+  hooks.copySimGliderDebugAt = copySimGliderDebugAt;
+  hooks.buildSimGliderDebugSnapshot = buildSimGliderDebugSnapshot;
   app.downwardMethod = app.downwardMethod === "shader" ? "shader" : "dijkstra";
 
   dom.downwardMethodBtn?.addEventListener("click", () => {
@@ -764,6 +1058,12 @@ export function initOptionalArea(h) {
     syncOptionalVizHint();
     void refreshOptionalArea({ force: true });
   });
+  document.getElementById("ld")?.addEventListener("change", () => {
+    syncDegradedLegend();
+  });
+  document.getElementById("ld")?.addEventListener("input", () => {
+    syncDegradedLegend();
+  });
 
   initIgcReplay(hooks);
   syncEmulatedAltitudeBox();
@@ -773,7 +1073,7 @@ export function initOptionalArea(h) {
 }
 
 async function recomputeFlightShaderArea() {
-  if (isDebugMode() || !isGlideConesEnabled()) {
+  if (isDebugMode() || !isGlideConesEnabled() || isViewerSession()) {
     return;
   }
   const coneState = hooks.getConeState?.();
@@ -781,10 +1081,10 @@ async function recomputeFlightShaderArea() {
     hooks.setStatus?.("Compute a glide cone first");
     return;
   }
-  const tracking = hooks.isGeoTrackingOn?.();
-  const alt = tracking ? app.lastGeoAltitude : readEmulatedAltitudeM();
-  if (!Number.isFinite(alt) || (tracking ? !hooks.getLastGeoLngLat?.() : !app.simGlider)) {
-    hooks.setStatus?.(tracking ? "Need a current altitude" : "Set an altitude, then click the map to place the glider");
+  const flight = isFlightSession();
+  const alt = flight ? app.lastGeoAltitude : readEmulatedAltitudeM();
+  if (!Number.isFinite(alt) || (flight ? !hooks.getLastGeoLngLat?.() : !app.simGlider)) {
+    hooks.setStatus?.(flight ? "Need a current altitude" : "Set an altitude, then click the map to place the glider");
     return;
   }
   dom.flightShaderBtn?.classList.add("is-busy");

@@ -120,7 +120,14 @@
       }
 
       body.app-menu-open .chrome-longpress-hint,
+      body.glidecones-disabled .sim-bottom-chrome,
+      body.glidecones-disabled .sim-top-cluster {
+        display: none !important;
+      }
+
       body.cache-select-mode .emulated-alt-box,
+      body.cache-select-mode .sim-top-cluster,
+      body.cache-select-mode .sim-bottom-chrome,
       body.cache-select-mode .sim-help-btn,
       body.cache-select-mode .sim-manual {
         display: none !important;
@@ -471,6 +478,37 @@
         border-color: rgba(95, 165, 255, 0.55);
         background: rgba(59, 130, 246, 0.28);
         color: #e8f2ff;
+      }
+
+      .session-mode-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        margin: 0 0 0.65rem;
+      }
+
+      .session-mode-btn {
+        min-height: 48px;
+        padding: 0.65rem 0.85rem;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 0.55rem;
+        background: rgba(255, 255, 255, 0.04);
+        color: #b8c4d4;
+        font-size: 0.95rem;
+        font-weight: 700;
+        text-align: center;
+        cursor: pointer;
+      }
+
+      .session-mode-btn:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: #e8eef4;
+      }
+
+      .session-mode-btn.is-active {
+        border-color: rgba(46, 204, 113, 0.65);
+        background: rgba(46, 204, 113, 0.22);
+        color: #e8fff0;
       }
 
       .app-menu-settings-btn {
@@ -1340,9 +1378,10 @@
         z-index: 1;
         max-width: min(20rem, 88vw);
         padding: 0.55rem 0.7rem;
-        border-radius: 0.55rem;
+        border-radius: 12px;
         background: rgba(18, 22, 28, 0.94);
         color: #e8f0ff;
+        border: 1px solid rgba(255, 255, 255, 0.14);
         box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
         backdrop-filter: blur(8px);
         font-size: 0.78rem;
@@ -1352,13 +1391,17 @@
         pointer-events: none;
       }
 
-      body.debug-mode #cell-tooltip {
-        /* Sit with the emulated-alt chrome (same stacking band). */
+      #cell-tooltip.cell-tooltip--parked {
+        position: static;
         z-index: 6;
+        left: auto;
+        top: auto;
+        max-width: min(18rem, calc(100vw - 9rem));
+        flex: 0 1 auto;
       }
 
       #cell-tooltip[hidden] {
-        display: none;
+        display: none !important;
       }
 
       #cell-tooltip .tooltip-num {
@@ -1591,6 +1634,20 @@
         display: none;
       }
 
+      #compute-stop-bar.sim-top-stop {
+        position: static;
+        left: auto;
+        top: auto;
+        transform: none;
+        z-index: auto;
+        flex: 1 0 100%;
+        width: auto;
+        min-width: 8rem;
+        max-width: 100%;
+        align-self: center;
+        box-sizing: border-box;
+      }
+
       #compute-stop-bar #stop-compute {
         width: 100%;
         margin: 0;
@@ -1622,7 +1679,7 @@
       }
 
       #compute-stop-bar[hidden] {
-        display: none;
+        display: none !important;
       }
 
       .mode-airport-hint {
@@ -2050,11 +2107,36 @@
         }
       }
 
-      .emulated-alt-box {
+      .sim-top-cluster {
         position: fixed;
         z-index: 6;
         top: calc(max(0.75rem, env(safe-area-inset-top)) + 6.6rem);
         right: max(0.75rem, env(safe-area-inset-right));
+        display: flex;
+        flex-wrap: wrap;
+        align-items: stretch;
+        justify-content: flex-end;
+        gap: 0.45rem;
+        max-width: calc(100vw - 1.5rem);
+        pointer-events: none;
+      }
+
+      .sim-top-cluster > * {
+        pointer-events: auto;
+      }
+
+      body.sim-mode .sim-top-cluster,
+      body.flight-mode .sim-top-cluster,
+      body.session-viewer .sim-top-cluster {
+        top: max(0.75rem, env(safe-area-inset-top));
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+        justify-content: center;
+        max-width: min(36rem, calc(100vw - 7.5rem));
+      }
+
+      .emulated-alt-box {
         display: flex;
         align-items: center;
         gap: 0.4rem;
@@ -2063,7 +2145,7 @@
         background: rgba(18, 22, 28, 0.92);
         border: 1px solid rgba(46, 204, 113, 0.45);
         color: #e8eef4;
-        pointer-events: auto;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
       }
 
       .sim-title {
@@ -2083,15 +2165,11 @@
       }
 
       body.sim-mode .emulated-alt-box {
-        top: max(0.75rem, env(safe-area-inset-top));
-        left: 50%;
-        right: auto;
-        transform: translateX(-50%);
         flex-direction: column;
         align-items: center;
         gap: 0.35rem;
         width: max-content;
-        max-width: min(22rem, calc(100vw - 7.5rem));
+        max-width: min(22rem, 100%);
         padding: 0.55rem 0.85rem 0.5rem;
       }
 
@@ -2109,6 +2187,10 @@
         letter-spacing: 0.01em;
         color: #b7c4b8;
         white-space: nowrap;
+      }
+
+      .sim-readout[hidden] {
+        display: none !important;
       }
 
       #optional-viz-field {
@@ -2144,10 +2226,8 @@
       }
 
       .sim-help-btn {
-        position: fixed;
+        position: static;
         z-index: 4;
-        left: max(0.75rem, env(safe-area-inset-left));
-        bottom: max(0.75rem, env(safe-area-inset-bottom));
         min-width: 44px;
         min-height: 44px;
         padding: 0 0.85rem;
@@ -2160,18 +2240,14 @@
         font-weight: 700;
         box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
         cursor: pointer;
+        flex: 0 0 auto;
       }
 
       .sim-help-btn[hidden] {
         display: none !important;
       }
 
-      body.has-compute-context .sim-help-btn,
-      body.has-compute-context .sim-replay {
-        bottom: calc(var(--compute-context-bar-height, 3.5rem) + 0.55rem);
-      }
-
-      .sim-replay {
+      .sim-bottom-chrome {
         position: fixed;
         z-index: 4;
         left: max(0.75rem, env(safe-area-inset-left));
@@ -2180,17 +2256,82 @@
         display: flex;
         align-items: center;
         gap: 0.4rem;
+        pointer-events: none;
+      }
+
+      .sim-bottom-chrome > * {
+        pointer-events: auto;
+      }
+
+      body.has-compute-context .sim-bottom-chrome {
+        bottom: calc(var(--compute-context-bar-height, 3.5rem) + 0.55rem);
+      }
+
+      .sim-replay {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex: 1 1 auto;
+        min-width: 0;
       }
 
       .sim-replay[hidden] {
         display: none !important;
       }
 
-      .sim-replay .sim-help-btn {
-        position: static;
+      .options-degraded-legend {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 0.3rem;
+        padding: 0.45rem 0.65rem;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 12px;
+        background: rgba(18, 22, 28, 0.92);
+        color: #f5f7fa;
+        font-size: 0.78rem;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.2;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+      }
+
+      .options-degraded-legend[hidden] {
+        display: none !important;
+      }
+
+      .options-degraded-legend-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        white-space: nowrap;
+      }
+
+      .options-degraded-legend-value {
+        min-width: 2.1rem;
+      }
+
+      .options-degraded-swatch {
+        width: 0.85rem;
+        height: 0.85rem;
+        border-radius: 3px;
         flex: 0 0 auto;
-        bottom: auto;
-        left: auto;
+      }
+
+      .options-degraded-swatch--green {
+        background: #00c000;
+      }
+
+      .options-degraded-swatch--yellow {
+        background: #ffd600;
+      }
+
+      .options-degraded-swatch--red {
+        background: #ff0000;
+      }
+
+      body.cache-select-mode .sim-top-cluster,
+      body.cache-select-mode .options-degraded-legend {
+        display: none !important;
       }
 
       .igc-slider {
@@ -2297,6 +2438,24 @@
         align-items: start;
       }
 
+      .sim-manual-key li > div > p {
+        margin: 0 0 0.35rem;
+      }
+
+      .sim-manual-sub {
+        margin: 0;
+        padding: 0 0 0 1.1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+      }
+
+      .sim-manual-sub li {
+        display: list-item;
+        list-style: disc;
+        grid-template-columns: none;
+      }
+
       .swatch-box {
         display: flex;
         align-items: center;
@@ -2370,20 +2529,26 @@
       }
 
       @media (max-width: 640px) {
-        .emulated-alt-box {
+        .sim-top-cluster {
           top: calc(max(0.75rem, env(safe-area-inset-top)) + 4.6rem);
           right: max(0.5rem, env(safe-area-inset-right));
           left: auto;
           max-width: calc(100vw - 1rem);
         }
 
-        body.sim-mode .emulated-alt-box {
+        body.sim-mode .sim-top-cluster,
+        body.flight-mode .sim-top-cluster,
+        body.session-viewer .sim-top-cluster {
           top: max(0.5rem, env(safe-area-inset-top));
           left: 50%;
           right: auto;
           transform: translateX(-50%);
-          width: max-content;
           max-width: calc(100vw - 6.5rem);
+        }
+
+        body.sim-mode .emulated-alt-box {
+          width: max-content;
+          max-width: 100%;
         }
 
         .emulated-alt-box input,
@@ -2428,15 +2593,3 @@
         opacity: 0.55;
       }
 
-.beta-banner {
-  position: fixed;
-  z-index: 40;
-  left: 8px;
-  bottom: 8px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: rgba(18, 22, 28, 0.88);
-  color: #f0c14a;
-  font: 12px/1.3 sans-serif;
-  pointer-events: none;
-}

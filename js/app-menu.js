@@ -452,6 +452,8 @@ export function setGlideConesEnabled(enabled) {
   }
   syncAppMenuUi();
   hooks.syncModeAirportHint?.();
+  hooks.syncSessionModeUi?.();
+  hooks.syncEmulatedAltitudeBox?.();
 }
 
 export function toggleIconChActiveModel() {

@@ -27,7 +27,7 @@ function rememberMapLongPress(app, event) {
 
 function canPlaceGliderFromTouch(hooks) {
   return (
-    !hooks.isGeoTrackingOn() &&
+    hooks.isSimulatorSession?.() &&
     !hooks.isComputing() &&
     !hooks.getCacheSelectMode() &&
     !hooks.getManualAirportSelectMode()
@@ -244,7 +244,12 @@ export function bindMapEvents(app, hooks) {
   });
 
   map.getCanvas().addEventListener("contextmenu", (event) => {
-    if (!app.interaction.tapPath || hooks.isGeoTrackingOn()) {
+    // Computer: right-click the glider to copy options debug.
+    if (app.interaction.hoverPath && hooks.copySimGliderDebugAt?.(event)) {
+      event.preventDefault();
+      return;
+    }
+    if (!app.interaction.tapPath || !hooks.isSimulatorSession?.()) {
       return;
     }
     event.preventDefault();
@@ -289,10 +294,6 @@ export function bindMapEvents(app, hooks) {
     }
 
     if (hooks.isComputing()) {
-      return;
-    }
-
-    if (hooks.isGeoTrackingOn() && !app.interaction.tapPath && !isDebugMode()) {
       return;
     }
 

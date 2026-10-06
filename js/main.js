@@ -70,6 +70,7 @@ import {
   clearCellInspect,
   getLastInspectCell,
   getGeoSampleCell,
+  sampleDemCell,
   positionCellTooltip,
   updateCellTooltip,
   pathScreenBounds,
@@ -148,7 +149,17 @@ import {
   updateUserLocationFromPosition,
 } from "./map/location-track.js";
 import { initFakeGeo, isFakeGeoActive, syncFakeGeoMenuVisibility } from "./dev-fake-geo.js";
-import { initOptionalArea } from "./optional-area.js";
+import { initOptionalArea, readEmulatedAltitudeM, clearOptionalArea, refreshOptionalArea } from "./optional-area.js";
+import { requiredAltitudeAt } from "./glidecone/route-style.js";
+import { formatMinimumAltLabel } from "./compute/format.js";
+import { stopIgcReplay, syncIgcReplayBar } from "./igc-replay-ui.js";
+import {
+  initSessionMode,
+  isFlightSession,
+  isSimulatorSession,
+  isViewerSession,
+  syncSessionModeUi,
+} from "./session-mode.js";
 import { initWakeLock } from "./wake-lock.js";
 import { attachSeedAirportMeta } from "./airport-label.js";
 
@@ -470,6 +481,31 @@ function isGeoTrackingOn() {
   return isGeolocateControlTracking();
 }
 
+function startGeoTracking() {
+  if (isFakeGeoActive(app)) {
+    return;
+  }
+  if (!app.geolocateControl) {
+    return;
+  }
+  if (isGeolocateControlTracking()) {
+    return;
+  }
+  app.geoTrackInitialPanPending = true;
+  app.geolocateControl.trigger();
+}
+
+function stopGeoTracking() {
+  if (!isFakeGeoActive(app) && app.geolocateControl && isGeolocateControlTracking()) {
+    // MapLibre toggles tracking when trigger() is called while already active.
+    app.geolocateControl.trigger();
+  }
+  app.geoTrackInitialPanPending = false;
+  app.lastGeoLngLat = null;
+  app.lastGeoAltitude = null;
+  clearGeoTrackingMarker();
+}
+
 function applyGeoPosition(lng, lat, altitude) {
   app.lastGeoLngLat = { lng, lat };
   app.lastGeoAltitude = Number.isFinite(altitude) ? altitude : null;
@@ -645,6 +681,16 @@ app.hooks = {
   isSingleParamsMode,
   getParamsMode,
   isGeoTrackingOn,
+  startGeoTracking,
+  stopGeoTracking,
+  stopIgcReplay,
+  syncIgcReplayBar,
+  clearOptionalArea,
+  refreshOptionalArea,
+  syncSessionModeUi,
+  isFlightSession,
+  isSimulatorSession,
+  isViewerSession,
   areOpenAipAirportsAvailable,
   isIncludeManualAirportsEnabled,
   isDisableImportedAirportsEnabled,
@@ -1108,14 +1154,15 @@ function computeReqGlideRatio(metrics, userAlt) {
   return metrics.distanceM / heightAboveSeed;
 }
 
-function geoContextBarTone({ userAlt, geoCell, metrics, glideRatio }) {
+function geoContextBarTone({ userAlt, geoCell, metrics, glideRatio, proofAlt }) {
   if (!geoCell?.isReachable || !metrics) {
     return null;
   }
   if (!Number.isFinite(userAlt)) {
     return "red";
   }
-  if (geoCell.alt !== null && userAlt < geoCell.alt) {
+  const floor = Number.isFinite(proofAlt) ? proofAlt : geoCell.alt;
+  if (floor !== null && userAlt < floor) {
     return "red";
   }
   const reqLd = computeReqGlideRatio(metrics, userAlt);
@@ -1176,7 +1223,7 @@ function formatPathDistanceDisplay(distanceM) {
   return `${(distanceM / 1000).toFixed(1)} km`;
 }
 
-function setGeoContextReadings({ minAlt, userAlt, reqLd, metrics }) {
+function setGeoContextReadings({ minAlt, userAlt, reqLd, metrics, proofAlt, onGround }) {
   if (metrics) {
     if (computeContextDestRowEl) {
       computeContextDestRowEl.hidden = false;
@@ -1232,12 +1279,16 @@ function setGeoContextReadings({ minAlt, userAlt, reqLd, metrics }) {
     }
   }
   if (computeContextMinAltReadingEl) {
-    computeContextMinAltReadingEl.textContent =
-      minAlt !== null ? `${Math.round(minAlt)} m` : "—";
+    computeContextMinAltReadingEl.textContent = formatMinimumAltLabel({
+      minAlt,
+      proofAlt,
+      onGround,
+    });
   }
+  const marginBase = Number.isFinite(proofAlt) ? proofAlt : minAlt;
   if (computeContextDeltaReadingEl) {
-    if (Number.isFinite(userAlt) && minAlt !== null) {
-      const delta = Math.round(userAlt - minAlt);
+    if (Number.isFinite(userAlt) && Number.isFinite(marginBase)) {
+      const delta = Math.round(userAlt - marginBase);
       const sign = delta > 0 ? "+" : "";
       computeContextDeltaReadingEl.textContent = `${sign}${delta} m`;
     } else {
@@ -1283,11 +1334,24 @@ function updateComputeContextBarInset() {
   );
 }
 
+function positionedAircraft() {
+  if (isFlightSession()) {
+    return { cell: getGeoSampleCell(), userAlt: app.lastGeoAltitude };
+  }
+  if (isSimulatorSession() && app.simGlider) {
+    return {
+      cell: sampleDemCell(app.simGlider.lng, app.simGlider.lat),
+      userAlt: readEmulatedAltitudeM(),
+    };
+  }
+  return null;
+}
+
 function syncComputeContextBar() {
   if (!computeContextBarEl) {
     return;
   }
-  if (!isGlideConesEnabled()) {
+  if (!isGlideConesEnabled() || isViewerSession()) {
     computeContextBarEl.hidden = true;
     document.body.classList.remove("has-compute-context");
     updateComputeContextBarInset();
@@ -1315,20 +1379,28 @@ function syncComputeContextBar() {
   }
 
   const { glideRatio, groundClearance, circuitHeight } = app.coneState;
-  const geoTracking = isGeoTrackingOn();
-  const geoCell = geoTracking ? getGeoSampleCell() : null;
+  const positioned = positionedAircraft();
+  const geoCell = positioned?.cell ?? null;
+  const userAlt = positioned?.userAlt;
   const metrics = geoCell?.isReachable ? seedPathMetrics(geoCell) : null;
+  const proofAlt =
+    geoCell?.isReachable && app.coneState
+      ? requiredAltitudeAt(geoCell.gi, geoCell.gj, app.coneState)
+      : null;
 
   if (computeContextGeoStatsEl) {
-    if (geoTracking && geoCell?.isReachable && geoCell.alt !== null) {
-      const minAlt = geoCell.alt;
-      const userAlt = app.lastGeoAltitude;
-      const reqLd = metrics ? computeReqGlideRatio(metrics, userAlt) : null;
-
-      setGeoContextReadings({ minAlt, userAlt, reqLd, metrics });
+    if (positioned && geoCell?.isReachable && geoCell.alt !== null) {
+      setGeoContextReadings({
+        minAlt: geoCell.alt,
+        userAlt,
+        reqLd: metrics ? computeReqGlideRatio(metrics, userAlt) : null,
+        metrics,
+        proofAlt,
+        onGround: Boolean(geoCell.isGround && Number.isFinite(proofAlt)),
+      });
       computeContextGeoStatsEl.hidden = false;
       setComputeContextBarTone(
-        geoContextBarTone({ userAlt, geoCell, metrics, glideRatio })
+        geoContextBarTone({ userAlt, geoCell, metrics, glideRatio, proofAlt })
       );
     } else {
       computeContextGeoStatsEl.hidden = true;
@@ -1430,6 +1502,7 @@ app.map.on("load", async () => {
   ensureUserLocationLayers(app.map, () => raisePathLayer());
   initFakeGeo(app, app.hooks);
   initOptionalArea(app.hooks);
+  initSessionMode(app.hooks);
   app.map.on("moveend", () => {
     updateTerrainResolutionHint();
     if (isAutoParamsMode()) {

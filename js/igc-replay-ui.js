@@ -2,6 +2,7 @@ import { dom } from "./dom.js";
 import { fixAt, parseIgc } from "./igc-replay.js";
 
 const SPEEDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const SEEK_SECONDS = 5;
 
 let hooks;
 let fixes = [];
@@ -51,6 +52,7 @@ function applyFix(second) {
     dom.igcSlider.value = String(Math.round(seconds));
   }
   hooks.updateGeoLocationPath?.();
+  hooks.syncComputeContextBar?.();
   if (playing) {
     hooks.getMap?.()?.easeTo({ center: [fix.lng, fix.lat], duration: 0 });
   }
@@ -97,6 +99,57 @@ function play() {
   frame = requestAnimationFrame(tick);
 }
 
+function seekBy(deltaSeconds) {
+  if (!fixes.length) {
+    return false;
+  }
+  applyFix(seconds + deltaSeconds);
+  return true;
+}
+
+function togglePlayPause() {
+  if (!fixes.length) {
+    return false;
+  }
+  if (playing) {
+    stop();
+  } else {
+    play();
+  }
+  return true;
+}
+
+function isTypingTarget(target) {
+  if (!target || !(target instanceof Element)) {
+    return false;
+  }
+  const tag = target.tagName;
+  return (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    target.isContentEditable
+  );
+}
+
+export function isIgcReplayOn() {
+  return fixes.length > 0;
+}
+
+export function stopIgcReplay() {
+  stop();
+  fixes = [];
+  seconds = 0;
+  setTransportEnabled(false);
+  if (dom.igcSlider) {
+    dom.igcSlider.value = "0";
+  }
+  if (dom.igcSpeedBtn) {
+    speedIndex = 0;
+    dom.igcSpeedBtn.textContent = "1x";
+  }
+}
+
 export function syncIgcReplayBar(sim) {
   if (dom.simReplayEl) {
     dom.simReplayEl.hidden = !sim;
@@ -138,19 +191,37 @@ export function initIgcReplay(h) {
     applyFix(Number(dom.igcSlider.value));
   });
   dom.igcPlayBtn?.addEventListener("click", () => {
-    if (!fixes.length) {
-      return;
-    }
-    if (playing) {
-      stop();
-      return;
-    }
-    play();
+    togglePlayPause();
   });
   dom.igcSpeedBtn?.addEventListener("click", () => {
     speedIndex = (speedIndex + 1) % SPEEDS.length;
     if (dom.igcSpeedBtn) {
       dom.igcSpeedBtn.textContent = `${SPEEDS[speedIndex]}x`;
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    if (isTypingTarget(event.target)) {
+      return;
+    }
+    if (!fixes.length || dom.simReplayEl?.hidden) {
+      return;
+    }
+    if (event.key === " " || event.code === "Space") {
+      event.preventDefault();
+      togglePlayPause();
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      seekBy(-SEEK_SECONDS);
+      return;
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      seekBy(SEEK_SECONDS);
     }
   });
 }

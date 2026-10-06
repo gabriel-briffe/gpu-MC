@@ -15,6 +15,7 @@ export function createApp() {
     statusClearTimer: null,
     lastGeoLngLat: null,
     lastGeoAltitude: null,
+    sessionMode: "simulator",
     fakeGeoActive: false,
     geolocateControl: null,
     geoTrackPanZoom: null,
