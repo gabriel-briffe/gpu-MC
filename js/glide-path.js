@@ -531,7 +531,6 @@ export function refreshInspectPath(cell) {
 
 export function clearGeoPath() {
   aircraftLines = [];
-  aircraftArrival = [];
   discsGeo = [];
   syncPathSource();
 }
