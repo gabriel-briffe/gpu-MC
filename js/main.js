@@ -148,7 +148,6 @@ import {
   setUserLocationMarkerVisible,
   updateUserLocationFromPosition,
 } from "./map/location-track.js";
-import { initFakeGeo, isFakeGeoActive, syncFakeGeoMenuVisibility } from "./dev-fake-geo.js";
 import { initOptionalArea, readEmulatedAltitudeM, clearOptionalArea, refreshOptionalArea } from "./optional-area.js";
 import { requiredAltitudeAt } from "./glidecone/route-style.js";
 import { formatMinimumAltLabel } from "./compute/format.js";
@@ -475,16 +474,10 @@ function isGeolocateControlTracking() {
 }
 
 function isGeoTrackingOn() {
-  if (isFakeGeoActive(app)) {
-    return true;
-  }
   return isGeolocateControlTracking();
 }
 
 function startGeoTracking() {
-  if (isFakeGeoActive(app)) {
-    return;
-  }
   if (!app.geolocateControl) {
     return;
   }
@@ -496,7 +489,7 @@ function startGeoTracking() {
 }
 
 function stopGeoTracking() {
-  if (!isFakeGeoActive(app) && app.geolocateControl && isGeolocateControlTracking()) {
+  if (app.geolocateControl && isGeolocateControlTracking()) {
     // MapLibre toggles tracking when trigger() is called while already active.
     app.geolocateControl.trigger();
   }
@@ -518,7 +511,7 @@ function applyGeoPosition(lng, lat, altitude) {
 }
 
 function clearGeoTrackingMarker() {
-  if (isFakeGeoActive(app) || isGeolocateControlTracking()) {
+  if (isGeolocateControlTracking()) {
     return;
   }
   setUserLocationMarkerVisible(app.map, false);
@@ -843,7 +836,6 @@ initCellInspect(app.hooks);
 initComputeVisualization(app.hooks);
 initComputeSession(app.hooks);
 initParamsPanel(app, dom);
-syncFakeGeoMenuVisibility();
 syncAppMenuUi();
 syncModeAirportHint();
 
@@ -1500,7 +1492,6 @@ app.map.on("load", async () => {
     });
   ensurePathLayer();
   ensureUserLocationLayers(app.map, () => raisePathLayer());
-  initFakeGeo(app, app.hooks);
   initOptionalArea(app.hooks);
   initSessionMode(app.hooks);
   app.map.on("moveend", () => {
@@ -1513,7 +1504,6 @@ app.map.on("load", async () => {
     if (isIncludeAirspaceEnabled() && !app.cacheSelectMode) {
       refreshRestAirspaceLayerData();
     }
-    app.hooks.syncFakeGeoFromCamera?.();
   });
   app.map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);

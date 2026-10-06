@@ -276,6 +276,17 @@ export function initParamsPanel(appState, domRefs) {
   dom.paramsModeSingleBtn?.addEventListener("click", () => setParamsMode("single"));
   dom.paramsModeAutoBtn?.addEventListener("click", () => setParamsMode("auto"));
 
+  app.hooks.getMaxComputeIterations = () => {
+    if (!isDebugMode()) {
+      return null;
+    }
+    const value = Number.parseInt(dom.maxComputeIterInput?.value ?? "", 10);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  };
+  dom.maxComputeIterInput?.addEventListener("change", () => {
+    document.getElementById("params-mode-single")?.click();
+  });
+
   const onParamsEdited = () => {
     app.hooks.schedulePersistParamsState?.();
   };

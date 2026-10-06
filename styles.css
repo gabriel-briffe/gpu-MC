@@ -539,18 +539,6 @@
         flex-shrink: 0;
       }
 
-      .dev-localhost-only {
-        display: none !important;
-      }
-
-      body.localhost-dev .dev-localhost-only {
-        display: block !important;
-      }
-
-      body.localhost-dev #fake-geo-section.dev-localhost-only {
-        display: flex !important;
-      }
-
       .app-menu-subsection[hidden] {
         display: none;
       }
@@ -1232,21 +1220,6 @@
       }
 
       #max-compute-iter-field input[type="number"] {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 0.4rem 0.55rem;
-        border-radius: 0.45rem;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        background: rgba(255, 255, 255, 0.06);
-        color: #f5f7fa;
-        font-size: 0.9rem;
-      }
-
-      #fake-geo-section .param-check {
-        justify-content: flex-start;
-      }
-
-      #fake-geo-alt-field input[type="number"] {
         width: 100%;
         box-sizing: border-box;
         padding: 0.4rem 0.55rem;

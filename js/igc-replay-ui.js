@@ -14,7 +14,7 @@ let frame = 0;
 
 function writeAltitude(meters) {
   const value = String(Math.round(meters));
-  for (const input of [dom.emulatedAltitudeInput, dom.emulatedAltitudeMenuInput, dom.fakeGeoAltitudeInput]) {
+  for (const input of [dom.emulatedAltitudeInput, dom.emulatedAltitudeMenuInput]) {
     if (input && input.value !== value) {
       input.value = value;
     }

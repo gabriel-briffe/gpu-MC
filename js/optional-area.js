@@ -113,11 +113,7 @@ export function readEmulatedAltitudeM() {
     return primary;
   }
   const menu = Number.parseFloat(dom.emulatedAltitudeMenuInput?.value ?? "");
-  if (Number.isFinite(menu)) {
-    return menu;
-  }
-  const fallback = Number.parseFloat(dom.fakeGeoAltitudeInput?.value ?? "");
-  return Number.isFinite(fallback) ? fallback : null;
+  return Number.isFinite(menu) ? menu : null;
 }
 
 export function writeSimAltitudeM(meters) {
@@ -133,9 +129,6 @@ function writeEmulatedAltitude(value) {
   }
   if (dom.emulatedAltitudeMenuInput && dom.emulatedAltitudeMenuInput.value !== value) {
     dom.emulatedAltitudeMenuInput.value = value;
-  }
-  if (dom.fakeGeoAltitudeInput && value !== "" && dom.fakeGeoAltitudeInput.value !== value) {
-    dom.fakeGeoAltitudeInput.value = value;
   }
 }
 
@@ -1019,13 +1012,6 @@ export function initOptionalArea(h) {
   });
   dom.emulatedAltitudeMenuInput?.addEventListener("input", () => {
     onEmulatedAltitudeEdited(dom.emulatedAltitudeMenuInput);
-  });
-
-  dom.fakeGeoAltitudeInput?.addEventListener("input", () => {
-    if (document.activeElement === dom.emulatedAltitudeInput || document.activeElement === dom.emulatedAltitudeMenuInput) {
-      return;
-    }
-    writeEmulatedAltitude(dom.fakeGeoAltitudeInput.value);
   });
 
   bindLongPress(dom.flightShaderBtn, {

@@ -110,7 +110,6 @@ export function bindMapEvents(app, hooks) {
   map.on("move", () => {
     if (!hooks.getCacheSelectMode()) {
       hooks.syncPathsOnMapMove();
-      hooks.syncFakeGeoFromCamera?.();
     }
   });
   map.on("zoom", () => {
