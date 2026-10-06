@@ -552,20 +552,51 @@ async function runProbeArrival(token, cell, startAlt, coneState) {
   }
 }
 
+let optionsBusy = false;
+let queuedRefresh = null;
+
+function waitForDisplayed() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
 export async function refreshOptionalArea({ force = false } = {}) {
+  if (optionsBusy) {
+    queuedRefresh = { force: Boolean(queuedRefresh?.force || force) };
+    return;
+  }
+  optionsBusy = true;
+  let waitForPaint = false;
+  try {
+    waitForPaint = await runOptionalRefresh({ force });
+    if (waitForPaint) {
+      await waitForDisplayed();
+    }
+  } finally {
+    optionsBusy = false;
+    const next = queuedRefresh;
+    queuedRefresh = null;
+    if (next) {
+      void refreshOptionalArea(next);
+    }
+  }
+}
+
+async function runOptionalRefresh({ force = false } = {}) {
   const aircraft = resolveAircraft();
   paintSimReadout(aircraft);
   if (!optionsEnabled()) {
     if (app?.optionalField || optionalKey) {
       clearOptionalArea();
     }
-    return;
+    return false;
   }
   if (!aircraft || aircraft.outside || !Number.isFinite(aircraft.alt)) {
     if (app?.optionalField || optionalKey) {
       clearOptionalArea();
     }
-    return;
+    return false;
   }
   if (aircraft.cone !== seenCone) {
     seenCone = aircraft.cone;
@@ -576,7 +607,7 @@ export async function refreshOptionalArea({ force = false } = {}) {
   const bucket = aircraft.source === "gps" ? Math.round(aircraft.alt / 30) : Math.round(aircraft.alt);
   const key = `${viz}:${method}:${coneSerial}:${aircraft.gi},${aircraft.gj}:${bucket}`;
   if (!force && key === optionalKey) {
-    return;
+    return false;
   }
   optionalKey = key;
   shaderRequestId += 1;
@@ -584,8 +615,6 @@ export async function refreshOptionalArea({ force = false } = {}) {
   const startedAt = performance.now();
   readoutToken += 1;
   const timingToken = readoutToken;
-  app.optionalField = null;
-  hooks.clearArrivalPaths?.();
   const { cone } = aircraft;
   try {
     const seed = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone);
@@ -593,11 +622,11 @@ export async function refreshOptionalArea({ force = false } = {}) {
       clearOptionalArea();
       finishOptionsTiming(timingToken, startedAt);
       hooks.setStatus?.("Below the cone, no ridge escape");
-      return;
+      return true;
     }
     const field = await computeField(seed.cell, seed.startAlt, cone);
     if (requestId !== shaderRequestId || !field) {
-      return;
+      return true;
     }
     let mask10 = null;
     let mask20 = null;
@@ -607,12 +636,12 @@ export async function refreshOptionalArea({ force = false } = {}) {
       const seed10 = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone, cone.glideRatio * 0.9);
       const degraded10 = seed10 ? await computeField(seed10.cell, seed10.startAlt, cone, cone.glideRatio * 0.9) : null;
       if (requestId !== shaderRequestId) {
-        return;
+        return true;
       }
       const seed20 = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone, cone.glideRatio * 0.8);
       const degraded20 = seed20 ? await computeField(seed20.cell, seed20.startAlt, cone, cone.glideRatio * 0.8) : null;
       if (requestId !== shaderRequestId) {
-        return;
+        return true;
       }
       mask10 = degraded10.mask;
       mask20 = degraded20.mask;
@@ -653,13 +682,15 @@ export async function refreshOptionalArea({ force = false } = {}) {
       scheduleProbeArrival(app.lastInspectCell);
     }
     finishOptionsTiming(timingToken, startedAt);
+    return true;
   } catch (error) {
     if (requestId !== shaderRequestId) {
-      return;
+      return true;
     }
     clearOptionalArea();
     hooks.setStatus?.(error?.message ?? "Optional area failed");
     finishOptionsTiming(timingToken, startedAt);
+    return true;
   }
 }
 
