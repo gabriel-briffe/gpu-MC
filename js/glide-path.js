@@ -207,7 +207,34 @@ function arrivalFeatures(field, role) {
     endPt
   );
   const color = optionCellColor(startIdx);
-  return coordinates ? [lineFeature(role, "arrival", coordinates, color)] : [];
+  const prefixed = prefixEscapeSegment(field, dem, coordinates);
+  return prefixed ? [lineFeature(role, "arrival", prefixed, color)] : [];
+}
+
+function prefixEscapeSegment(field, dem, coordinates) {
+  const cells = field.escapeCells;
+  if (!cells?.length || !Number.isFinite(field.gliderLng) || !Number.isFinite(field.gliderLat)) {
+    return coordinates;
+  }
+  const prefix = [[field.gliderLng, field.gliderLat]];
+  for (let i = 1; i < cells.length; i += 1) {
+    const pt = gridCellToLngLat(cells[i].x, cells[i].y, dem);
+    const last = prefix[prefix.length - 1];
+    if (last[0] !== pt.lng || last[1] !== pt.lat) {
+      prefix.push([pt.lng, pt.lat]);
+    }
+  }
+  if (!coordinates?.length) {
+    return prefix.length >= 2 ? prefix : null;
+  }
+  const joined = prefix.slice();
+  for (const pt of coordinates) {
+    const last = joined[joined.length - 1];
+    if (last[0] !== pt[0] || last[1] !== pt[1]) {
+      joined.push(pt);
+    }
+  }
+  return joined.length >= 2 ? joined : null;
 }
 
 function panPinkFeatures(cell) {

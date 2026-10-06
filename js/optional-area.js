@@ -3,8 +3,9 @@ import { getOptionalOverlayOpacity, isDebugMode } from "./params/panel.js";
 import { dom } from "./dom.js";
 import { raisePathLayer } from "./map/layers.js";
 import { buildOptionalMask } from "./optional-area-mask.js";
+import { ridgeEscapeSeed } from "./ridge-escape.js";
 import { cellMarginT, marginHex, marginRgb } from "./glidecone/margin-color.js";
-import { gridIndexFromLngLat } from "./geo.js";
+import { gridCellToLngLat, gridIndexFromLngLat } from "./geo.js";
 import { bindLongPress } from "./ui/long-press.js";
 import { isGlideConesEnabled } from "./app-menu.js";
 
@@ -331,6 +332,36 @@ function preferShader() {
   return app?.computeHardwareSupported !== false && Boolean(app?.engine?.computeDownward);
 }
 
+function gridIndexLngLat(gi, gj, dem) {
+  return gridCellToLngLat(gi, gj, dem);
+}
+
+function optionsSeed(cell, startAlt, coneState, glideRatio = coneState.glideRatio) {
+  const decision = ridgeEscapeSeed({
+    dem: coneState.dem,
+    altitudes: coneState.altitudes,
+    originX: coneState.originX,
+    originY: coneState.originY,
+    ground: coneState.ground,
+    maxAltitude: coneState.maxAltitude,
+    gi: cell.gi,
+    gj: cell.gj,
+    startAlt,
+    glideRatio,
+  });
+  if (decision.kind === "none") {
+    return null;
+  }
+  if (decision.kind === "escape") {
+    return {
+      cell: { gi: decision.gi, gj: decision.gj },
+      startAlt: decision.arrival,
+      escape: decision,
+    };
+  }
+  return { cell, startAlt, escape: null };
+}
+
 async function computeField(cell, startAlt, coneState, glideRatio = coneState.glideRatio) {
   const { dem, altitudes, maxAltitude, groundClearance } = coneState;
   if (preferShader()) {
@@ -494,7 +525,13 @@ export async function refreshOptionalArea({ force = false } = {}) {
   hooks.clearArrivalPaths?.();
   const { cone } = aircraft;
   try {
-    const field = await computeField({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone);
+    const seed = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone);
+    if (!seed) {
+      clearOptionalArea();
+      hooks.setStatus?.("Below the cone, no ridge escape");
+      return;
+    }
+    const field = await computeField(seed.cell, seed.startAlt, cone);
     if (requestId !== shaderRequestId || !field) {
       return;
     }
@@ -503,22 +540,14 @@ export async function refreshOptionalArea({ force = false } = {}) {
     let image;
     if (viz === "degraded" && cone.glideRatio > 0) {
       hooks.setStatus?.("Optional area, degraded masks…");
-      const degraded10 = await computeField(
-        { gi: aircraft.gi, gj: aircraft.gj },
-        aircraft.alt,
-        cone,
-        cone.glideRatio * 0.9
-      );
-      if (requestId !== shaderRequestId || !degraded10) {
+      const seed10 = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone, cone.glideRatio * 0.9);
+      const degraded10 = seed10 ? await computeField(seed10.cell, seed10.startAlt, cone, cone.glideRatio * 0.9) : null;
+      if (requestId !== shaderRequestId) {
         return;
       }
-      const degraded20 = await computeField(
-        { gi: aircraft.gi, gj: aircraft.gj },
-        aircraft.alt,
-        cone,
-        cone.glideRatio * 0.8
-      );
-      if (requestId !== shaderRequestId || !degraded20) {
+      const seed20 = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone, cone.glideRatio * 0.8);
+      const degraded20 = seed20 ? await computeField(seed20.cell, seed20.startAlt, cone, cone.glideRatio * 0.8) : null;
+      if (requestId !== shaderRequestId) {
         return;
       }
       mask10 = degraded10.mask;
@@ -534,12 +563,17 @@ export async function refreshOptionalArea({ force = false } = {}) {
         cone.dem.height
       ).image;
     }
+    const escape = seed.escape;
+    const escapePt = escape ? gridIndexLngLat(escape.gi, escape.gj, cone.dem) : null;
     app.optionalField = {
       ...field,
-      startGi: aircraft.gi,
-      startGj: aircraft.gj,
-      startLng: aircraft.lng,
-      startLat: aircraft.lat,
+      startGi: escape ? escape.gi : aircraft.gi,
+      startGj: escape ? escape.gj : aircraft.gj,
+      startLng: escapePt?.lng ?? aircraft.lng,
+      startLat: escapePt?.lat ?? aircraft.lat,
+      gliderLng: aircraft.lng,
+      gliderLat: aircraft.lat,
+      escapeCells: escape?.cells ?? null,
       maxMargin: fieldMaxMargin(field.mask, field.arrivals, cone.altitudes, cone.maxAltitude),
       mask10,
       mask20,
