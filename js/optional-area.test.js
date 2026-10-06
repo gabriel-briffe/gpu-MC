@@ -146,3 +146,17 @@ test("no options when no ground cell on the run is cleared", () => {
   });
   assert.equal(decision.kind, "none");
 });
+
+import { fixAt, parseIgc } from "./igc-replay.js";
+
+test("igc parser reads a B record and interpolates", () => {
+  const fixes = parseIgc("B1101355206343N00006198WA0058700558\nB1101455206343N00007198WA0058700658\n");
+  assert.equal(fixes.length, 2);
+  assert.equal(fixes[0].t, 0);
+  assert.equal(fixes[1].t, 10);
+  assert.equal(fixes[1].alt, 658);
+  assert.ok(fixes[0].lat > 52 && fixes[0].lat < 53);
+  assert.ok(fixes[0].lng < 0);
+  const mid = fixAt(fixes, 5);
+  assert.ok(Math.abs(mid.alt - 608) < 0.01);
+});

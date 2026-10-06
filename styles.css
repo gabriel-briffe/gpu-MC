@@ -2158,8 +2158,48 @@
         display: none !important;
       }
 
-      body.has-compute-context .sim-help-btn {
+      body.has-compute-context .sim-help-btn,
+      body.has-compute-context .sim-replay {
         bottom: calc(var(--compute-context-bar-height, 3.5rem) + 0.55rem);
+      }
+
+      .sim-replay {
+        position: fixed;
+        z-index: 4;
+        left: max(0.75rem, env(safe-area-inset-left));
+        right: max(0.75rem, env(safe-area-inset-right));
+        bottom: max(0.75rem, env(safe-area-inset-bottom));
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+
+      .sim-replay[hidden] {
+        display: none !important;
+      }
+
+      .sim-replay .sim-help-btn {
+        position: static;
+        flex: 0 0 auto;
+        bottom: auto;
+        left: auto;
+      }
+
+      .igc-slider {
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 44px;
+        accent-color: #f0c14a;
+      }
+
+      .igc-slider:disabled {
+        opacity: 0.45;
+      }
+
+      .igc-play,
+      .igc-speed {
+        min-width: 3.1rem;
+        padding: 0 0.55rem;
       }
 
       .sim-manual {

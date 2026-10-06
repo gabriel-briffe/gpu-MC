@@ -758,9 +758,16 @@
         <input id="emulated-altitude" type="number" inputmode="decimal" step="10" placeholder="MSL" />
       </div>
     </div>
-    <button type="button" id="sim-help-btn" class="sim-help-btn" hidden aria-haspopup="dialog" aria-expanded="false">
-      Help
-    </button>
+    <div id="sim-replay" class="sim-replay" hidden>
+      <button type="button" id="sim-help-btn" class="sim-help-btn" aria-haspopup="dialog" aria-expanded="false">
+        Help
+      </button>
+      <button type="button" id="igc-btn" class="sim-help-btn igc-btn">IGC</button>
+      <input id="igc-file" type="file" accept=".igc,text/plain,.txt" hidden />
+      <input id="igc-slider" class="igc-slider" type="range" min="0" max="0" step="1" value="0" disabled aria-label="Flight time" />
+      <button type="button" id="igc-play" class="sim-help-btn igc-play" disabled aria-label="Play flight">Play</button>
+      <button type="button" id="igc-speed" class="sim-help-btn igc-speed" disabled aria-label="Playback speed">1x</button>
+    </div>
     <div id="sim-manual" class="sim-manual" hidden>
       <div class="sim-manual-backdrop" id="sim-manual-backdrop"></div>
       <div
@@ -826,6 +833,8 @@
             The simulator is available only when location tracking is off. Turn on Find my location and it steps aside: the glider is then your GPS position, and this title and Help button hide.
           </p>
         </div>
+          <h3>IGC replay</h3>
+          <p>IGC, to the right of Help, loads a flight log. The slider jumps to a moment. Play follows the track, and the speed button cycles from 1x to 10x. Altitude comes from the log.</p>
         <button type="button" class="action-btn btn-blue" id="sim-manual-close">Close</button>
       </div>
     </div>

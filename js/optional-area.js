@@ -4,6 +4,7 @@ import { dom } from "./dom.js";
 import { raisePathLayer } from "./map/layers.js";
 import { buildOptionalMask } from "./optional-area-mask.js";
 import { ridgeEscapeSeed } from "./ridge-escape.js";
+import { initIgcReplay, syncIgcReplayBar } from "./igc-replay-ui.js";
 import { cellMarginT, marginHex, marginRgb } from "./glidecone/margin-color.js";
 import { gridCellToLngLat, gridIndexFromLngLat } from "./geo.js";
 import { bindLongPress } from "./ui/long-press.js";
@@ -320,6 +321,7 @@ export function syncEmulatedAltitudeBox() {
   if (dom.simHelpBtn) {
     dom.simHelpBtn.hidden = !sim;
   }
+  syncIgcReplayBar(sim);
   if (!sim) {
     setSimManualOpen(false);
   }
@@ -658,6 +660,7 @@ export function initOptionalArea(h) {
     void refreshOptionalArea({ force: true });
   });
 
+  initIgcReplay(hooks);
   syncEmulatedAltitudeBox();
   syncDownwardMethodButton();
   syncFlightShaderButton();
