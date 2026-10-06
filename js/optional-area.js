@@ -6,6 +6,7 @@ import { buildOptionalMask } from "./optional-area-mask.js";
 import { ridgeEscapeSeed } from "./ridge-escape.js";
 import { initIgcReplay, syncIgcReplayBar } from "./igc-replay-ui.js";
 import { cellMarginT, marginHex, marginRgb } from "./glidecone/margin-color.js";
+import { requiredAltitudeAt } from "./glidecone/route-style.js";
 import { gridCellToLngLat, gridIndexFromLngLat } from "./geo.js";
 import { bindLongPress } from "./ui/long-press.js";
 import { isGlideConesEnabled } from "./app-menu.js";
@@ -418,24 +419,17 @@ function optionsEnabled() {
   return dom.optionsEnabledInput?.checked !== false;
 }
 
-function coneAltitudeAt(aircraft) {
-  const idx = aircraft.gj * aircraft.cone.dem.width + aircraft.gi;
-  const alt = aircraft.cone.altitudes?.[idx];
-  if (!Number.isFinite(alt) || alt >= aircraft.cone.maxAltitude) {
-    return null;
-  }
-  return alt;
-}
-
 function formatMargin(aircraft) {
   if (!aircraft || aircraft.outside || !Number.isFinite(aircraft.alt) || !aircraft.cone) {
     return "—";
   }
-  const cone = coneAltitudeAt(aircraft);
-  if (cone == null) {
+  // Same as XCSoar's InfoBox: on ground cells walk back to the first air cell
+  // and add distance / L/D, so the ridge does not show a huge negative margin.
+  const proof = requiredAltitudeAt(aircraft.gi, aircraft.gj, aircraft.cone);
+  if (!Number.isFinite(proof)) {
     return "no cone";
   }
-  const margin = Math.round(aircraft.alt - cone);
+  const margin = Math.round(aircraft.alt - proof);
   return `${margin > 0 ? "+" : ""}${margin} m`;
 }
 
