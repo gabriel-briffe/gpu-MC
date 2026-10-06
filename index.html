@@ -362,6 +362,13 @@
                 />
                 <span class="param-hint" id="sectors-opacity-hint">50%</span>
               </div>
+              <div class="param-field param-field-full" id="options-enabled-field">
+                <label class="param-check">
+                  <input id="options-enabled" type="checkbox" checked />
+                  <span>Options</span>
+                </label>
+                <span class="param-hint">Compute the options area and its paths.</span>
+              </div>
               <div class="param-field param-field-full" id="optional-opacity-field">
                 <div class="param-label-row">
                   <label class="param-label" for="optional-opacity">Options opacity</label>
@@ -757,6 +764,7 @@
         <label for="emulated-altitude">Altitude (m)</label>
         <input id="emulated-altitude" type="number" inputmode="decimal" step="10" placeholder="MSL" />
       </div>
+      <p id="sim-readout" class="sim-readout">Margin — · Options —</p>
     </div>
     <div id="sim-replay" class="sim-replay" hidden>
       <button type="button" id="sim-help-btn" class="sim-help-btn" aria-haspopup="dialog" aria-expanded="false">

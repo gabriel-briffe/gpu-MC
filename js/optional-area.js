@@ -410,6 +410,57 @@ async function computeField(cell, startAlt, coneState, glideRatio = coneState.gl
   };
 }
 
+const OPTIONS_ENABLED_KEY = "gpu-mc-options-enabled";
+let lastOptionsMs = null;
+let readoutToken = 0;
+
+function optionsEnabled() {
+  return dom.optionsEnabledInput?.checked !== false;
+}
+
+function coneAltitudeAt(aircraft) {
+  const idx = aircraft.gj * aircraft.cone.dem.width + aircraft.gi;
+  const alt = aircraft.cone.altitudes?.[idx];
+  if (!Number.isFinite(alt) || alt >= aircraft.cone.maxAltitude) {
+    return null;
+  }
+  return alt;
+}
+
+function formatMargin(aircraft) {
+  if (!aircraft || aircraft.outside || !Number.isFinite(aircraft.alt) || !aircraft.cone) {
+    return "—";
+  }
+  const cone = coneAltitudeAt(aircraft);
+  if (cone == null) {
+    return "no cone";
+  }
+  const margin = Math.round(aircraft.alt - cone);
+  return `${margin > 0 ? "+" : ""}${margin} m`;
+}
+
+function paintSimReadout(aircraft) {
+  const el = dom.simReadoutEl;
+  if (!el) {
+    return;
+  }
+  const timing = lastOptionsMs == null ? "—" : `${Math.round(lastOptionsMs)} ms`;
+  el.textContent = optionsEnabled()
+    ? `Margin ${formatMargin(aircraft)} · Options ${timing}`
+    : `Margin ${formatMargin(aircraft)} · Options off`;
+}
+
+function finishOptionsTiming(token, startedAt) {
+  const apply = () => {
+    if (token !== readoutToken) {
+      return;
+    }
+    lastOptionsMs = performance.now() - startedAt;
+    paintSimReadout(resolveAircraft());
+  };
+  apply();
+  requestAnimationFrame(() => requestAnimationFrame(apply));
+}
 function resolveAircraft() {
   const cone = hooks.getConeState?.();
   if (!cone?.dem) {
@@ -503,6 +554,13 @@ async function runProbeArrival(token, cell, startAlt, coneState) {
 
 export async function refreshOptionalArea({ force = false } = {}) {
   const aircraft = resolveAircraft();
+  paintSimReadout(aircraft);
+  if (!optionsEnabled()) {
+    if (app?.optionalField || optionalKey) {
+      clearOptionalArea();
+    }
+    return;
+  }
   if (!aircraft || aircraft.outside || !Number.isFinite(aircraft.alt)) {
     if (app?.optionalField || optionalKey) {
       clearOptionalArea();
@@ -523,6 +581,9 @@ export async function refreshOptionalArea({ force = false } = {}) {
   optionalKey = key;
   shaderRequestId += 1;
   const requestId = shaderRequestId;
+  const startedAt = performance.now();
+  readoutToken += 1;
+  const timingToken = readoutToken;
   app.optionalField = null;
   hooks.clearArrivalPaths?.();
   const { cone } = aircraft;
@@ -530,6 +591,7 @@ export async function refreshOptionalArea({ force = false } = {}) {
     const seed = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone);
     if (!seed) {
       clearOptionalArea();
+      finishOptionsTiming(timingToken, startedAt);
       hooks.setStatus?.("Below the cone, no ridge escape");
       return;
     }
@@ -590,12 +652,14 @@ export async function refreshOptionalArea({ force = false } = {}) {
     if (app.lastInspectCell) {
       scheduleProbeArrival(app.lastInspectCell);
     }
+    finishOptionsTiming(timingToken, startedAt);
   } catch (error) {
     if (requestId !== shaderRequestId) {
       return;
     }
     clearOptionalArea();
     hooks.setStatus?.(error?.message ?? "Optional area failed");
+    finishOptionsTiming(timingToken, startedAt);
   }
 }
 
@@ -614,6 +678,22 @@ export function initOptionalArea(h) {
     syncDownwardMethodButton();
     void refreshOptionalArea({ force: true });
   });
+
+  dom.optionsEnabledInput?.addEventListener("change", () => {
+    try {
+      localStorage.setItem(OPTIONS_ENABLED_KEY, optionsEnabled() ? "1" : "0");
+    } catch {
+      // Private mode can reject storage; the checkbox still applies.
+    }
+    void refreshOptionalArea({ force: true });
+  });
+  try {
+    if (localStorage.getItem(OPTIONS_ENABLED_KEY) === "0" && dom.optionsEnabledInput) {
+      dom.optionsEnabledInput.checked = false;
+    }
+  } catch {
+    // Ignore storage reads that are blocked.
+  }
 
   dom.emulatedAltitudeInput?.addEventListener("input", () => {
     onEmulatedAltitudeEdited(dom.emulatedAltitudeInput);
