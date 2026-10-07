@@ -1,7 +1,7 @@
 export const TILE_SIZE = 512;
 export const MIN_CELL_M = 100;
 export const MAX_MAPTERHORN_Z = 12;
-export const TERRAIN_ZOOM_MIN = 7;
+export const TERRAIN_ZOOM_MIN = 6;
 export const TERRAIN_ZOOM_MAX = 10;
 export const EARTH_CIRCUMFERENCE = 40_075_017;
 

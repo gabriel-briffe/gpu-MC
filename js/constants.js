@@ -101,7 +101,7 @@ export const PARAM_HELP = {
   "max-alt":
     "Max altitude that you are interested in.",
   "terrain-zoom":
-    "Mapterhorn DEM tile zoom (7–10). Leave at 7. zoom 8 has about 2X better resolution but takes 4X more time, zoom 9: 16x and so on.",
+    "Mapterhorn DEM tile zoom (6–10). Leave at 6. Higher zoom has about 2X better resolution per step but takes 4X more time.",
   "auto-window-size":
     "In Combined mode, the compute window follows the map centre (or the glider in Simulator). Bigger window, longer wait during updates.",
   "auto-window-from-glide":
