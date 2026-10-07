@@ -159,7 +159,8 @@ function paintOptionalImage(mask, arrivals, altitudes, maxAltitude, width, heigh
 }
 
 const OPTIONAL_VIZ_HINTS = {
-  margin: "Largest margin above the cone is green, zero is red.",
+  margin:
+    "Largest margin above the cone is green, zero is red. On the ground, margin is above proof altitude.",
   degraded: "Still reachable at 20% less L/D is green. Lost only at 20% less is yellow. Lost at 10% less is red.",
 };
 
@@ -273,7 +274,9 @@ export function optionAreaCellColor(idx) {
   if (!(field.maxMargin > 0)) {
     return null;
   }
-  const t = cellMarginT(field.arrivals?.[idx], cone.altitudes?.[idx], cone.maxAltitude, field.maxMargin);
+  // Margin vs proof floor on ground (same buffer used for options reachability).
+  const floor = field.floors?.[idx] ?? cone.altitudes?.[idx];
+  const t = cellMarginT(field.arrivals?.[idx], floor, cone.maxAltitude, field.maxMargin);
   return marginHex(t);
 }
 
@@ -610,6 +613,7 @@ async function computeField(cell, startAlt, coneState, glideRatio = coneState.gl
         originX,
         originY,
         iterations,
+        floors,
         shader: true,
       };
     } catch (error) {
@@ -634,6 +638,7 @@ async function computeField(cell, startAlt, coneState, glideRatio = coneState.gl
     originX: mask.originX,
     originY: mask.originY,
     iterations: 0,
+    floors,
     shader: false,
   };
 }
@@ -909,17 +914,20 @@ async function runOptionalRefresh({ force = false } = {}) {
       mask20 = degraded20.mask;
       image = paintDegradedImage(field.mask, mask10, mask20, cone.dem.width, cone.dem.height);
     } else {
-      image = paintOptionalImage(
+      const painted = paintOptionalImage(
         field.mask,
         field.arrivals,
-        cone.altitudes,
+        field.floors ?? cone.altitudes,
         cone.maxAltitude,
         cone.dem.width,
         cone.dem.height
-      ).image;
+      );
+      image = painted.image;
+      field.maxMargin = painted.maxMargin;
     }
     const escape = seed.escape;
     const escapePt = escape ? gridIndexLngLat(escape.gi, escape.gj, cone.dem) : null;
+    const marginFloors = field.floors ?? cone.altitudes;
     app.optionalField = {
       ...field,
       startGi: escape ? escape.gi : aircraft.gi,
@@ -929,7 +937,10 @@ async function runOptionalRefresh({ force = false } = {}) {
       gliderLng: aircraft.lng,
       gliderLat: aircraft.lat,
       escapeCells: escape?.cells ?? null,
-      maxMargin: fieldMaxMargin(field.mask, field.arrivals, cone.altitudes, cone.maxAltitude),
+      floors: marginFloors,
+      maxMargin:
+        field.maxMargin ??
+        fieldMaxMargin(field.mask, field.arrivals, marginFloors, cone.maxAltitude),
       mask10,
       mask20,
     };
