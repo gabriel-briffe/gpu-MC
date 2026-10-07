@@ -27,7 +27,8 @@
         position: fixed;
         top: max(0.75rem, env(safe-area-inset-top));
         left: max(0.75rem, env(safe-area-inset-left));
-        z-index: 4;
+        /* Stay above mode/IGC chrome; menu popup (21) covers the rest when open. */
+        z-index: 22;
         pointer-events: auto;
         display: flex;
         flex-direction: column;
@@ -101,25 +102,34 @@
         display: none !important;
       }
 
-      /* Keep mode boxes + tip visible before compute; hide legend / stop only. */
-      body.glidecones-disabled .sim-top-cluster > :not(.session-mode-box):not(#cell-tooltip) {
+      /* Keep mode boxes + tip + IconCH time; hide legend / stop only. */
+      body.glidecones-disabled .sim-top-cluster > :not(.session-mode-box):not(#cell-tooltip):not(.iconch1-time-header) {
         display: none !important;
       }
 
       body.cache-select-mode .emulated-alt-box,
       body.cache-select-mode .flight-mode-box,
       body.cache-select-mode .viewer-mode-box,
-      body.cache-select-mode .sim-top-cluster,
       body.cache-select-mode .sim-bottom-chrome,
       body.cache-select-mode .sim-help-btn,
       body.cache-select-mode .sim-manual {
         display: none !important;
       }
 
+      /* Cache page: only IconCH time stays in the top flex cluster. */
+      body.cache-select-mode .sim-top-cluster > :not(.iconch1-time-header) {
+        display: none !important;
+      }
+
+      body.cache-select-mode .sim-top-cluster:not(:has(.iconch1-time-header:not([hidden]))) {
+        display: none !important;
+      }
+
       .app-menu-backdrop {
         position: fixed;
         inset: 0;
-        z-index: 3;
+        /* Above sim-top-cluster (6) and IGC / bottom chrome (4). */
+        z-index: 20;
         background: rgba(0, 0, 0, 0.45);
       }
 
@@ -134,7 +144,7 @@
         right: auto;
         bottom: auto;
         transform: translate(-50%, -50%);
-        z-index: 4;
+        z-index: 21;
         width: min(96vw, 28rem);
         max-height: min(80dvh, calc(100dvh - 2rem));
       }
@@ -249,7 +259,7 @@
 
       body.cache-select-mode #app-menu-chrome,
       body.manual-airport-select-mode #app-menu-chrome {
-        z-index: 5;
+        z-index: 22;
       }
 
       .cache-clear-dialog {
@@ -535,15 +545,8 @@
         border: 1px solid rgba(255, 255, 255, 0.07);
       }
 
-      #iconch1-chrome[hidden] {
-        display: none;
-      }
-
+      /* Lives in #sim-top-cluster flex row. */
       .iconch1-time-header {
-        position: fixed;
-        top: max(0.75rem, env(safe-area-inset-top));
-        left: 50%;
-        z-index: 4;
         display: inline-flex;
         flex-direction: column;
         align-items: center;
@@ -551,9 +554,14 @@
         padding: 0.45rem 0.6rem 0.5rem;
         border-radius: 12px;
         background: rgba(18, 22, 28, 0.92);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-        transform: translateX(-50%);
         pointer-events: auto;
+        flex: 0 0 auto;
+      }
+
+      .iconch1-time-header[hidden] {
+        display: none !important;
       }
 
       .iconch1-time-row {
@@ -579,48 +587,21 @@
         display: none;
       }
 
-      body.iconch1-status-visible .iconch1-alt-rail {
-        top: calc(max(0.75rem, env(safe-area-inset-top)) + 5.75rem);
-      }
-
-      /* Menu + glide mode (glide hidden on cache page). */
-      body:not(.cache-select-mode) .iconch1-alt-rail {
-        top: calc(max(0.75rem, env(safe-area-inset-top)) + 6.65rem);
-      }
-
-      body:not(.cache-select-mode).iconch1-status-visible .iconch1-alt-rail {
-        top: calc(max(0.75rem, env(safe-area-inset-top)) + 8.65rem);
-      }
-
-      body:not(.cache-select-mode):has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
-        top: calc(max(0.75rem, env(safe-area-inset-top)) + 9.55rem);
-      }
-
-      body:not(.cache-select-mode).iconch1-status-visible:has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
-        top: calc(max(0.75rem, env(safe-area-inset-top)) + 11.55rem);
-      }
-
-      body.cache-select-mode.iconch1-status-visible:has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
-        top: calc(max(0.75rem, env(safe-area-inset-top)) + 8.65rem);
-      }
-
+      /* Stacked in #app-menu-chrome under menu / map / glide / D|S. */
       .iconch1-alt-rail {
-        position: fixed;
-        /* Clear #app-menu-chrome (menu button only / cache page). */
-        top: calc(max(0.75rem, env(safe-area-inset-top)) + 3.75rem);
-        left: max(0.75rem, env(safe-area-inset-left));
-        z-index: 4;
         display: inline-flex;
         flex-direction: column;
         align-items: stretch;
         gap: 0.35rem;
-        width: fit-content;
+        width: 100%;
+        margin-top: 0.15rem;
+        padding-top: 0.35rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
         pointer-events: auto;
       }
 
-      /* Cache page: menu + optional basemap only. */
-      body.cache-select-mode:has(#basemap-cycle-btn:not([hidden])) .iconch1-alt-rail {
-        top: calc(max(0.75rem, env(safe-area-inset-top)) + 6.65rem);
+      .iconch1-alt-rail[hidden] {
+        display: none !important;
       }
 
       .iconch1-value-wrap {
@@ -698,11 +679,6 @@
       .iconch1-step-btn:disabled {
         opacity: 0.35;
         cursor: not-allowed;
-      }
-
-      body.iconch1-enabled.cache-select-mode .iconch1-time-header,
-      body.iconch1-enabled.manual-airport-select-mode .iconch1-time-header {
-        top: calc(max(0.75rem, env(safe-area-inset-top)) + 4.5rem);
       }
 
       .iconch1-settings-panel {
@@ -1490,7 +1466,8 @@
 
       #param-help-popover {
         position: fixed;
-        z-index: 10;
+        /* Above menu popup (21) and menu chrome (22). */
+        z-index: 23;
         max-width: 17rem;
         padding: 0.55rem 0.65rem;
         border-radius: 0.45rem;
@@ -2169,8 +2146,7 @@
         white-space: nowrap;
       }
 
-      .emulated-alt-box input,
-      #emulated-alt-field input[type="number"] {
+      .emulated-alt-box input {
         width: 6.5rem;
         min-height: 44px;
         box-sizing: border-box;
@@ -2180,10 +2156,6 @@
         background: rgba(255, 255, 255, 0.08);
         color: #f5f7fa;
         font-size: 16px;
-      }
-
-      #emulated-alt-field input[type="number"] {
-        width: 100%;
       }
 
       .sim-help-btn {
@@ -2291,7 +2263,6 @@
         background: #ff0000;
       }
 
-      body.cache-select-mode .sim-top-cluster,
       body.cache-select-mode .options-degraded-legend {
         display: none !important;
       }
@@ -2527,8 +2498,7 @@
           max-width: 100%;
         }
 
-        .emulated-alt-box input,
-        #emulated-alt-field input[type="number"] {
+        .emulated-alt-box input {
           min-height: 44px;
           font-size: 16px;
         }

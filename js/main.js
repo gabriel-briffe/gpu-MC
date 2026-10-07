@@ -260,20 +260,8 @@ function detectInteractionMode() {
 }
 
 function updateInteractionHints() {
-  const pathParts = [];
-  const { pathOnly } = parseVizMode();
-  const surface = pathOnly ? "map" : "overlay";
-
-  if (app.interaction.hoverPath) {
-    pathParts.push(`Hover over the ${surface} to show the glide path`);
-  }
-  if (app.interaction.tapPath) {
-    pathParts.push(`tap the ${surface} to show the glide path`);
-  }
-
   if (pathInputHintEl) {
-    pathInputHintEl.textContent =
-      pathParts.length > 0 ? `${pathParts.join("; ")}.` : "";
+    pathInputHintEl.textContent = "";
   }
 }
 
@@ -824,7 +812,11 @@ app.map = new maplibregl.Map({
   zoom: MAP_INITIAL_ZOOM,
   maxZoom: MAP_MAX_ZOOM,
   center: [MAP_CENTER.lng, MAP_CENTER.lat],
-  attributionControl: { compact: true },
+  attributionControl: {
+    compact: true,
+    customAttribution:
+      '<a href="https://www.openaip.net" target="_blank" rel="noopener">OpenAIP</a>',
+  },
   style: {
     version: 8,
     glyphs: MAP_GLYPHS_URL,

@@ -97,12 +97,8 @@ function optionsConeFloors(coneState, glideRatio) {
 }
 
 export function readEmulatedAltitudeM() {
-  const primary = Number.parseFloat(dom.emulatedAltitudeInput?.value ?? "");
-  if (Number.isFinite(primary)) {
-    return primary;
-  }
-  const menu = Number.parseFloat(dom.emulatedAltitudeMenuInput?.value ?? "");
-  return Number.isFinite(menu) ? menu : null;
+  const value = Number.parseFloat(dom.emulatedAltitudeInput?.value ?? "");
+  return Number.isFinite(value) ? value : null;
 }
 
 export function writeSimAltitudeM(meters) {
@@ -115,9 +111,6 @@ export function writeSimAltitudeM(meters) {
 function writeEmulatedAltitude(value) {
   if (dom.emulatedAltitudeInput && dom.emulatedAltitudeInput.value !== value) {
     dom.emulatedAltitudeInput.value = value;
-  }
-  if (dom.emulatedAltitudeMenuInput && dom.emulatedAltitudeMenuInput.value !== value) {
-    dom.emulatedAltitudeMenuInput.value = value;
   }
 }
 
@@ -1000,9 +993,6 @@ export function initOptionalArea(h) {
 
   dom.emulatedAltitudeInput?.addEventListener("input", () => {
     onEmulatedAltitudeEdited(dom.emulatedAltitudeInput);
-  });
-  dom.emulatedAltitudeMenuInput?.addEventListener("input", () => {
-    onEmulatedAltitudeEdited(dom.emulatedAltitudeMenuInput);
   });
 
   dom.simHelpBtn?.addEventListener("click", () => {

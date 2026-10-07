@@ -485,7 +485,11 @@ export function syncAppMenuUi() {
   }
   dom.iconChSettingsBtn?.setAttribute("aria-expanded", String(app.iconChSettingsOpen));
 
-  if (dom.iconCh1Chrome) {
-    dom.iconCh1Chrome.hidden = !hardwareOk || !app.iconChActiveModel;
+  const iconChChromeHidden = !hardwareOk || !app.iconChActiveModel;
+  if (dom.iconCh1TimeHeader) {
+    dom.iconCh1TimeHeader.hidden = iconChChromeHidden;
+  }
+  if (dom.iconCh1AltRail) {
+    dom.iconCh1AltRail.hidden = iconChChromeHidden;
   }
 }

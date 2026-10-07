@@ -41,6 +41,14 @@
         aria-pressed="false"
         aria-label="Downward cone method: Dijkstra"
       >D</button>
+      <aside class="iconch1-alt-rail" id="iconch1-alt-rail" aria-label="Altitude" hidden>
+        <button type="button" class="iconch1-step-btn" id="iconch1-alt-up" aria-label="Higher altitude">▲</button>
+        <div class="iconch1-value-wrap">
+          <button type="button" class="iconch1-value-btn" id="iconch1-alt-value" aria-label="Set altitude from your location">—</button>
+          <select id="iconch1-alt-select" class="iconch1-value-select" tabindex="-1" aria-label="Pick altitude"></select>
+        </div>
+        <button type="button" class="iconch1-step-btn" id="iconch1-alt-down" aria-label="Lower altitude">▼</button>
+      </aside>
     </div>
     <p id="capability-warning" class="capability-warning" hidden role="status"></p>
     <div id="app-menu-backdrop" class="app-menu-backdrop" hidden></div>
@@ -140,28 +148,6 @@
           Done
         </button>
       </div>
-    </div>
-
-    <div id="iconch1-chrome" hidden>
-      <header class="iconch1-time-header" id="iconch1-time-header" aria-label="Forecast time">
-        <div class="iconch1-time-row">
-          <button type="button" class="iconch1-step-btn" id="iconch1-time-prev" aria-label="Earlier time">◀</button>
-          <div class="iconch1-value-wrap">
-            <button type="button" class="iconch1-value-btn" id="iconch1-time-value" aria-label="Jump to time nearest now">—</button>
-            <select id="iconch1-time-select" class="iconch1-value-select" tabindex="-1" aria-label="Pick valid time UTC"></select>
-          </div>
-          <button type="button" class="iconch1-step-btn" id="iconch1-time-next" aria-label="Later time">▶</button>
-        </div>
-        <p id="iconch1-status" class="iconch1-status" hidden aria-live="polite"></p>
-      </header>
-      <aside class="iconch1-alt-rail map-top-chrome" id="iconch1-alt-rail" aria-label="Altitude">
-        <button type="button" class="iconch1-step-btn" id="iconch1-alt-up" aria-label="Higher altitude">▲</button>
-        <div class="iconch1-value-wrap">
-          <button type="button" class="iconch1-value-btn" id="iconch1-alt-value" aria-label="Set altitude from your location">—</button>
-          <select id="iconch1-alt-select" class="iconch1-value-select" tabindex="-1" aria-label="Pick altitude"></select>
-        </div>
-        <button type="button" class="iconch1-step-btn" id="iconch1-alt-down" aria-label="Lower altitude">▼</button>
-      </aside>
     </div>
 
     <div id="params-shell" class="params-mode-auto app-menu-popup" hidden>
@@ -619,12 +605,6 @@
                   <span>Debug mode</span>
                 </label>
               </div>
-              <div class="param-field param-field-full param-debug-only" id="emulated-alt-field">
-                <div class="param-label-row">
-                  <span class="param-label">Emulated altitude (m)</span>
-                </div>
-                <input id="emulated-altitude-menu" type="number" inputmode="decimal" step="10" placeholder="MSL" />
-              </div>
             </div>
           </div>
         </form>
@@ -772,6 +752,17 @@
           Viewer
         </button>
       </div>
+      <header class="iconch1-time-header" id="iconch1-time-header" aria-label="Forecast time" hidden>
+        <div class="iconch1-time-row">
+          <button type="button" class="iconch1-step-btn" id="iconch1-time-prev" aria-label="Earlier time">◀</button>
+          <div class="iconch1-value-wrap">
+            <button type="button" class="iconch1-value-btn" id="iconch1-time-value" aria-label="Jump to time nearest now">—</button>
+            <select id="iconch1-time-select" class="iconch1-value-select" tabindex="-1" aria-label="Pick valid time UTC"></select>
+          </div>
+          <button type="button" class="iconch1-step-btn" id="iconch1-time-next" aria-label="Later time">▶</button>
+        </div>
+        <p id="iconch1-status" class="iconch1-status" hidden aria-live="polite"></p>
+      </header>
       <div id="cell-tooltip" hidden aria-live="polite"></div>
       <div id="options-degraded-legend" class="options-degraded-legend" hidden aria-label="Degraded masks legend">
         <div class="options-degraded-legend-row">

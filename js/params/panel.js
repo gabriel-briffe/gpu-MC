@@ -393,7 +393,7 @@ export function initParamsPanel(appState, domRefs) {
   app.hooks.updateParamsFooter();
 
   function clearInspectUnlessAltitudeEdit(event) {
-    if (event.target?.closest?.("#emulated-alt-field, #emulated-alt-box")) {
+    if (event.target?.closest?.("#emulated-alt-box")) {
       return;
     }
     app.hooks.clearCellInspect();
