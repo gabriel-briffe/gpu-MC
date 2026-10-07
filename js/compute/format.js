@@ -50,13 +50,10 @@ export function formatAirportActionTip({
   return `<div class="tooltip-line">select combined ${combinedIcon} or single ${singleIcon} mode</div>`;
 }
 
-/** Navbox / tip label for cone height. Ground cells show proof altitude in parentheses. */
+/** Navbox / tip label for cone height. Ground cells use proof altitude (same as airborne). */
 export function formatMinimumAltLabel({ minAlt, proofAlt, onGround }) {
   if (onGround && Number.isFinite(proofAlt)) {
-    return `GND (${Math.round(proofAlt)} m)`;
-  }
-  if (onGround) {
-    return "GND";
+    return `${Math.round(proofAlt)} m`;
   }
   if (minAlt !== null && Number.isFinite(minAlt)) {
     return `${Math.round(minAlt)} m`;
@@ -107,10 +104,10 @@ export function formatHoverTip(
 
   const minAltVal = cell.alt;
   const onGround = Boolean(cell.isGround && Number.isFinite(proofAlt));
-  const minAlt = onGround
-    ? `GND (${tooltipNum(Math.round(proofAlt))})`
-    : minAltVal !== null
-      ? tooltipNum(Math.round(minAltVal))
+  const displayMinAlt = onGround ? proofAlt : minAltVal;
+  const minAlt =
+    displayMinAlt !== null && Number.isFinite(displayMinAlt)
+      ? tooltipNum(Math.round(displayMinAlt))
       : "—";
   const groundElev = tooltipNum(Math.round(cell.groundElev));
 
