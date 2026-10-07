@@ -892,29 +892,28 @@
     </div>
     <div id="compute-context-bar" hidden aria-live="polite">
       <div id="compute-context-geo-stats" class="compute-context-geo-stats" hidden>
-        <div class="compute-context-stat-row" id="compute-context-dest-row">
-          <div class="compute-context-stat-block compute-context-stat-block--start">
+        <div class="compute-context-stat-row" id="compute-context-geo-row">
+          <div
+            class="compute-context-stat-block compute-context-stat-block--start"
+            id="compute-context-dest-block"
+          >
             <div class="compute-context-stat-label" id="compute-context-dest-icao"></div>
             <div class="compute-context-stat-value" id="compute-context-dest-name"></div>
           </div>
-          <div class="compute-context-stat-block compute-context-stat-block--end">
+          <div
+            class="compute-context-stat-block compute-context-stat-block--center"
+            id="compute-context-dest-z-block"
+          >
             <div class="compute-context-stat-label">Z dist</div>
             <div class="compute-context-stat-value" id="compute-context-dest-z"></div>
           </div>
-        </div>
-        <div class="compute-context-divider" role="presentation" aria-hidden="true"></div>
-        <div class="compute-context-stat-row">
-          <div class="compute-context-stat-block compute-context-stat-block--start">
+          <div class="compute-context-stat-block compute-context-stat-block--center">
             <div class="compute-context-stat-label">minimum alt</div>
             <div class="compute-context-stat-value" id="compute-context-min-alt-reading"></div>
           </div>
-          <div class="compute-context-stat-block compute-context-stat-block--center">
+          <div class="compute-context-stat-block compute-context-stat-block--end">
             <div class="compute-context-stat-label">delta</div>
             <div class="compute-context-stat-value" id="compute-context-delta-reading"></div>
-          </div>
-          <div class="compute-context-stat-block compute-context-stat-block--end">
-            <div class="compute-context-stat-label">reqL/D</div>
-            <div class="compute-context-stat-value" id="compute-context-reqld-reading"></div>
           </div>
         </div>
       </div>

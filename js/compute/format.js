@@ -61,16 +61,6 @@ export function formatMinimumAltLabel({ minAlt, proofAlt, onGround }) {
   return "—";
 }
 
-function formatReqLdTip(reqLd) {
-  if (reqLd === null || !Number.isFinite(reqLd)) {
-    return "—";
-  }
-  if (reqLd > 100) {
-    return `<span class="tooltip-num">100+</span>`;
-  }
-  return `<span class="tooltip-num">${reqLd.toFixed(1)}</span>`;
-}
-
 export function formatHoverTip(
   cell,
   {
@@ -79,29 +69,8 @@ export function formatHoverTip(
     metrics,
     glideRatio = 20,
     proofAlt = null,
-    showOptionVia = false,
-    optionVia = null,
-    userAlt = null,
   } = {}
 ) {
-  if (showOptionVia) {
-    const optionZ =
-      optionVia != null ? formatDistanceKm(optionVia.distanceM) : "—";
-    let optionReqLd = null;
-    if (optionVia != null && Number.isFinite(userAlt)) {
-      const heightAboveSeed = userAlt - optionVia.seedAlt;
-      if (heightAboveSeed > 0) {
-        optionReqLd = optionVia.distanceM / heightAboveSeed;
-      }
-    }
-    return [
-      `option Z dist: ${optionZ}`,
-      `option req L/D: ${formatReqLdTip(optionReqLd)}`,
-    ]
-      .map((line) => `<div class="tooltip-line">${line}</div>`)
-      .join("");
-  }
-
   const minAltVal = cell.alt;
   const onGround = Boolean(cell.isGround && Number.isFinite(proofAlt));
   const displayMinAlt = onGround ? proofAlt : minAltVal;

@@ -204,14 +204,14 @@ const {
   debugModeInput,
   computeContextBarEl,
   computeContextGeoStatsEl,
-  computeContextDestRowEl,
+  computeContextDestBlockEl,
+  computeContextDestZBlockEl,
   computeContextDestIcaoEl,
   computeContextDestNameEl,
   computeContextDestZEl,
   computeContextDestPathEl,
   computeContextMinAltReadingEl,
   computeContextDeltaReadingEl,
-  computeContextReqLdReadingEl,
   computeContextParamsEl,
   paramsFooterEl,
   paramsShell,
@@ -1102,42 +1102,17 @@ function clearConeState() {
   updateGeoLocationPath();
 }
 
-function computeReqGlideRatio(metrics, userAlt) {
-  const heightAboveSeed = userAlt - metrics.seedAlt;
-  if (!Number.isFinite(userAlt) || heightAboveSeed <= 0) {
-    return null;
+function setDestContextVisible(visible) {
+  if (computeContextDestBlockEl) {
+    computeContextDestBlockEl.hidden = !visible;
   }
-  return metrics.distanceM / heightAboveSeed;
-}
-
-function geoContextBarTone({ userAlt, geoCell, metrics, glideRatio, proofAlt }) {
-  if (!geoCell?.isReachable || !metrics) {
-    return null;
+  if (computeContextDestZBlockEl) {
+    computeContextDestZBlockEl.hidden = !visible;
   }
-  if (!Number.isFinite(userAlt)) {
-    return "red";
-  }
-  const floor = Number.isFinite(proofAlt) ? proofAlt : geoCell.alt;
-  if (floor !== null && userAlt < floor) {
-    return "red";
-  }
-  const reqLd = computeReqGlideRatio(metrics, userAlt);
-  if (reqLd === null) {
-    return "red";
-  }
-  if (reqLd > glideRatio) {
-    return "red";
-  }
-  if (reqLd > glideRatio * 0.9) {
-    return "orange";
-  }
-  return "green";
 }
 
 function clearGeoContextReadings() {
-  if (computeContextDestRowEl) {
-    computeContextDestRowEl.hidden = true;
-  }
+  setDestContextVisible(false);
   if (computeContextDestIcaoEl) {
     computeContextDestIcaoEl.textContent = "";
   }
@@ -1158,18 +1133,6 @@ function clearGeoContextReadings() {
   if (computeContextDeltaReadingEl) {
     computeContextDeltaReadingEl.textContent = "";
   }
-  if (computeContextReqLdReadingEl) {
-    computeContextReqLdReadingEl.textContent = "";
-  }
-}
-
-function formatZDistanceDisplay(userAlt, minAlt) {
-  if (!Number.isFinite(userAlt) || minAlt === null) {
-    return "—";
-  }
-  const delta = Math.round(userAlt - minAlt);
-  const sign = delta > 0 ? "+" : "";
-  return `${sign}${delta} m`;
 }
 
 function formatPathDistanceDisplay(distanceM) {
@@ -1179,11 +1142,9 @@ function formatPathDistanceDisplay(distanceM) {
   return `${(distanceM / 1000).toFixed(1)} km`;
 }
 
-function setGeoContextReadings({ minAlt, userAlt, reqLd, metrics, proofAlt, onGround }) {
+function setGeoContextReadings({ minAlt, userAlt, metrics, proofAlt, onGround }) {
   if (metrics) {
-    if (computeContextDestRowEl) {
-      computeContextDestRowEl.hidden = false;
-    }
+    setDestContextVisible(true);
     if (computeContextDestIcaoEl) {
       const icao = metrics.seedIcao;
       if (icao) {
@@ -1216,9 +1177,7 @@ function setGeoContextReadings({ minAlt, userAlt, reqLd, metrics, proofAlt, onGr
       computeContextDestPathEl.hidden = true;
     }
   } else {
-    if (computeContextDestRowEl) {
-      computeContextDestRowEl.hidden = true;
-    }
+    setDestContextVisible(false);
     if (computeContextDestIcaoEl) {
       computeContextDestIcaoEl.textContent = "";
     }
@@ -1251,19 +1210,6 @@ function setGeoContextReadings({ minAlt, userAlt, reqLd, metrics, proofAlt, onGr
       computeContextDeltaReadingEl.textContent = "—";
     }
   }
-  if (computeContextReqLdReadingEl) {
-    computeContextReqLdReadingEl.textContent = formatReqLdDisplay(reqLd);
-  }
-}
-
-function formatReqLdDisplay(reqLd) {
-  if (reqLd === null) {
-    return "—";
-  }
-  if (reqLd > 100) {
-    return "100+";
-  }
-  return reqLd.toFixed(1);
 }
 
 function setComputeContextBarTone(tone) {
@@ -1338,7 +1284,7 @@ function syncComputeContextBar() {
   const positioned = positionedAircraft();
   const geoCell = positioned?.cell ?? null;
   const userAlt = positioned?.userAlt;
-  // Dest / req L/D follow the highest-arrival airport when options exist.
+  // Dest / Z follow the highest-arrival airport when options exist.
   const metrics = aircraftPathMetrics(geoCell);
   const proofAlt =
     geoCell?.isReachable && app.coneState
@@ -1350,19 +1296,16 @@ function syncComputeContextBar() {
       setGeoContextReadings({
         minAlt: geoCell.alt,
         userAlt,
-        reqLd: metrics ? computeReqGlideRatio(metrics, userAlt) : null,
         metrics,
         proofAlt,
         onGround: Boolean(geoCell.isGround && Number.isFinite(proofAlt)),
       });
       computeContextGeoStatsEl.hidden = false;
-      setComputeContextBarTone(
-        geoContextBarTone({ userAlt, geoCell, metrics, glideRatio, proofAlt })
-      );
+      setComputeContextBarTone("green");
     } else {
       computeContextGeoStatsEl.hidden = true;
       clearGeoContextReadings();
-      setComputeContextBarTone(null);
+      setComputeContextBarTone("green");
     }
   }
 

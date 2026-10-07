@@ -14,13 +14,10 @@ import {
   clearGeoPath,
   clearAllGlidePaths,
   seedPathMetrics,
-  optionViaPathMetrics,
-  isOptionAreaCell,
 } from "../glide-path.js";
 import { readEmulatedAltitudeM, refreshOptionalArea, writeSimAltitudeM } from "../optional-area.js";
 import { requiredAltitudeAt } from "../glidecone/route-style.js";
 import { dom } from "../dom.js";
-import { isIgcPlaying } from "../igc-replay-ui.js";
 import { isFlightSession, isSimulatorSession, isViewerSession } from "../session-mode.js";
 
 let hooks;
@@ -141,32 +138,38 @@ function scheduleManualInspectClear() {
   }, MANUAL_INSPECT_MS);
 }
 
+/** Simulator: option paths only — no cell / ground inspect tips. */
+function simSuppressesCellTooltip() {
+  return isSimulatorSession();
+}
+
 function formatHoverTip(cell) {
   const coneState = hooks.getConeState();
   const proofAlt =
     cell?.isReachable && coneState
       ? requiredAltitudeAt(cell.gi, cell.gj, coneState)
       : null;
-  const showOptionVia =
-    isSimulatorSession() &&
-    Boolean(app.simGlider) &&
-    isOptionAreaCell(cell) &&
-    !isIgcPlaying();
   return formatHoverTipCore(cell, {
     groundClearance: coneState?.groundClearance ?? 100,
     debugMode: isDebugMode(),
     metrics: seedPathMetrics(cell),
     glideRatio: coneState?.glideRatio ?? 20,
     proofAlt,
-    showOptionVia,
-    optionVia: showOptionVia ? optionViaPathMetrics(cell) : null,
-    userAlt: showOptionVia ? readEmulatedAltitudeM() : null,
   });
+}
+
+function clearInspectTooltipHtml() {
+  app.footerCellHtml = null;
+  updateCellTooltip();
 }
 
 /** Rebuild parked tip HTML (e.g. when option→airport probe finishes). */
 export function refreshInspectTooltip() {
   if (!app.lastInspectCell || app.airportHoverTipActive) {
+    return;
+  }
+  if (simSuppressesCellTooltip()) {
+    clearInspectTooltipHtml();
     return;
   }
   app.footerCellHtml = formatHoverTip(app.lastInspectCell);
@@ -347,8 +350,12 @@ async function showTerrainElevationInspect(
       return;
     }
     app.airportHoverTipActive = false;
-    app.footerCellHtml = formatGroundElevationTip(groundElev);
-    updateCellTooltip();
+    if (simSuppressesCellTooltip()) {
+      clearInspectTooltipHtml();
+    } else {
+      app.footerCellHtml = formatGroundElevationTip(groundElev);
+      updateCellTooltip();
+    }
     if (temporary) {
       scheduleManualInspectClear();
     }
@@ -373,7 +380,11 @@ export function showCellInspect(cell, anchorPoint = null, { temporary = false, l
   }
 
   app.airportHoverTipActive = false;
-  app.footerCellHtml = formatHoverTip(cell);
+  if (simSuppressesCellTooltip()) {
+    app.footerCellHtml = null;
+  } else {
+    app.footerCellHtml = formatHoverTip(cell);
+  }
 
   const coneState = hooks.getConeState();
   if (lngLat) {
@@ -394,6 +405,9 @@ export function showCellInspect(cell, anchorPoint = null, { temporary = false, l
   if (cell.isReachable) {
     app.lastInspectCell = cell;
     refreshInspectPath(cell);
+    if (simSuppressesCellTooltip()) {
+      updateCellTooltip();
+    }
   } else {
     app.lastInspectCell = null;
     app.lastPathScreenBounds = null;
@@ -410,7 +424,11 @@ export function showCellInspect(cell, anchorPoint = null, { temporary = false, l
 
 export function syncInspectOnMapMove() {
   const map = hooks.getMap();
-  if (!app.lastInspectLngLat || !app.footerCellHtml || !map) {
+  if (!app.lastInspectLngLat || !map) {
+    return;
+  }
+  // Sim has option paths without a tip; Flight/Viewer keep tip + path in sync.
+  if (!app.footerCellHtml && !app.lastInspectCell) {
     return;
   }
   const projected = map.project([app.lastInspectLngLat.lng, app.lastInspectLngLat.lat]);

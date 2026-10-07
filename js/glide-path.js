@@ -241,65 +241,6 @@ export function aircraftPathMetrics(cell) {
   return highestArrivalPathMetrics() ?? (cell?.isReachable ? seedPathMetrics(cell) : null);
 }
 
-function coordinatesDistanceM(coordinates) {
-  if (!coordinates || coordinates.length < 2) {
-    return 0;
-  }
-  let distanceM = 0;
-  for (let i = 1; i < coordinates.length; i += 1) {
-    const a = coordinates[i - 1];
-    const b = coordinates[i];
-    distanceM += distanceMetres(a[1], a[0], b[1], b[0]);
-  }
-  return distanceM;
-}
-
-/** Glider→option + option→airport (highest arrival). Null until both legs exist. */
-export function optionViaPathMetrics(cell) {
-  if (!cell || !sessionHasAircraft() || !aircraftLngLat() || !isPointerInOptionArea(cell)) {
-    return null;
-  }
-  const coneState = hooks.getConeState();
-  const dem = coneState?.dem;
-  if (!dem) {
-    return null;
-  }
-
-  const toOption = panPinkFeatures(cell);
-  const optionCoords = toOption[0]?.geometry?.coordinates;
-  if (!optionCoords || optionCoords.length < 2) {
-    return null;
-  }
-
-  const field = lastProbeArrivalField;
-  if (!field || field.startGi !== cell.gi || field.startGj !== cell.gj) {
-    return null;
-  }
-  const best = bestSeedIndex(field, dem);
-  if (best < 0) {
-    return null;
-  }
-  const toAirport = arrivalFeatures(field, "inspect");
-  const airportCoords = toAirport[0]?.geometry?.coordinates;
-  if (!airportCoords || airportCoords.length < 2) {
-    return null;
-  }
-
-  const endX = best % dem.width;
-  const endY = (best / dem.width) | 0;
-  const seed = seedAtGridCell(dem, endX, endY);
-  return {
-    distanceM: coordinatesDistanceM(optionCoords) + coordinatesDistanceM(airportCoords),
-    seedAlt: seedAltitudeAt(dem, best, coneState.circuitHeight),
-    seedIcao: seed?.icao ?? null,
-    seedName: seed?.name ?? seed?.label ?? null,
-  };
-}
-
-export function isOptionAreaCell(cell) {
-  return isPointerInOptionArea(cell);
-}
-
 function arrivalFeatures(field, role) {
   const coneState = hooks.getConeState();
   const dem = coneState?.dem;

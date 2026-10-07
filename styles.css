@@ -1717,6 +1717,10 @@
         text-align: center;
       }
 
+      .compute-context-stat-block[hidden] {
+        display: none;
+      }
+
       .compute-context-stat-block--start {
         align-items: flex-start;
         text-align: left;
@@ -1732,14 +1736,33 @@
         text-align: right;
       }
 
-      #compute-context-dest-row .compute-context-stat-block--start {
-        flex: 1 1 0;
-        min-width: 0;
-      }
+      /* Narrow: two pairs (airport|Z, min|delta), same left/right edges as before. */
+      @media (max-width: 640px) {
+        #compute-context-geo-row {
+          flex-wrap: wrap;
+          row-gap: 0.45rem;
+        }
 
-      #compute-context-dest-row .compute-context-stat-block--end {
-        flex: 0 0 auto;
-        min-width: auto;
+        #compute-context-geo-row .compute-context-stat-block {
+          flex: 1 1 calc(50% - 0.4rem);
+          max-width: calc(50% - 0.4rem);
+        }
+
+        #compute-context-dest-block {
+          align-items: flex-start;
+          text-align: left;
+        }
+
+        #compute-context-dest-z-block {
+          align-items: flex-end;
+          text-align: right;
+        }
+
+        #compute-context-geo-row
+          .compute-context-stat-block--center:not(#compute-context-dest-z-block) {
+          align-items: flex-start;
+          text-align: left;
+        }
       }
 
       .compute-context-stat-label {
