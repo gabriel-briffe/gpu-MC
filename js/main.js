@@ -1,8 +1,12 @@
+import * as maplibregl from "../vendor/maplibre-gl/maplibre-gl.mjs";
 import {
   clampTerrainZoom,
   metersPerPixel,
 } from "./geo.js";
 import { GlideConeEngine } from "./glidecone.js";
+
+// Protocols and other modules still read the global (terrain-tiles, etc.).
+globalThis.maplibregl = maplibregl;
 import {
   initOpenAipAirspaceTiles,
   removeOpenAipVectorTiles,
@@ -799,9 +803,8 @@ initComputeSession(app.hooks);
 initParamsPanel(app, dom);
 syncAppMenuUi();
 
-if (typeof maplibregl !== "undefined") {
-  maplibregl.setWorkerUrl(assetUrl("vendor/maplibre-gl/maplibre-gl-csp-worker.js"));
-}
+// Bundler/external load: pin the self-hosted module worker (v6 creates Worker type=module).
+maplibregl.setWorkerUrl(assetUrl("vendor/maplibre-gl/maplibre-gl-worker.mjs"));
 
 registerTerrainTileProtocol();
 registerTerrainGradientProtocol();

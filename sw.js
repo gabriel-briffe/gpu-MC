@@ -1,5 +1,5 @@
-const SHELL_CACHE = "gpu-mc-shell-5750200dd9";
-const PRECACHE_URLS = ["index.html","app.min.js","app.min.css","manifest.webmanifest","sw-register.js","sw.js","icons/icon.svg","icons/mode-none.svg","icons/mode-single.svg","icons/mode-auto.svg","icons/basemap/hillshade.png","icons/basemap/osm.png","icons/basemap/satellite.png","icons/basemap/gradient.png","vendor/maplibre-gl/maplibre-gl.js","vendor/maplibre-gl/maplibre-gl.css","vendor/maplibre-gl/maplibre-gl-csp-worker.js","vendor/gribinfo/gribinfo_bg.wasm","vendor/idw-regrid/idw_regrid_bg.wasm","sprites/sprite.json","sprites/sprite.png","sprites/sprite@2x.json","sprites/sprite@2x.png"];
+const SHELL_CACHE = "gpu-mc-shell-336e49cefc";
+const PRECACHE_URLS = ["index.html","app.min.js","app.min.css","manifest.webmanifest","sw-register.js","sw.js","icons/icon.svg","icons/mode-none.svg","icons/mode-single.svg","icons/mode-auto.svg","icons/basemap/hillshade.png","icons/basemap/osm.png","icons/basemap/satellite.png","icons/basemap/gradient.png","vendor/maplibre-gl/maplibre-gl.mjs","vendor/maplibre-gl/maplibre-gl-worker.mjs","vendor/maplibre-gl/maplibre-gl.css","vendor/gribinfo/gribinfo_bg.wasm","vendor/idw-regrid/idw_regrid_bg.wasm","sprites/sprite.json","sprites/sprite.png","sprites/sprite@2x.json","sprites/sprite@2x.png"];
 
 /** Service worker — SHELL_CACHE and PRECACHE_URLS are injected by scripts/build.mjs. */
 

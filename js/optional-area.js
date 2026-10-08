@@ -2,7 +2,7 @@ import { gridBoundsLngLat } from "./geo.js";
 import { getOptionalOverlayOpacity, isDebugMode } from "./params/panel.js";
 import { dom } from "./dom.js";
 import { raisePathLayer } from "./map/layers.js";
-import { replaceImageObjectUrl, revokeImageObjectUrl } from "./map/image-data-url.js";
+import { putImageDataOnCanvas, setRasterImageSource } from "./map/raster-image-source.js";
 import { buildOptionalMask } from "./optional-area-mask.js";
 import { ridgeEscapeSeed } from "./ridge-escape.js";
 import { initIgcReplay, isIgcPlaying, isIgcReplayOn } from "./igc-replay-ui.js";
@@ -330,8 +330,6 @@ export function clearOptionalArea() {
   if (map.getSource(SOURCE_ID)) {
     map.removeSource(SOURCE_ID);
   }
-  revokeImageObjectUrl(app.optionalOverlayImageUrl);
-  app.optionalOverlayImageUrl = null;
 }
 
 function showOptionalImage(imageData, dem) {
@@ -339,27 +337,21 @@ function showOptionalImage(imageData, dem) {
   if (!map) {
     return;
   }
-  const url = replaceImageObjectUrl(app.optionalOverlayImageUrl, imageData);
-  app.optionalOverlayImageUrl = url;
+  const canvas = putImageDataOnCanvas("optionalOverlayCanvas", imageData, app);
   const coordinates = overlayCoordinates(dem);
-
   const opacity = getOptionalOverlayOpacity();
-  if (map.getSource(SOURCE_ID)) {
-    map.getSource(SOURCE_ID).updateImage({ url, coordinates });
-    if (map.getLayer(LAYER_ID)) {
-      map.setPaintProperty(LAYER_ID, "raster-opacity", opacity);
-    }
-    raisePathLayer();
-    return;
+  const hadSource = Boolean(map.getSource(SOURCE_ID));
+  setRasterImageSource(map, SOURCE_ID, canvas, coordinates);
+  if (!hadSource) {
+    map.addLayer({
+      id: LAYER_ID,
+      type: "raster",
+      source: SOURCE_ID,
+      paint: { "raster-opacity": opacity, "raster-fade-duration": 0 },
+    });
+  } else if (map.getLayer(LAYER_ID)) {
+    map.setPaintProperty(LAYER_ID, "raster-opacity", opacity);
   }
-
-  map.addSource(SOURCE_ID, { type: "image", url, coordinates });
-  map.addLayer({
-    id: LAYER_ID,
-    type: "raster",
-    source: SOURCE_ID,
-    paint: { "raster-opacity": opacity },
-  });
   raisePathLayer();
 }
 

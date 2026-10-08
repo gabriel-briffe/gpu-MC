@@ -12,7 +12,7 @@ import {
   syncContourLabelSpacing,
   raisePathLayer,
 } from "../map/layers.js";
-import { replaceImageObjectUrl, revokeImageObjectUrl } from "../map/image-data-url.js";
+import { putImageDataOnCanvas, setRasterImageSource } from "../map/raster-image-source.js";
 
 let hooks;
 let app;
@@ -33,8 +33,6 @@ export function clearRasterOverlay() {
   if (map.getSource("glide-cone")) {
     map.removeSource("glide-cone");
   }
-  revokeImageObjectUrl(app.overlayImageUrl);
-  app.overlayImageUrl = null;
 }
 
 export function clearContourOverlay() {
@@ -103,38 +101,24 @@ export function updateOverlay(imageData, dem) {
     [coords[2].lng, coords[2].lat],
     [coords[3].lng, coords[3].lat],
   ];
-  const url = replaceImageObjectUrl(app.overlayImageUrl, imageData);
-  app.overlayImageUrl = url;
-
-  if (map.getSource("glide-cone")) {
-    map.getSource("glide-cone").updateImage({ url, coordinates });
-    raisePathLayer();
-    hooks.raiseIconCh1Layer?.();
-    if (parseVizMode().sectors) {
-      applySectorsOverlayOpacity();
-    }
-    return;
-  }
-
-  map.addSource("glide-cone", {
-    type: "image",
-    url,
-    coordinates,
-  });
-
-  map.addLayer({
-    id: "glide-cone",
-    type: "raster",
-    source: "glide-cone",
-    paint: {
-      "raster-opacity": parseVizMode().sectors ? getSectorsOverlayOpacity() : 1,
-    },
-  });
-  raisePathLayer();
-  hooks.raiseIconCh1Layer?.();
-  if (parseVizMode().sectors) {
+  const canvas = putImageDataOnCanvas("overlayCanvas", imageData, app);
+  const hadSource = Boolean(map.getSource("glide-cone"));
+  setRasterImageSource(map, "glide-cone", canvas, coordinates);
+  if (!hadSource) {
+    map.addLayer({
+      id: "glide-cone",
+      type: "raster",
+      source: "glide-cone",
+      paint: {
+        "raster-opacity": parseVizMode().sectors ? getSectorsOverlayOpacity() : 1,
+        "raster-fade-duration": 0,
+      },
+    });
+  } else if (parseVizMode().sectors) {
     applySectorsOverlayOpacity();
   }
+  raisePathLayer();
+  hooks.raiseIconCh1Layer?.();
 }
 
 export function updateConeVisualization(result, dem, glideParams) {

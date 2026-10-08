@@ -7,12 +7,6 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicOpenAipConfig = path.join(root, "js/openaip-config.public.js");
 
-const MAPLIBRE_VENDOR_FILES = [
-  "maplibre-gl.js",
-  "maplibre-gl.css",
-  "maplibre-gl-csp-worker.js",
-];
-
 const PRECACHE_URLS = [
   "index.html",
   "app.min.js",
@@ -28,9 +22,9 @@ const PRECACHE_URLS = [
   "icons/basemap/osm.png",
   "icons/basemap/satellite.png",
   "icons/basemap/gradient.png",
-  "vendor/maplibre-gl/maplibre-gl.js",
+  "vendor/maplibre-gl/maplibre-gl.mjs",
+  "vendor/maplibre-gl/maplibre-gl-worker.mjs",
   "vendor/maplibre-gl/maplibre-gl.css",
-  "vendor/maplibre-gl/maplibre-gl-csp-worker.js",
   "vendor/gribinfo/gribinfo_bg.wasm",
   "vendor/idw-regrid/idw_regrid_bg.wasm",
   "sprites/sprite.json",
@@ -76,6 +70,17 @@ const openAipConfigAliasPlugin = {
   },
 };
 
+/** Keep MapLibre as a native ESM load so its module worker resolves correctly. */
+const externalMaplibrePlugin = {
+  name: "external-maplibre",
+  setup(build) {
+    build.onResolve({ filter: /maplibre-gl\.mjs$/ }, () => ({
+      path: "./vendor/maplibre-gl/maplibre-gl.mjs",
+      external: true,
+    }));
+  },
+};
+
 async function vendorGribinfo() {
   const srcWasm = path.join(root, "js/iconch1/pkg/gribinfo_bg.wasm");
   const destDir = path.join(root, "vendor/gribinfo");
@@ -99,8 +104,7 @@ async function buildJs() {
     platform: "browser",
     outfile: path.join(root, "app.min.js"),
     logLevel: "info",
-    plugins: [openAipConfigAliasPlugin],
-    external: [],
+    plugins: [openAipConfigAliasPlugin, externalMaplibrePlugin],
   });
 }
 
@@ -117,9 +121,12 @@ async function vendorMaplibre() {
   const srcDir = path.join(root, "node_modules/maplibre-gl/dist");
   const destDir = path.join(root, "vendor/maplibre-gl");
   await mkdir(destDir, { recursive: true });
-  await Promise.all(
-    MAPLIBRE_VENDOR_FILES.map((file) => cp(path.join(srcDir, file), path.join(destDir, file)))
-  );
+  // MapLibre 6 is ESM-only: serve the real .mjs + module worker (not an IIFE rebuild).
+  await Promise.all([
+    cp(path.join(srcDir, "maplibre-gl.mjs"), path.join(destDir, "maplibre-gl.mjs")),
+    cp(path.join(srcDir, "maplibre-gl-worker.mjs"), path.join(destDir, "maplibre-gl-worker.mjs")),
+    cp(path.join(srcDir, "maplibre-gl.css"), path.join(destDir, "maplibre-gl.css")),
+  ]);
 }
 
 async function buildManifest() {
