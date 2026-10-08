@@ -9,6 +9,8 @@ export function createApp() {
     computeStopBarMessage: "",
     computeStopBarClearTimer: null,
     overlayCanvas: null,
+    overlayImageUrl: null,
+    optionalOverlayImageUrl: null,
     coneState: null,
     openAipConfig: null,
     footerStatusText: "Loading WebGPU…",

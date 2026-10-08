@@ -2,6 +2,7 @@ import { gridBoundsLngLat } from "./geo.js";
 import { getOptionalOverlayOpacity, isDebugMode } from "./params/panel.js";
 import { dom } from "./dom.js";
 import { raisePathLayer } from "./map/layers.js";
+import { replaceImageObjectUrl, revokeImageObjectUrl } from "./map/image-data-url.js";
 import { buildOptionalMask } from "./optional-area-mask.js";
 import { ridgeEscapeSeed } from "./ridge-escape.js";
 import { initIgcReplay, isIgcPlaying, isIgcReplayOn } from "./igc-replay-ui.js";
@@ -329,6 +330,8 @@ export function clearOptionalArea() {
   if (map.getSource(SOURCE_ID)) {
     map.removeSource(SOURCE_ID);
   }
+  revokeImageObjectUrl(app.optionalOverlayImageUrl);
+  app.optionalOverlayImageUrl = null;
 }
 
 function showOptionalImage(imageData, dem) {
@@ -336,13 +339,8 @@ function showOptionalImage(imageData, dem) {
   if (!map) {
     return;
   }
-  if (!app.optionalOverlayCanvas) {
-    app.optionalOverlayCanvas = document.createElement("canvas");
-  }
-  app.optionalOverlayCanvas.width = imageData.width;
-  app.optionalOverlayCanvas.height = imageData.height;
-  app.optionalOverlayCanvas.getContext("2d").putImageData(imageData, 0, 0);
-  const url = app.optionalOverlayCanvas.toDataURL();
+  const url = replaceImageObjectUrl(app.optionalOverlayImageUrl, imageData);
+  app.optionalOverlayImageUrl = url;
   const coordinates = overlayCoordinates(dem);
 
   const opacity = getOptionalOverlayOpacity();

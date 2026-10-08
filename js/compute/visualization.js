@@ -12,6 +12,7 @@ import {
   syncContourLabelSpacing,
   raisePathLayer,
 } from "../map/layers.js";
+import { replaceImageObjectUrl, revokeImageObjectUrl } from "../map/image-data-url.js";
 
 let hooks;
 let app;
@@ -32,6 +33,8 @@ export function clearRasterOverlay() {
   if (map.getSource("glide-cone")) {
     map.removeSource("glide-cone");
   }
+  revokeImageObjectUrl(app.overlayImageUrl);
+  app.overlayImageUrl = null;
 }
 
 export function clearContourOverlay() {
@@ -93,13 +96,6 @@ export function updateOverlay(imageData, dem) {
     return;
   }
 
-  if (!app.overlayCanvas) {
-    app.overlayCanvas = document.createElement("canvas");
-  }
-  app.overlayCanvas.width = imageData.width;
-  app.overlayCanvas.height = imageData.height;
-  app.overlayCanvas.getContext("2d").putImageData(imageData, 0, 0);
-
   const coords = gridBoundsLngLat(dem.gx0, dem.gy0, dem.width, dem.height, dem.zoom);
   const coordinates = [
     [coords[0].lng, coords[0].lat],
@@ -107,12 +103,11 @@ export function updateOverlay(imageData, dem) {
     [coords[2].lng, coords[2].lat],
     [coords[3].lng, coords[3].lat],
   ];
+  const url = replaceImageObjectUrl(app.overlayImageUrl, imageData);
+  app.overlayImageUrl = url;
 
   if (map.getSource("glide-cone")) {
-    map.getSource("glide-cone").updateImage({
-      url: app.overlayCanvas.toDataURL(),
-      coordinates,
-    });
+    map.getSource("glide-cone").updateImage({ url, coordinates });
     raisePathLayer();
     hooks.raiseIconCh1Layer?.();
     if (parseVizMode().sectors) {
@@ -123,7 +118,7 @@ export function updateOverlay(imageData, dem) {
 
   map.addSource("glide-cone", {
     type: "image",
-    url: app.overlayCanvas.toDataURL(),
+    url,
     coordinates,
   });
 
