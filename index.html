@@ -387,6 +387,31 @@
                 </select>
                 <span class="param-hint" id="optional-viz-hint">Still reachable at 20% less L/D is green. Lost only at 20% less is yellow. Lost at 10% less is red.</span>
               </div>
+              <div class="param-field" id="options-debounce-field">
+                <div class="param-label-row">
+                  <label class="param-label" for="options-debounce">Options refresh (s)</label>
+                </div>
+                <div class="param-stepper">
+                  <button
+                    type="button"
+                    class="param-step-btn"
+                    data-step="-1"
+                    aria-label="Decrease options refresh interval"
+                  >
+                    −
+                  </button>
+                  <input id="options-debounce" type="number" min="0" max="60" step="1" value="1" />
+                  <button
+                    type="button"
+                    class="param-step-btn"
+                    data-step="1"
+                    aria-label="Increase options refresh interval"
+                  >
+                    +
+                  </button>
+                </div>
+                <span class="param-hint">Min seconds between options updates. 0 = start the next as soon as the previous one finishes.</span>
+              </div>
               <div class="param-field">
                 <div class="param-label-row">
                   <span class="param-label">L/D</span>

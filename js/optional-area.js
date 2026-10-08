@@ -654,15 +654,23 @@ async function computeField(cell, startAlt, coneState, glideRatio = coneState.gl
 }
 
 const OPTIONS_ENABLED_KEY = "gpu-mc-options-enabled";
-const IGC_OPTIONS_MIN_MS = 1000;
 let lastOptionsMs = null;
 let readoutToken = 0;
-let igcOptionsTimer = null;
-let igcOptionsLastRunAt = 0;
-let igcOptionsPending = null;
+let optionsDebounceTimer = null;
+let optionsDebounceLastRunAt = 0;
+let optionsDebouncePending = null;
 
 function optionsEnabled() {
   return dom.optionsEnabledInput?.checked !== false;
+}
+
+/** Minimum ms between options starts. 0 = only wait for the previous run to finish. */
+function optionsDebounceMs() {
+  const sec = Number.parseInt(dom.optionsDebounceInput?.value ?? "1", 10);
+  if (!Number.isFinite(sec) || sec <= 0) {
+    return 0;
+  }
+  return Math.min(60, sec) * 1000;
 }
 
 function paintSimReadout() {
@@ -794,26 +802,27 @@ function waitForDisplayed() {
   });
 }
 
-function clearIgcOptionsThrottle() {
-  if (igcOptionsTimer) {
-    clearTimeout(igcOptionsTimer);
-    igcOptionsTimer = null;
+function clearOptionsDebounceTimer() {
+  if (optionsDebounceTimer) {
+    clearTimeout(optionsDebounceTimer);
+    optionsDebounceTimer = null;
   }
-  igcOptionsPending = null;
+  optionsDebouncePending = null;
 }
 
-function scheduleIgcOptionsThrottle(force) {
-  igcOptionsPending = {
-    force: Boolean(igcOptionsPending?.force || force),
+function scheduleOptionsDebounce(force) {
+  const minMs = optionsDebounceMs();
+  optionsDebouncePending = {
+    force: Boolean(optionsDebouncePending?.force || force),
   };
-  if (igcOptionsTimer) {
+  if (optionsDebounceTimer || minMs <= 0) {
     return;
   }
-  const wait = Math.max(0, IGC_OPTIONS_MIN_MS - (performance.now() - igcOptionsLastRunAt));
-  igcOptionsTimer = window.setTimeout(() => {
-    igcOptionsTimer = null;
-    const pending = igcOptionsPending ?? { force: false };
-    igcOptionsPending = null;
+  const wait = Math.max(0, minMs - (performance.now() - optionsDebounceLastRunAt));
+  optionsDebounceTimer = window.setTimeout(() => {
+    optionsDebounceTimer = null;
+    const pending = optionsDebouncePending ?? { force: false };
+    optionsDebouncePending = null;
     void refreshOptionalArea(pending);
   }, wait);
 }
@@ -826,24 +835,26 @@ export async function refreshOptionalArea({ force = false } = {}) {
     paintSimReadout();
     return;
   }
+  const minMs = optionsDebounceMs();
   if (force) {
-    clearIgcOptionsThrottle();
-  } else if (isIgcReplayOn()) {
-    const elapsed = performance.now() - igcOptionsLastRunAt;
-    if (elapsed < IGC_OPTIONS_MIN_MS) {
-      scheduleIgcOptionsThrottle(force);
+    clearOptionsDebounceTimer();
+  } else if (minMs > 0) {
+    const elapsed = performance.now() - optionsDebounceLastRunAt;
+    if (elapsed < minMs) {
+      scheduleOptionsDebounce(force);
       return;
     }
   } else {
-    clearIgcOptionsThrottle();
+    clearOptionsDebounceTimer();
   }
 
   if (optionsBusy) {
+    // 0s (and any in-flight overlap): run again once the current field is done + painted.
     queuedRefresh = { force: Boolean(queuedRefresh?.force || force) };
     return;
   }
   optionsBusy = true;
-  igcOptionsLastRunAt = performance.now();
+  optionsDebounceLastRunAt = performance.now();
   let waitForPaint = false;
   try {
     waitForPaint = await runOptionalRefresh({ force });

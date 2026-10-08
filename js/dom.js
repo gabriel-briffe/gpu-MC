@@ -67,6 +67,7 @@ export const dom = {
   optionalVizField: document.getElementById("optional-viz-field"),
   optionalVizSelect: document.getElementById("optional-viz"),
   optionalVizHintEl: document.getElementById("optional-viz-hint"),
+  optionsDebounceInput: document.getElementById("options-debounce"),
   optionsDegradedLegendEl: document.getElementById("options-degraded-legend"),
   optionalOpacityHintEl: document.getElementById("optional-opacity-hint"),
   weatherOpacityInput: document.getElementById("weather-opacity"),
