@@ -901,29 +901,33 @@ async function runOptionalRefresh({ force = false } = {}) {
       hooks.setStatus?.("Below the cone, no ridge escape");
       return true;
     }
-    const field = await computeField(seed.cell, seed.startAlt, cone);
-    if (requestId !== shaderRequestId || !field) {
-      return true;
-    }
+    let field;
     let mask10 = null;
     let mask20 = null;
     let image;
     if (viz === "degraded" && cone.glideRatio > 0) {
       hooks.setStatus?.("Optional area, degraded masks…");
-      const seed10 = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone, cone.glideRatio * 0.9);
-      const degraded10 = seed10 ? await computeField(seed10.cell, seed10.startAlt, cone, cone.glideRatio * 0.9) : null;
-      if (requestId !== shaderRequestId) {
+      const ld = cone.glideRatio;
+      const seed10 = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone, ld * 0.9);
+      const seed20 = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone, ld * 0.8);
+      // Exact 100% / 90% / 80% fields — run together to cut wall-clock wait.
+      const [fullField, degraded10, degraded20] = await Promise.all([
+        computeField(seed.cell, seed.startAlt, cone, ld),
+        seed10 ? computeField(seed10.cell, seed10.startAlt, cone, ld * 0.9) : Promise.resolve(null),
+        seed20 ? computeField(seed20.cell, seed20.startAlt, cone, ld * 0.8) : Promise.resolve(null),
+      ]);
+      if (requestId !== shaderRequestId || !fullField) {
         return true;
       }
-      const seed20 = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone, cone.glideRatio * 0.8);
-      const degraded20 = seed20 ? await computeField(seed20.cell, seed20.startAlt, cone, cone.glideRatio * 0.8) : null;
-      if (requestId !== shaderRequestId) {
-        return true;
-      }
-      mask10 = degraded10.mask;
-      mask20 = degraded20.mask;
+      field = fullField;
+      mask10 = degraded10?.mask ?? null;
+      mask20 = degraded20?.mask ?? null;
       image = paintDegradedImage(field.mask, mask10, mask20, cone.dem.width, cone.dem.height);
     } else {
+      field = await computeField(seed.cell, seed.startAlt, cone);
+      if (requestId !== shaderRequestId || !field) {
+        return true;
+      }
       const painted = paintOptionalImage(
         field.mask,
         field.arrivals,
