@@ -166,6 +166,8 @@ export class GlideConeEngine {
     const wgX = Math.ceil(width / 8);
     const wgY = Math.ceil(height / 8);
     const maxIterations = width + height;
+    // Match upward: mapAsync every iter was the options bottleneck.
+    const CONVERGENCE_CHECK_EVERY = 300;
     let iterations = 0;
     for (let iter = 0; iter < maxIterations; iter += 1) {
       iterations = iter + 1;
@@ -192,27 +194,34 @@ export class GlideConeEngine {
       [altRead, altWrite] = [altWrite, altRead];
       [originRead, originWrite] = [originWrite, originRead];
       [flagsPrev, flagsCurr] = [flagsCurr, flagsPrev];
-      device.queue.writeBuffer(changeCountBuffer, 0, new Uint32Array([0]));
-      const sumBind = device.createBindGroup({
-        layout: pipelines.changedSum.layout,
-        entries: [
-          { binding: 0, resource: { buffer: sumUniformBuffer } },
-          { binding: 1, resource: { buffer: flagsPrev } },
-          { binding: 2, resource: { buffer: changeCountBuffer } },
-        ],
-      });
-      const passSum = encoder.beginComputePass();
-      passSum.setPipeline(pipelines.changedSum.pipeline);
-      passSum.setBindGroup(0, sumBind);
-      passSum.dispatchWorkgroups(wgX, wgY);
-      passSum.end();
-      encoder.copyBufferToBuffer(changeCountBuffer, 0, changeReadBuffer, 0, 4);
+
+      const checkConvergence = iterations % CONVERGENCE_CHECK_EVERY === 0;
+      if (checkConvergence) {
+        device.queue.writeBuffer(changeCountBuffer, 0, new Uint32Array([0]));
+        const sumBind = device.createBindGroup({
+          layout: pipelines.changedSum.layout,
+          entries: [
+            { binding: 0, resource: { buffer: sumUniformBuffer } },
+            { binding: 1, resource: { buffer: flagsPrev } },
+            { binding: 2, resource: { buffer: changeCountBuffer } },
+          ],
+        });
+        const passSum = encoder.beginComputePass();
+        passSum.setPipeline(pipelines.changedSum.pipeline);
+        passSum.setBindGroup(0, sumBind);
+        passSum.dispatchWorkgroups(wgX, wgY);
+        passSum.end();
+        encoder.copyBufferToBuffer(changeCountBuffer, 0, changeReadBuffer, 0, 4);
+      }
       device.queue.submit([encoder.finish()]);
-      await changeReadBuffer.mapAsync(GPUMapMode.READ);
-      const changes = new Uint32Array(changeReadBuffer.getMappedRange().slice(0))[0];
-      changeReadBuffer.unmap();
-      if (changes === 0) {
-        break;
+
+      if (checkConvergence) {
+        await changeReadBuffer.mapAsync(GPUMapMode.READ);
+        const changes = new Uint32Array(changeReadBuffer.getMappedRange().slice(0))[0];
+        changeReadBuffer.unmap();
+        if (changes === 0) {
+          break;
+        }
       }
     }
     const altReadBuffer = device.createBuffer({
