@@ -1,7 +1,7 @@
 import { dom } from "./dom.js";
 import { fixAt, parseIgc } from "./igc-replay.js";
 
-const SPEEDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const SPEEDS = [1, 5, 10, 20, 50];
 const SEEK_SECONDS = 5;
 
 let hooks;
