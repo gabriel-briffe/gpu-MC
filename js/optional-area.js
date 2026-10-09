@@ -8,7 +8,7 @@ import { ridgeEscapeSeed } from "./ridge-escape.js";
 import { initIgcReplay, isIgcPlaying, isIgcReplayOn } from "./igc-replay-ui.js";
 import { cellMarginT, marginHex, marginRgb } from "./glidecone/margin-color.js";
 import { requiredAltitudeAt } from "./glidecone/route-style.js";
-import { gridCellToLngLat, gridIndexFromLngLat } from "./geo.js";
+import { gridCellDistanceM, gridCellToLngLat, gridIndexFromLngLat } from "./geo.js";
 import { isFlightSession, isSimulatorSession, isViewerSession, sessionHasAircraft } from "./session-mode.js";
 
 const SOURCE_ID = "glide-optional";
@@ -604,25 +604,81 @@ function optionsSeed(cell, startAlt, coneState, glideRatio = coneState.glideRati
   return { cell, startAlt, escape: null };
 }
 
+/** Upward relay path length [m] from a cell to its seed (for reach-based checks). */
+function upwardPathDistanceM(gi, gj, coneState) {
+  const { dem, originX, originY } = coneState;
+  if (!dem || !originX || !originY) {
+    return 0;
+  }
+  let total = 0;
+  let cx = gi;
+  let cy = gj;
+  const visited = new Set();
+  const maxSteps = dem.width + dem.height;
+  for (let step = 0; step < maxSteps; step += 1) {
+    const key = cy * dem.width + cx;
+    if (visited.has(key)) {
+      return total;
+    }
+    visited.add(key);
+    const idx = key;
+    const ox = originX[idx];
+    const oy = originY[idx];
+    if (ox < 0 || oy < 0) {
+      return total;
+    }
+    total += gridCellDistanceM(cx, cy, ox, oy, dem);
+    if (ox === cx && oy === cy) {
+      return total;
+    }
+    cx = ox;
+    cy = oy;
+  }
+  return total;
+}
+
+function optionsReachHints(cell, startAlt, coneState, glideRatio) {
+  const proof = requiredAltitudeAt(cell.gi, cell.gj, {
+    dem: coneState.dem,
+    altitudes: coneState.altitudes,
+    ground: coneState.ground,
+    originX: coneState.originX,
+    originY: coneState.originY,
+    maxAltitude: coneState.maxAltitude,
+    glideRatio,
+    circuitHeight: coneState.circuitHeight,
+  });
+  const marginM =
+    Number.isFinite(proof) && Number.isFinite(startAlt) ? Math.max(0, startAlt - proof) : 0;
+  const pathDistanceM = upwardPathDistanceM(cell.gi, cell.gj, coneState);
+  const debugCap = hooks.getMaxComputeIterations?.();
+  const iterationCap = Number.isFinite(debugCap) && debugCap > 0 ? debugCap : 2000;
+  return { pathDistanceM, marginM, iterationCap };
+}
+
 async function computeField(cell, startAlt, coneState, glideRatio = coneState.glideRatio) {
   const { dem, maxAltitude, groundClearance } = coneState;
   const floors = optionsConeFloors(coneState, glideRatio);
   if (preferShader()) {
     try {
-      const { arrivals, originX, originY, iterations } = await app.engine.computeDownward(dem, {
-        glideRatio,
-        maxAltitude,
-        gi: cell.gi,
-        gj: cell.gj,
-        startAlt,
-        coneAltitudes: floors,
-      });
+      const reach = optionsReachHints(cell, startAlt, coneState, glideRatio);
+      const { arrivals, originX, originY, iterations, hitIterationCap } =
+        await app.engine.computeDownward(dem, {
+          glideRatio,
+          maxAltitude,
+          gi: cell.gi,
+          gj: cell.gj,
+          startAlt,
+          coneAltitudes: floors,
+          ...reach,
+        });
       return {
         mask: maskFromArrivals(arrivals, floors, maxAltitude),
         arrivals,
         originX,
         originY,
         iterations,
+        hitIterationCap: Boolean(hitIterationCap),
         floors,
         shader: true,
       };
@@ -931,6 +987,9 @@ async function runOptionalRefresh({ force = false } = {}) {
         return true;
       }
       field = fullField;
+      field.hitIterationCap = Boolean(
+        fullField.hitIterationCap || degraded10?.hitIterationCap || degraded20?.hitIterationCap
+      );
       mask10 = degraded10?.mask ?? null;
       mask20 = degraded20?.mask ?? null;
       image = paintDegradedImage(field.mask, mask10, mask20, cone.dem.width, cone.dem.height);
@@ -972,8 +1031,11 @@ async function runOptionalRefresh({ force = false } = {}) {
     showOptionalImage(image, cone.dem);
     hooks.setAircraftArrivalPath?.(app.optionalField);
     if (field.shader && aircraft.source !== "gps") {
+      const capNote = field.hitIterationCap ? ` (stopped at iter ${field.iterations})` : "";
       hooks.setStatus?.(
-        viz === "degraded" ? "Optional area, degraded masks" : `Optional area, ${field.iterations} iterations`
+        viz === "degraded"
+          ? `Optional area, degraded masks${capNote}`
+          : `Optional area, ${field.iterations} iterations${capNote}`
       );
     }
     if (app.lastInspectCell && !isIgcPlaying()) {

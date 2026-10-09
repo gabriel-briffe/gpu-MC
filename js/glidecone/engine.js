@@ -50,6 +50,30 @@ function writeGpuBuffer(device, buffer, data) {
   device.queue.writeBuffer(buffer, 0, bytes);
 }
 
+/**
+ * First options convergence check (XCSoar Reach-based): longest no-terrain
+ * reach from the glider in cells = (path + ½·margin·L/D) / cellSize, capped
+ * by half the grid.
+ */
+export function optionsFirstCheckAt(width, height, cellSizeM, pathDistanceM, marginM, glideRatio) {
+  const halfGrid = (Math.max(width, height) >> 1) + 1;
+  const cell = cellSizeM > 0 ? cellSizeM : 0;
+  const halfLdM = 0.5 * Math.max(0, marginM) * Math.max(glideRatio, 1);
+  const reachM = Math.max(0, pathDistanceM) + halfLdM;
+  let reachCells = 0;
+  if (cell > 0 && reachM > 0) {
+    reachCells = Math.ceil(reachM / cell);
+  }
+  let first = reachCells > 0 ? reachCells : halfGrid;
+  if (first < 1) {
+    first = 1;
+  }
+  if (first > halfGrid) {
+    first = halfGrid;
+  }
+  return first;
+}
+
 export class GlideConeEngine {
   constructor() {
     this.device = null;
@@ -223,7 +247,20 @@ export class GlideConeEngine {
     this._downwardBusy = false;
   }
 
-  async computeDownward(dem, { glideRatio, maxAltitude, gi, gj, startAlt, coneAltitudes }) {
+  async computeDownward(
+    dem,
+    {
+      glideRatio,
+      maxAltitude,
+      gi,
+      gj,
+      startAlt,
+      coneAltitudes,
+      pathDistanceM = 0,
+      marginM = 0,
+      iterationCap = 2000,
+    }
+  ) {
     const { device, pipelines } = this;
     if (!device || !pipelines?.downward) {
       throw new Error("WebGPU downward pipeline is not ready.");
@@ -288,10 +325,23 @@ export class GlideConeEngine {
 
       const wgX = Math.ceil(width / 8);
       const wgY = Math.ceil(height / 8);
-      const maxIterations = width + height;
-      // Match upward: mapAsync every iter was the options bottleneck.
-      const CONVERGENCE_CHECK_EVERY = 300;
+      const maxIterations =
+        Number.isFinite(iterationCap) && iterationCap > 0 ? Math.floor(iterationCap) : 2000;
+      let firstCheckAt = optionsFirstCheckAt(
+        width,
+        height,
+        cellSizeM,
+        pathDistanceM,
+        marginM,
+        glideRatio
+      );
+      if (firstCheckAt > maxIterations) {
+        firstCheckAt = maxIterations;
+      }
+      // If still noisy after the first check, wait half that reach again.
+      const checkStep = Math.max(1, (firstCheckAt / 2) | 0);
       let iterations = 0;
+      let converged = false;
       for (let iter = 0; iter < maxIterations; iter += 1) {
         iterations = iter + 1;
         const encoder = device.createCommandEncoder();
@@ -318,7 +368,9 @@ export class GlideConeEngine {
         [originRead, originWrite] = [originWrite, originRead];
         [flagsPrev, flagsCurr] = [flagsCurr, flagsPrev];
 
-        const checkConvergence = iterations % CONVERGENCE_CHECK_EVERY === 0;
+        const checkConvergence =
+          iterations >= firstCheckAt &&
+          ((iterations - firstCheckAt) % checkStep === 0 || iterations === maxIterations);
         if (checkConvergence) {
           device.queue.writeBuffer(changeCountBuffer, 0, new Uint32Array([0]));
           const sumBind = device.createBindGroup({
@@ -343,6 +395,7 @@ export class GlideConeEngine {
           const changes = new Uint32Array(changeReadBuffer.getMappedRange().slice(0))[0];
           changeReadBuffer.unmap();
           if (changes === 0) {
+            converged = true;
             break;
           }
         }
@@ -364,7 +417,13 @@ export class GlideConeEngine {
         outOriginX[i] = packedOrigins[i * 2];
         outOriginY[i] = packedOrigins[i * 2 + 1];
       }
-      return { arrivals, originX: outOriginX, originY: outOriginY, iterations };
+      return {
+        arrivals,
+        originX: outOriginX,
+        originY: outOriginY,
+        iterations,
+        hitIterationCap: !converged,
+      };
     } finally {
       this._releaseDownwardBuffers(owned, pool);
     }
