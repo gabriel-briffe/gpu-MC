@@ -759,7 +759,7 @@ function optionsEnabled() {
 
 /** Minimum ms between options starts. 0 = only wait for the previous run to finish. */
 function optionsDebounceMs() {
-  const sec = Number.parseInt(dom.optionsDebounceInput?.value ?? "1", 10);
+  const sec = Number.parseInt(dom.optionsDebounceInput?.value ?? "0", 10);
   if (!Number.isFinite(sec) || sec <= 0) {
     return 0;
   }
