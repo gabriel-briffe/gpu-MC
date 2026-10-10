@@ -95,7 +95,7 @@ test("above the cone keeps the glider as the options seed", () => {
   assert.equal(decision.kind, "normal");
 });
 
-test("below the cone with an air next cell has no options", () => {
+test("below stored with air next seeds at first air when arrival clears it", () => {
   const decision = ridgeEscapeSeed({
     dem: coneDem(2, 1),
     altitudes: new Float32Array([100, 2080]),
@@ -108,10 +108,29 @@ test("below the cone with an air next cell has no options", () => {
     startAlt: 2000,
     glideRatio: 20,
   });
-  assert.equal(decision.kind, "none");
+  assert.equal(decision.kind, "escape");
+  assert.equal(decision.gi, 0);
+  assert.equal(decision.stopReason, "cleared-stored-first-air");
 });
 
-test("ground below stored cone with air next has no options (proof ignored)", () => {
+test("below stored with air next has no options when first air is still above arrival", () => {
+  const decision = ridgeEscapeSeed({
+    dem: coneDem(2, 1),
+    altitudes: new Float32Array([2500, 2080]),
+    originX: new Int32Array([0, 0]),
+    originY: new Int32Array([0, 0]),
+    ground: new Uint32Array([0, 1]),
+    maxAltitude: 5000,
+    gi: 1,
+    gj: 0,
+    startAlt: 2000,
+    glideRatio: 20,
+  });
+  assert.equal(decision.kind, "none");
+  assert.equal(decision.stopReason, "first-air-below-stored");
+});
+
+test("ground below stored seeds at first air when L/D clears the air cell", () => {
   const decision = ridgeEscapeSeed({
     dem: coneDem(2, 1, 425),
     altitudes: new Float32Array([1818.57, 2058]),
@@ -124,7 +143,10 @@ test("ground below stored cone with air next has no options (proof ignored)", ()
     startAlt: 2042,
     glideRatio: 20,
   });
-  assert.equal(decision.kind, "none");
+  assert.equal(decision.kind, "escape");
+  assert.equal(decision.gi, 0);
+  assert.equal(decision.stopReason, "cleared-stored-first-air");
+  assert.ok(decision.arrival > 1818.57);
 });
 
 test("ground above stored cone seeds at the glider", () => {
@@ -163,7 +185,7 @@ test("escape seed is the first cleared ground cell, not the last", () => {
   assert.equal(decision.cells.length, 2);
 });
 
-test("no options when no ground cell on the run is cleared", () => {
+test("escape seeds at first air when ground run never clears stored", () => {
   const decision = ridgeEscapeSeed({
     dem: coneDem(3, 1, 1000),
     altitudes: new Float32Array([1800, 1950, 2080]),
@@ -176,7 +198,27 @@ test("no options when no ground cell on the run is cleared", () => {
     startAlt: 1960,
     glideRatio: 20,
   });
+  // hops: 1960→1910 at ground 1950 (still below), then 1860 at air 1800 → seed air
+  assert.equal(decision.kind, "escape");
+  assert.equal(decision.gi, 0);
+  assert.equal(decision.stopReason, "cleared-stored-first-air");
+});
+
+test("no options when first air is still above L/D arrival", () => {
+  const decision = ridgeEscapeSeed({
+    dem: coneDem(3, 1, 1000),
+    altitudes: new Float32Array([1900, 1950, 2080]),
+    originX: new Int32Array([0, 0, 1]),
+    originY: new Int32Array([0, 0, 0]),
+    ground: new Uint32Array([0, 1, 1]),
+    maxAltitude: 5000,
+    gi: 2,
+    gj: 0,
+    startAlt: 1960,
+    glideRatio: 20,
+  });
   assert.equal(decision.kind, "none");
+  assert.equal(decision.stopReason, "first-air-below-stored");
 });
 
 import { fixAt, parseIgc } from "./igc-replay.js";

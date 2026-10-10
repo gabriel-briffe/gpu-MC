@@ -2,16 +2,18 @@
  * Options seed along the upward cone (worst-case) path.
  *
  * Compare the glider to the *stored* glide cone only (no walked-back proof).
- * Above the cone → seed at the glider. Below it → fly L/D along the first
- * ground-only origin run and seed at the first ground cell where arrival is
- * above the stored cone. If the last ground cell before air is still below
- * the cone → no options.
+ * Above the cone → seed at the glider. Below it → fly L/D along the origin
+ * path and seed at the first cell (ground or air) where arrival is above the
+ * stored cone. Typically that is the first air cell after a ground run.
+ *
+ * Every decision includes `path`: the cells followed (with L/D arrival), and
+ * `stopReason` for debugging.
  */
 
 function coneAt(altitudes, maxAltitude, idx) {
   const alt = altitudes?.[idx];
   if (!Number.isFinite(alt) || alt >= maxAltitude) {
-    return Number.POSITIVE_INFINITY;
+    return null;
   }
   return alt;
 }
@@ -22,6 +24,32 @@ function isGround(ground, idx) {
 
 function hopDistanceM(ax, ay, bx, by, cellSizeM) {
   return cellSizeM * Math.hypot(bx - ax, by - ay);
+}
+
+function pathStep({ gi, gj, isGround, storedAlt, distanceM, arrival, aboveStored }) {
+  return {
+    gi,
+    gj,
+    isGround,
+    storedAlt,
+    distanceM,
+    arrival,
+    aboveStored,
+    marginVsStored:
+      storedAlt != null && Number.isFinite(arrival) ? arrival - storedAlt : null,
+  };
+}
+
+function escapeResult(gi, gj, arrival, path, stopReason) {
+  return {
+    kind: "escape",
+    gi,
+    gj,
+    arrival,
+    path,
+    stopReason,
+    cells: path.map((c) => ({ x: c.gi, y: c.gj })),
+  };
 }
 
 export function ridgeEscapeSeed({
@@ -36,7 +64,12 @@ export function ridgeEscapeSeed({
   startAlt,
   glideRatio,
 }) {
-  const none = { kind: "none" };
+  const none = (path, stopReason, extra = {}) => ({
+    kind: "none",
+    path,
+    stopReason,
+    ...extra,
+  });
   const width = dem?.width ?? 0;
   const height = dem?.height ?? 0;
   if (
@@ -53,28 +86,28 @@ export function ridgeEscapeSeed({
     gi >= width ||
     gj >= height
   ) {
-    return none;
+    return none([], "invalid-input");
   }
 
   const startIdx = gj * width + gi;
-  if (startAlt > coneAt(altitudes, maxAltitude, startIdx)) {
-    return { kind: "normal" };
+  const startStored = coneAt(altitudes, maxAltitude, startIdx);
+  const startAbove = Number.isFinite(startAlt) && startStored != null && startAlt > startStored;
+  const path = [
+    pathStep({
+      gi,
+      gj,
+      isGround: isGround(ground, startIdx),
+      storedAlt: startStored,
+      distanceM: 0,
+      arrival: startAlt,
+      aboveStored: startAbove,
+    }),
+  ];
+
+  if (startAbove) {
+    return { kind: "normal", path, stopReason: "above-stored-at-start" };
   }
 
-  const ox = originX[startIdx];
-  const oy = originY[startIdx];
-  if (
-    ox < 0 ||
-    oy < 0 ||
-    ox >= width ||
-    oy >= height ||
-    (ox === gi && oy === gj) ||
-    !isGround(ground, oy * width + ox)
-  ) {
-    return none;
-  }
-
-  const cells = [{ x: gi, y: gj }];
   const seen = new Set([`${gi},${gj}`]);
   let x = gi;
   let y = gj;
@@ -85,31 +118,46 @@ export function ridgeEscapeSeed({
     const nx = originX[idx];
     const ny = originY[idx];
     if (nx < 0 || ny < 0 || nx >= width || ny >= height || (nx === x && ny === y)) {
-      return none;
+      return none(path, "origin-end");
     }
     const key = `${nx},${ny}`;
     if (seen.has(key)) {
-      return none;
+      return none(path, "origin-loop");
     }
-    // Last ground before air still below the stored cone → no options.
-    if (!isGround(ground, ny * width + nx)) {
-      return none;
-    }
-    seen.add(key);
+    const nIdx = ny * width + nx;
     distanceM += hopDistanceM(x, y, nx, ny, dem.cellSizeM);
     const arrival = startAlt - distanceM / glideRatio;
-    cells.push({ x: nx, y: ny });
-    if (arrival > coneAt(altitudes, maxAltitude, ny * width + nx)) {
-      return {
-        kind: "escape",
+    const stored = coneAt(altitudes, maxAltitude, nIdx);
+    const groundCell = isGround(ground, nIdx);
+    const aboveStored = stored != null && arrival > stored;
+    path.push(
+      pathStep({
         gi: nx,
         gj: ny,
+        isGround: groundCell,
+        storedAlt: stored,
+        distanceM,
         arrival,
-        cells,
-      };
+        aboveStored,
+      })
+    );
+    seen.add(key);
+
+    if (aboveStored) {
+      return escapeResult(
+        nx,
+        ny,
+        arrival,
+        path,
+        groundCell ? "cleared-stored-ground" : "cleared-stored-first-air"
+      );
+    }
+    // Still below stored: only continue through ground. First air below → none.
+    if (!groundCell) {
+      return none(path, "first-air-below-stored");
     }
     x = nx;
     y = ny;
   }
-  return none;
+  return none(path, "max-steps");
 }

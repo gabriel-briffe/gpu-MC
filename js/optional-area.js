@@ -350,21 +350,19 @@ export function syncEmulatedAltitudeBox() {
 }
 
 function summarizeEscape(decision) {
-  if (!decision || decision.kind !== "escape") {
-    return decision ?? null;
+  if (!decision) {
+    return null;
   }
-  const cells = decision.cells ?? [];
-  const maxCells = 48;
+  const path = decision.path ?? [];
   return {
     kind: decision.kind,
-    gi: decision.gi,
-    gj: decision.gj,
-    arrival: decision.arrival,
-    cellCount: cells.length,
-    cells:
-      cells.length <= maxCells
-        ? cells
-        : [...cells.slice(0, 24), { truncated: cells.length - 48 }, ...cells.slice(-24)],
+    stopReason: decision.stopReason ?? null,
+    gi: decision.gi ?? null,
+    gj: decision.gj ?? null,
+    arrival: decision.arrival ?? null,
+    pathCount: path.length,
+    /** Full worst-case path followed for the escape decision (including on none). */
+    path,
   };
 }
 
@@ -431,14 +429,14 @@ export function buildSimGliderDebugSnapshot() {
     gj: aircraft.gj,
     startAlt: aircraft.alt,
     glideRatio: cone.glideRatio,
-    proofAltitude: Number.isFinite(proof) ? proof : null,
   });
   const seed = optionsSeed({ gi: aircraft.gi, gj: aircraft.gj }, aircraft.alt, cone);
   const fieldIdx = field ? aircraft.gj * cone.dem.width + aircraft.gi : null;
+  const ridgeEscape = summarizeEscape(decision);
 
   return {
     kind: "gpu-mc-sim-glider-debug",
-    version: 1,
+    version: 2,
     when: new Date().toISOString(),
     mapHash: typeof location !== "undefined" ? location.hash : null,
     igcReplay: isIgcReplayOn(),
@@ -457,7 +455,9 @@ export function buildSimGliderDebugSnapshot() {
     marginVsProof: Number.isFinite(proof) && Number.isFinite(aircraft.alt) ? aircraft.alt - proof : null,
     marginVsStored:
       cell?.storedAlt != null && Number.isFinite(aircraft.alt) ? aircraft.alt - cell.storedAlt : null,
-    ridgeEscape: summarizeEscape(decision),
+    ridgeEscape,
+    /** Same path as ridgeEscape.path — worst-case origin walk used for options seed. */
+    worstCasePath: ridgeEscape?.path ?? [],
     optionsSeed: seed
       ? {
           kind: seed.escape ? "escape" : "normal",
@@ -466,7 +466,7 @@ export function buildSimGliderDebugSnapshot() {
           startAlt: seed.startAlt,
           escape: summarizeEscape(seed.escape),
         }
-      : { kind: "none" },
+      : { kind: "none", stopReason: ridgeEscape?.stopReason ?? null },
     optionalArea: field
       ? {
           present: true,
