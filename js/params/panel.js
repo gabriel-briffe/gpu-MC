@@ -24,7 +24,7 @@ function isSingleParamsMode() {
 }
 
 function isDebugMode() {
-  return dom.debugModeInput?.checked ?? false;
+  return dom?.debugModeInput?.checked ?? false;
 }
 
 export function parseVizMode() {
@@ -203,9 +203,9 @@ export function setParamsMode(mode, { initial = false } = {}) {
       app.hooks.refreshCachedAirportMapLayer?.();
       app.hooks.scheduleAutoCompute({ refreshAirports: true });
     }
+    app.hooks.persistParamsState?.();
   }
 
-  app.hooks.persistParamsState?.();
   app.hooks.updateParamsFooter?.();
   app.hooks.syncGlideModeCycleButton?.();
 }
@@ -263,7 +263,13 @@ export function initParamsPanel(appState, domRefs) {
 
   syncParamVisibility();
   syncWeatherOpacityUi();
-  setParamsMode(saved?.mode ?? "auto", { initial: true });
+  // Combined is the default. Ignore a saved "single" with no airport pick
+  // (often left over from the startup cache gate forcing single).
+  let mode = saved?.mode ?? "auto";
+  if (mode === "single" && !saved?.singleLastPick) {
+    mode = "auto";
+  }
+  setParamsMode(mode, { initial: true });
   app.hooks.syncIncludeManualAirportsUi?.();
   app.hooks.updateGridRadiusHint();
   app.hooks.updateTerrainResolutionHint();

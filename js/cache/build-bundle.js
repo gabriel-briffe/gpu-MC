@@ -2,7 +2,8 @@ import { fetchTerrainTileBlob, pruneTerrainTileCache } from "../terrain-tiles.js
 import { fetchAirportsForCellKeys } from "../openaip-airports.js";
 import { fetchAirspacesForCellKeys } from "../airspace.js";
 import {
-  clearAllOpenAipData,
+  getCachedAirports,
+  getCachedAirspaces,
   purgeCellCacheExcept,
   setLastCachedCellKeys,
   setOpenAipCache,
@@ -23,6 +24,22 @@ import {
 import { createOpenAip429Backoff } from "./openaip-429-backoff.js";
 
 const TERRAIN_PREFETCH_CONCURRENCY = 8;
+
+function resolveCacheLayers(options = {}) {
+  if (options.openAipOnly) {
+    return { tiles: false, airports: true, airspace: true };
+  }
+  const hasExplicit =
+    "tiles" in options || "airports" in options || "airspace" in options;
+  if (!hasExplicit) {
+    return { tiles: true, airports: true, airspace: true };
+  }
+  return {
+    tiles: Boolean(options.tiles),
+    airports: Boolean(options.airports),
+    airspace: Boolean(options.airspace),
+  };
+}
 
 async function prefetchTerrariumTiles(jobs, onStatus, onWarning) {
   if (jobs.length === 0) {
@@ -73,54 +90,68 @@ function formatCellLayerStatus(label, count, result) {
   );
 }
 
-async function cacheOpenAipForCells(cellKeys, config, onStatus, onWarning) {
+async function cacheOpenAipForCells(
+  cellKeys,
+  config,
+  onStatus,
+  onWarning,
+  { airports: wantAirports, airspace: wantAirspace }
+) {
   let airportFetches = 0;
   let airspaceFetches = 0;
   let cellsFetched = 0;
   let cellsFailed = 0;
 
-  let airports = [];
-  let airspaces = [];
+  let airports = wantAirports ? [] : getCachedAirports();
+  let airspaces = wantAirspace ? [] : getCachedAirspaces();
   const rateLimitBackoff = createOpenAip429Backoff();
 
-  try {
-    const airportResult = await fetchAirportsForCellKeys(cellKeys, config, {
-      onStatus,
-      onWarning,
-      rateLimitBackoff,
-    });
-    airportFetches = airportResult.fetchCount;
-    airports = airportResult.airports;
-    if (airportResult.cellsFailed) {
-      cellsFailed += airportResult.cellsFailed;
+  if (wantAirports) {
+    try {
+      const airportResult = await fetchAirportsForCellKeys(cellKeys, config, {
+        onStatus,
+        onWarning,
+        rateLimitBackoff,
+      });
+      airportFetches = airportResult.fetchCount;
+      airports = airportResult.airports;
+      if (airportResult.cellsFailed) {
+        cellsFailed += airportResult.cellsFailed;
+      }
+      cellsFetched += airportResult.cellsFetched ?? 0;
+      onStatus?.(formatCellLayerStatus("Airports", airports.length, airportResult));
+    } catch (error) {
+      cellsFailed += cellKeys.length;
+      onWarning?.(`Airports cache: ${error.message}`);
+      onStatus?.(`Airports cache failed — ${error.message}`);
     }
-    cellsFetched += airportResult.cellsFetched ?? 0;
-    onStatus?.(formatCellLayerStatus("Airports", airports.length, airportResult));
-  } catch (error) {
-    cellsFailed += cellKeys.length;
-    onWarning?.(`Airports cache: ${error.message}`);
-    onStatus?.(`Airports cache failed — ${error.message}`);
   }
 
-  try {
-    const airspaceResult = await fetchAirspacesForCellKeys(cellKeys, config, {
-      onStatus,
-      onWarning,
-      rateLimitBackoff,
-    });
-    airspaceFetches = airspaceResult.fetchCount;
-    airspaces = airspaceResult.airspaces;
-    if (airspaceResult.cellsFailed) {
-      cellsFailed += airspaceResult.cellsFailed;
+  if (wantAirspace) {
+    try {
+      const airspaceResult = await fetchAirspacesForCellKeys(cellKeys, config, {
+        onStatus,
+        onWarning,
+        rateLimitBackoff,
+      });
+      airspaceFetches = airspaceResult.fetchCount;
+      airspaces = airspaceResult.airspaces;
+      if (airspaceResult.cellsFailed) {
+        cellsFailed += airspaceResult.cellsFailed;
+      }
+      cellsFetched += airspaceResult.cellsFetched ?? 0;
+      onStatus?.(formatCellLayerStatus("Airspaces", airspaces.length, airspaceResult));
+    } catch (error) {
+      onWarning?.(`Airspaces cache: ${error.message} — continuing without airspace update`);
+      onStatus?.(
+        wantAirports
+          ? `Airspaces failed — keeping ${airports.length} airports`
+          : `Airspaces cache failed — ${error.message}`
+      );
     }
-    cellsFetched += airspaceResult.cellsFetched ?? 0;
-    onStatus?.(formatCellLayerStatus("Airspaces", airspaces.length, airspaceResult));
-  } catch (error) {
-    onWarning?.(`Airspaces cache: ${error.message} — continuing with airports only`);
-    onStatus?.(`Airspaces failed — keeping ${airports.length} airports`);
   }
 
-  if (airports.length || airspaces.length) {
+  if (wantAirports || wantAirspace) {
     setOpenAipCache({
       airports,
       airspaces,
@@ -133,24 +164,30 @@ async function cacheOpenAipForCells(cellKeys, config, onStatus, onWarning) {
 }
 
 export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, options = {}) {
-  const { openAipOnly = false } = options;
+  const { tiles, airports, airspace } = resolveCacheLayers(options);
   if (!cellKeys.length) {
     throw new Error("Select at least one 3° cell to cache");
+  }
+  if (!tiles && !airports && !airspace) {
+    throw new Error("Choose at least one of tiles, airports, or airspace");
   }
 
   const bounds = unionCellBounds(cellKeys);
 
   purgeCellCacheExcept(cellKeys);
-  clearAllOpenAipData();
-  await pruneAirportCellCacheExcept(cellKeys);
-  await pruneAirspaceCellCacheExcept(cellKeys);
+  if (airports) {
+    await pruneAirportCellCacheExcept(cellKeys);
+  }
+  if (airspace) {
+    await pruneAirspaceCellCacheExcept(cellKeys);
+  }
 
   let tileCount = 0;
   let tileFetches = 0;
   let tileFailures = 0;
   let terrainPruned = 0;
 
-  if (!openAipOnly) {
+  if (tiles) {
     const tileJobs = terrariumTileJobsForCellKeys(cellKeys);
     ({ removed: terrainPruned } = await pruneTerrainTileCache(tileJobs));
     if (terrainPruned > 0) {
@@ -185,11 +222,28 @@ export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, op
     }
   }
 
-  onStatus?.(
-    `Fetching airports & airspace for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`
-  );
-  const { airportFetches, airspaceFetches, cellsFetched, cellsFailed } =
-    await cacheOpenAipForCells(cellKeys, config, onStatus, onWarning);
+  let airportFetches = 0;
+  let airspaceFetches = 0;
+  let cellsFetched = 0;
+  let cellsFailed = 0;
+
+  if (airports || airspace) {
+    const layers = [
+      airports ? "airports" : null,
+      airspace ? "airspace" : null,
+    ]
+      .filter(Boolean)
+      .join(" & ");
+    onStatus?.(
+      `Fetching ${layers} for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"}…`
+    );
+    ({ airportFetches, airspaceFetches, cellsFetched, cellsFailed } =
+      await cacheOpenAipForCells(cellKeys, config, onStatus, onWarning, {
+        airports,
+        airspace,
+      }));
+  }
+
   const openAipFetches = airportFetches + airspaceFetches;
   const networkFetches = tileFetches + openAipFetches;
   const airportCount = mergeCachedAirports().length;
@@ -205,13 +259,19 @@ export async function buildCacheBundle(cellKeys, config, onStatus, onWarning, op
   }
   const failSuffix = failParts.length ? `, ${failParts.join(", ")}` : "";
 
-  if (openAipOnly) {
+  const parts = [
+    tiles ? `${tileCount} terrarium tiles` : null,
+    airports || airspace ? `${airportCount} airports` : null,
+    airspace ? `${airspaceCount} airspace volumes` : null,
+  ].filter(Boolean);
+
+  if (!tiles && airports && airspace) {
     onStatus?.(
       `OpenAIP updated — ${airportCount} airports, ${airspaceCount} airspace volumes for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${openAipFetches} fetched${failSuffix})`
     );
   } else {
     onStatus?.(
-      `Cache done — ${tileCount} terrarium tiles, ${airportCount} airports, ${airspaceCount} airspace volumes for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${networkFetches} fetched${failSuffix})`
+      `Cache done — ${parts.join(", ")} for ${cellKeys.length} cell${cellKeys.length === 1 ? "" : "s"} (${networkFetches} fetched${failSuffix})`
     );
   }
 

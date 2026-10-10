@@ -325,9 +325,20 @@
         width: 100%;
       }
 
-      #cache-clear-cancel-btn {
+      #cache-clear-cancel-btn,
+      #cache-download-cancel-btn,
+      #cache-download-confirm-btn {
         margin-top: 0.15rem;
         width: 100%;
+      }
+
+      .cache-download-options {
+        gap: 0.55rem;
+        padding: 0.15rem 0.25rem;
+      }
+
+      .cache-download-options .param-check {
+        font-size: 0.9rem;
       }
 
       .openaip-expiry-cells-updated {
@@ -1388,6 +1399,7 @@
       .map-select-bar button.action-btn.btn-blue,
       #cache-select-bar button.action-btn.btn-blue,
       #cache-clear-dialog button.action-btn.btn-blue,
+      #cache-download-dialog button.action-btn.btn-blue,
       #openaip-expiry-dialog button.action-btn.btn-blue,
       #iconch-settings button.action-btn.btn-blue {
         border-color: rgba(90, 159, 255, 0.55);
@@ -1399,6 +1411,7 @@
       .map-select-bar button.action-btn.btn-blue:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-blue:hover:not(:disabled),
       #cache-clear-dialog button.action-btn.btn-blue:hover:not(:disabled),
+      #cache-download-dialog button.action-btn.btn-blue:hover:not(:disabled),
       #openaip-expiry-dialog button.action-btn.btn-blue:hover:not(:disabled),
       #iconch-settings button.action-btn.btn-blue:hover:not(:disabled) {
         background: rgba(90, 159, 255, 0.32);
@@ -1408,6 +1421,7 @@
       .map-select-bar button.action-btn.btn-green,
       #cache-select-bar button.action-btn.btn-green,
       #cache-clear-dialog button.action-btn.btn-green,
+      #cache-download-dialog button.action-btn.btn-green,
       #openaip-expiry-dialog button.action-btn.btn-green,
       #iconch-settings button.action-btn.btn-green {
         border-color: rgba(100, 210, 120, 0.6);
@@ -1419,6 +1433,7 @@
       .map-select-bar button.action-btn.btn-green:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-green:hover:not(:disabled),
       #cache-clear-dialog button.action-btn.btn-green:hover:not(:disabled),
+      #cache-download-dialog button.action-btn.btn-green:hover:not(:disabled),
       #openaip-expiry-dialog button.action-btn.btn-green:hover:not(:disabled),
       #iconch-settings button.action-btn.btn-green:hover:not(:disabled) {
         background: rgba(70, 190, 100, 0.36);
@@ -1428,6 +1443,7 @@
       .map-select-bar button.action-btn.btn-red,
       #cache-select-bar button.action-btn.btn-red,
       #cache-clear-dialog button.action-btn.btn-red,
+      #cache-download-dialog button.action-btn.btn-red,
       #openaip-expiry-dialog button.action-btn.btn-red,
       #iconch-settings button.action-btn.btn-red {
         border-color: rgba(255, 120, 120, 0.55);
@@ -1439,6 +1455,7 @@
       .map-select-bar button.action-btn.btn-red:hover:not(:disabled),
       #cache-select-bar button.action-btn.btn-red:hover:not(:disabled),
       #cache-clear-dialog button.action-btn.btn-red:hover:not(:disabled),
+      #cache-download-dialog button.action-btn.btn-red:hover:not(:disabled),
       #openaip-expiry-dialog button.action-btn.btn-red:hover:not(:disabled),
       #iconch-settings button.action-btn.btn-red:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.32);
@@ -1549,6 +1566,7 @@
       .map-select-bar button.action-btn,
       #cache-select-bar button.action-btn,
       #cache-clear-dialog button.action-btn,
+      #cache-download-dialog button.action-btn,
       #openaip-expiry-dialog button.action-btn,
       #iconch-settings button.action-btn {
         padding: 0.45rem 0.75rem;
@@ -1565,6 +1583,7 @@
       .map-select-bar button.action-btn:hover:not(:disabled),
       #cache-select-bar button.action-btn:hover:not(:disabled),
       #cache-clear-dialog button.action-btn:hover:not(:disabled),
+      #cache-download-dialog button.action-btn:hover:not(:disabled),
       #openaip-expiry-dialog button.action-btn:hover:not(:disabled),
       #iconch-settings button.action-btn:hover:not(:disabled) {
         background: rgba(255, 80, 80, 0.24);
@@ -1574,6 +1593,7 @@
       .map-select-bar button.action-btn:disabled,
       #cache-select-bar button.action-btn:disabled,
       #cache-clear-dialog button.action-btn:disabled,
+      #cache-download-dialog button.action-btn:disabled,
       #openaip-expiry-dialog button.action-btn:disabled,
       #iconch-settings button.action-btn:disabled {
         opacity: 0.55;

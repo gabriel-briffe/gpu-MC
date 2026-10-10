@@ -39,8 +39,21 @@ export function initCacheUi(h) {
   });
 
   hooks.runCacheDownloadBtn?.addEventListener("click", () => {
-    void runCacheDownload();
+    openCacheDownloadDialog();
   });
+
+  hooks.cacheDownloadCancelBtn?.addEventListener("click", closeCacheDownloadDialog);
+  hooks.cacheDownloadDialogBackdrop?.addEventListener("click", closeCacheDownloadDialog);
+  hooks.cacheDownloadConfirmBtn?.addEventListener("click", () => {
+    void confirmCacheDownload();
+  });
+  for (const input of [
+    hooks.cacheDownloadTilesInput,
+    hooks.cacheDownloadAirportsInput,
+    hooks.cacheDownloadAirspaceInput,
+  ]) {
+    input?.addEventListener("change", syncCacheDownloadConfirmButton);
+  }
 
   hooks.clearCacheDataBtn?.addEventListener("click", () => {
     void openCacheClearDialog();
@@ -193,6 +206,8 @@ function exitCacheSelectMode() {
     return;
   }
 
+  closeCacheDownloadDialog();
+  closeCacheClearDialog();
   app.cacheSelectMode = false;
   hooks.getSelectedCacheCells().clear();
   if (hooks.openCacheDataBtn) {
@@ -205,6 +220,9 @@ function exitCacheSelectMode() {
   hooks.setStatus("");
   syncCacheSelectBar();
   syncCacheSelectButtons();
+  if (hooks.isAutoParamsMode?.() && hooks.isGlideConesEnabled?.()) {
+    hooks.scheduleAutoCompute?.({ refreshAirports: true });
+  }
 }
 
 function toggleCacheCellSelection(lng, lat) {
@@ -278,10 +296,71 @@ function closeCacheClearDialog() {
   }
 }
 
+function readCacheDownloadOptions() {
+  return {
+    tiles: hooks.cacheDownloadTilesInput?.checked === true,
+    airports: hooks.cacheDownloadAirportsInput?.checked === true,
+    airspace: hooks.cacheDownloadAirspaceInput?.checked === true,
+  };
+}
+
+function syncCacheDownloadConfirmButton() {
+  if (!hooks.cacheDownloadConfirmBtn) {
+    return;
+  }
+  const { tiles, airports, airspace } = readCacheDownloadOptions();
+  hooks.cacheDownloadConfirmBtn.disabled = !(tiles || airports || airspace);
+}
+
+function resetCacheDownloadDialogDefaults() {
+  if (hooks.cacheDownloadTilesInput) {
+    hooks.cacheDownloadTilesInput.checked = true;
+  }
+  if (hooks.cacheDownloadAirportsInput) {
+    hooks.cacheDownloadAirportsInput.checked = true;
+  }
+  if (hooks.cacheDownloadAirspaceInput) {
+    hooks.cacheDownloadAirspaceInput.checked = false;
+  }
+  syncCacheDownloadConfirmButton();
+}
+
+function closeCacheDownloadDialog() {
+  if (hooks.cacheDownloadDialog) {
+    hooks.cacheDownloadDialog.hidden = true;
+  }
+}
+
+function openCacheDownloadDialog() {
+  if (
+    !app.cacheSelectMode ||
+    hooks.getSelectedCacheCells().size === 0 ||
+    app.cacheDownloadInProgress ||
+    app.cacheClearInProgress
+  ) {
+    return;
+  }
+  closeCacheClearDialog();
+  resetCacheDownloadDialogDefaults();
+  if (hooks.cacheDownloadDialog) {
+    hooks.cacheDownloadDialog.hidden = false;
+  }
+}
+
+async function confirmCacheDownload() {
+  const options = readCacheDownloadOptions();
+  if (!options.tiles && !options.airports && !options.airspace) {
+    return;
+  }
+  closeCacheDownloadDialog();
+  await runCacheDownload(options);
+}
+
 async function openCacheClearDialog() {
   if (!app.cacheSelectMode || app.cacheDownloadInProgress || app.cacheClearInProgress) {
     return;
   }
+  closeCacheDownloadDialog();
   if (hooks.cacheClearDialog) {
     hooks.cacheClearDialog.hidden = false;
   }
@@ -347,8 +426,11 @@ async function runClearSelectedCells() {
   });
 }
 
-async function runCacheDownload() {
+async function runCacheDownload(options) {
   if (!app.cacheSelectMode || hooks.getSelectedCacheCells().size === 0 || app.cacheDownloadInProgress) {
+    return;
+  }
+  if (!options?.tiles && !options?.airports && !options?.airspace) {
     return;
   }
 
@@ -364,7 +446,8 @@ async function runCacheDownload() {
       (message) => {
         warnings.push(message);
         hooks.setCacheDataWarnings?.(warnings);
-      }
+      },
+      options
     );
     hooks.refreshCacheSelectOverlays();
     hooks.refreshCachedAirportMapLayer?.();

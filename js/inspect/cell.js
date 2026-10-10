@@ -441,8 +441,8 @@ export function syncInspectOnMapMove() {
 }
 
 export function getGeoSampleCell() {
-  const lastGeoLngLat = hooks.getLastGeoLngLat();
-  if (!lastGeoLngLat || !hooks.getConeState()) {
+  const lastGeoLngLat = hooks?.getLastGeoLngLat?.();
+  if (!lastGeoLngLat || !hooks?.getConeState?.()) {
     return null;
   }
   return sampleDemCell(lastGeoLngLat.lng, lastGeoLngLat.lat);
@@ -471,6 +471,9 @@ function ensureSimAltitudeFromCone(coneState) {
 }
 
 export function updateGeoLocationPath() {
+  if (!hooks || !app) {
+    return;
+  }
   hooks.syncEmulatedAltitudeBox?.();
   if (isCacheSelectMode() || isViewerSession()) {
     clearGeoPath();
@@ -482,8 +485,8 @@ export function updateGeoLocationPath() {
     return;
   }
 
-  const coneState = hooks.getConeState();
-  if (isFlightSession() && coneState && hooks.getLastGeoLngLat()) {
+  const coneState = hooks.getConeState?.();
+  if (isFlightSession() && coneState && hooks.getLastGeoLngLat?.()) {
     const position = hooks.getLastGeoLngLat();
     const cell = getGeoSampleCell();
     if (!cell?.isReachable) {

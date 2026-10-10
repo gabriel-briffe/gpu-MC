@@ -88,6 +88,37 @@
       </div>
     </div>
 
+    <div id="cache-download-dialog" class="cache-clear-dialog" hidden>
+      <div class="cache-clear-dialog-backdrop" id="cache-download-dialog-backdrop"></div>
+      <div
+        class="cache-clear-dialog-panel"
+        role="dialog"
+        aria-labelledby="cache-download-dialog-title"
+        aria-modal="true"
+      >
+        <h2 id="cache-download-dialog-title" class="cache-clear-dialog-title">Cache</h2>
+        <p class="cache-clear-desc">Choose what to download for the selected cells.</p>
+        <div class="cache-clear-section cache-download-options">
+          <label class="param-check" for="cache-download-tiles">
+            <input id="cache-download-tiles" type="checkbox" checked />
+            <span>Tiles</span>
+          </label>
+          <label class="param-check" for="cache-download-airports">
+            <input id="cache-download-airports" type="checkbox" checked />
+            <span>Airports</span>
+          </label>
+          <label class="param-check" for="cache-download-airspace">
+            <input id="cache-download-airspace" type="checkbox" />
+            <span>Airspace</span>
+          </label>
+        </div>
+        <button type="button" class="action-btn btn-green" id="cache-download-confirm-btn">
+          Cache
+        </button>
+        <button type="button" class="action-btn" id="cache-download-cancel-btn">Cancel</button>
+      </div>
+    </div>
+
     <div id="cache-clear-dialog" class="cache-clear-dialog" hidden>
       <div class="cache-clear-dialog-backdrop" id="cache-clear-dialog-backdrop"></div>
       <div
@@ -385,14 +416,14 @@
               </div>
               <div class="param-field param-field-full" id="cone-cpu-field">
                 <label class="param-check">
-                  <input id="cone-cpu" type="checkbox" />
+                  <input id="cone-cpu" type="checkbox" checked />
                   <span>CPU cone</span>
                 </label>
                 <span class="param-hint">Use the CPU Dijkstra upward glide cone instead of the GPU shader.</span>
               </div>
               <div class="param-field param-field-full" id="options-cpu-field">
                 <label class="param-check">
-                  <input id="options-cpu" type="checkbox" />
+                  <input id="options-cpu" type="checkbox" checked />
                   <span>CPU options</span>
                 </label>
                 <span class="param-hint">Use the CPU Dijkstra options engine instead of the GPU shader.</span>
@@ -535,7 +566,7 @@
                   >
                     −
                   </button>
-                  <input id="max-alt" type="number" min="0" max="10000" step="100" value="4050" />
+                  <input id="max-alt" type="number" min="0" max="10000" step="100" value="3500" />
                   <button
                     type="button"
                     class="param-step-btn"

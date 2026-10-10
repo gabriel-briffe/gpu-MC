@@ -238,6 +238,13 @@ const {
   runCacheDownloadBtn,
   clearCacheDataBtn,
   finishCacheSelectBtn,
+  cacheDownloadDialog,
+  cacheDownloadDialogBackdrop,
+  cacheDownloadTilesInput,
+  cacheDownloadAirportsInput,
+  cacheDownloadAirspaceInput,
+  cacheDownloadConfirmBtn,
+  cacheDownloadCancelBtn,
   cacheClearDialog,
   cacheClearDialogBackdrop,
   cacheClearOpenAipDesc,
@@ -767,6 +774,13 @@ app.hooks = {
   runCacheDownloadBtn,
   clearCacheDataBtn,
   finishCacheSelectBtn,
+  cacheDownloadDialog,
+  cacheDownloadDialogBackdrop,
+  cacheDownloadTilesInput,
+  cacheDownloadAirportsInput,
+  cacheDownloadAirspaceInput,
+  cacheDownloadConfirmBtn,
+  cacheDownloadCancelBtn,
   cacheClearDialog,
   cacheClearDialogBackdrop,
   cacheClearOpenAipDesc,
@@ -807,6 +821,8 @@ initCellInspect(app.hooks);
 initComputeVisualization(app.hooks);
 initComputeSession(app.hooks);
 initParamsPanel(app, dom);
+initOptionalArea(app.hooks);
+initSessionMode(app.hooks);
 syncAppMenuUi();
 
 // Bundler/external load: pin the self-hosted module worker (v6 creates Worker type=module).
@@ -1412,8 +1428,6 @@ app.map.on("load", async () => {
     });
   ensurePathLayer();
   ensureUserLocationLayers(app.map, () => raisePathLayer());
-  initOptionalArea(app.hooks);
-  initSessionMode(app.hooks);
   app.map.on("moveend", () => {
     updateTerrainResolutionHint();
     if (isAutoParamsMode()) {
@@ -1473,7 +1487,7 @@ app.map.on("load", async () => {
   }
 
   if (hardwareOk && needsStartupCacheMode()) {
-    setParamsMode("single", { initial: true });
+    // Keep combined (auto) mode; cache select does not require single.
     app.hooks.enterCacheSelectMode?.();
   } else if (hardwareOk) {
     const showedOpenAipExpiryDialog = app.hooks.maybeShowOpenAipExpiryDialog?.() ?? false;

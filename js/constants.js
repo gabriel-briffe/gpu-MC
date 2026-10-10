@@ -1,7 +1,7 @@
 import { pickTerrainZoom } from "./geo.js";
 import { OPENAIP_VECTOR_LAYER_IDS } from "./openaip-tiles.js";
 
-export const DEFAULT_MAX_ALTITUDE = 4050;
+export const DEFAULT_MAX_ALTITUDE = 3500;
 export const MIN_SEEDS = 1;
 export const AUTO_WINDOW_SIZE_DEFAULT_KM = 100;
 export const AUTO_WINDOW_GLIDE_FACTOR = 1.25;
@@ -9,7 +9,7 @@ export const AUTO_MAX_OFFSET_FROM_CENTER = 0.25;
 export const AUTO_COMPUTE_DEBOUNCE_MS = 400;
 export const AIRPORT_PICK_HIT_PX = 14;
 export const MAP_CENTER = { lng: 10.13, lat: 45.77 };
-export const MAP_INITIAL_ZOOM = 5.69;
+export const MAP_INITIAL_ZOOM = 6;
 export const CACHE_SELECT_ZOOM = 5;
 export const INITIAL_TERRAIN_Z = pickTerrainZoom(MAP_CENTER.lat);
 export const MAP_MAX_ZOOM = 22;

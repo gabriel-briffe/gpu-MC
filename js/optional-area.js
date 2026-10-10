@@ -803,7 +803,7 @@ function finishOptionsTiming(token, startedAt) {
   requestAnimationFrame(() => requestAnimationFrame(apply));
 }
 function resolveAircraft() {
-  const cone = hooks.getConeState?.();
+  const cone = hooks?.getConeState?.();
   if (!cone?.dem || isViewerSession()) {
     return null;
   }
@@ -975,6 +975,9 @@ export async function refreshOptionalArea({ force = false } = {}) {
 }
 
 async function runOptionalRefresh({ force = false } = {}) {
+  if (!hooks || !app) {
+    return false;
+  }
   const aircraft = resolveAircraft();
   paintSimReadout();
   if (!optionsEnabled()) {
