@@ -154,7 +154,13 @@ import {
   setUserLocationMarkerVisible,
   updateUserLocationFromPosition,
 } from "./map/location-track.js";
-import { initOptionalArea, readEmulatedAltitudeM, clearOptionalArea, refreshOptionalArea } from "./optional-area.js";
+import {
+  initOptionalArea,
+  readEmulatedAltitudeM,
+  clearOptionalArea,
+  refreshOptionalArea,
+  paintSimReadout,
+} from "./optional-area.js";
 import { requiredAltitudeAt } from "./glidecone/route-style.js";
 import { formatMinimumAltLabel } from "./compute/format.js";
 import { stopIgcReplay, syncIgcReplayBar } from "./igc-replay-ui.js";
@@ -1084,6 +1090,7 @@ function setConeState(dem, result, glideParams) {
     originY: result.originY,
     ground: result.ground,
     imageData: result.imageData,
+    elapsedMs: result.elapsedMs,
     maxAltitude: glideParams?.maxAltitude ?? DEFAULT_MAX_ALTITUDE,
     raw: glideParams?.raw ?? false,
     contours: glideParams?.contours ?? false,
@@ -1097,12 +1104,14 @@ function setConeState(dem, result, glideParams) {
   };
   syncComputeContextBar();
   updateGeoLocationPath();
+  paintSimReadout();
 }
 
 function clearConeState() {
   app.coneState = null;
   syncComputeContextBar();
   updateGeoLocationPath();
+  paintSimReadout();
 }
 
 function setDestContextVisible(visible) {

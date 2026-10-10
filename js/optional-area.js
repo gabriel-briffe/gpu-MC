@@ -764,19 +764,29 @@ function optionsDebounceMs() {
   return Math.min(60, sec) * 1000;
 }
 
-function paintSimReadout() {
-  const el = dom.simReadoutEl;
-  if (!el) {
-    return;
+export function paintSimReadout() {
+  const coneMs = app?.coneState?.elapsedMs;
+  const lines = [];
+  if (Number.isFinite(coneMs)) {
+    lines.push(`Cone: ${Math.round(coneMs)} ms`);
   }
-  if (!optionsEnabled() || !app?.optionalField) {
-    el.hidden = true;
-    el.textContent = "";
-    return;
+  if (optionsEnabled() && app?.optionalField) {
+    const timing = lastOptionsMs == null ? "—" : `${Math.round(lastOptionsMs)} ms`;
+    lines.push(`Options: ${timing}`);
   }
-  const timing = lastOptionsMs == null ? "—" : `${Math.round(lastOptionsMs)} ms`;
-  el.hidden = false;
-  el.textContent = `Options ${timing}`;
+  const text = lines.join("\n");
+  for (const el of [dom.simReadoutEl, dom.viewerReadoutEl]) {
+    if (!el) {
+      continue;
+    }
+    if (!text) {
+      el.hidden = true;
+      el.textContent = "";
+      continue;
+    }
+    el.hidden = false;
+    el.textContent = text;
+  }
 }
 
 function finishOptionsTiming(token, startedAt) {

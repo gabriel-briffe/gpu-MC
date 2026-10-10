@@ -66,6 +66,7 @@ export const dom = {
   optionsCpuInput: document.getElementById("options-cpu"),
   optionalOpacityInput: document.getElementById("optional-opacity"),
   simReadoutEl: document.getElementById("sim-readout"),
+  viewerReadoutEl: document.getElementById("viewer-readout"),
   optionalVizField: document.getElementById("optional-viz-field"),
   optionalVizSelect: document.getElementById("optional-viz"),
   optionalVizHintEl: document.getElementById("optional-viz-hint"),
