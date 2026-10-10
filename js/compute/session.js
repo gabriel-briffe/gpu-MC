@@ -103,6 +103,8 @@ export function endComputeSession() {
     void hooks.flushAutoCompute();
   } else if (hooks.isSingleParamsMode?.() && hooks.getSingleComputePending?.()) {
     void hooks.flushSingleAirportCompute();
+  } else {
+    hooks.resumeIgcAfterConeRecompute?.();
   }
 }
 

@@ -273,6 +273,10 @@ export async function flushAutoCompute() {
   const refreshAirports = app.autoComputeNeedsAirportRefresh;
   app.autoComputeNeedsAirportRefresh = false;
   await runAutoComputation({ refreshAirports });
+  // Early exits (no airports, etc.) never open a compute session — still resume IGC.
+  if (!hooks.isComputing() && !app.autoComputePending) {
+    hooks.resumeIgcAfterConeRecompute?.();
+  }
 }
 
 export function onAutoModeMapMoveEnd() {
@@ -293,7 +297,6 @@ export function onAutoModeAnchorMoved(lng, lat) {
   if (
     !isAutoParamsMode() ||
     hooks.getCacheSelectMode() ||
-    hooks.isComputing() ||
     !hooks.isGlideConesEnabled?.() ||
     !Number.isFinite(lng) ||
     !Number.isFinite(lat)
@@ -311,5 +314,24 @@ export function onAutoModeAnchorMoved(lng, lat) {
   ) {
     return;
   }
-  scheduleAutoCompute({ debounce: true, refreshAirports: true });
+
+  // IGC play fires this every RAF; debouncing while outside never expires.
+  // Pause, recompute immediately, then resume when the cone session ends.
+  const wasIgcPlaying = hooks.isIgcPlaying?.();
+  if (wasIgcPlaying) {
+    hooks.pauseIgcForConeRecompute?.();
+  }
+
+  // Already queued: do not reset the debounce timer (that was the IGC stall).
+  if (app.autoComputePending) {
+    if (hooks.isComputing()) {
+      hooks.setComputeShouldStop(true);
+    }
+    return;
+  }
+
+  scheduleAutoCompute({
+    debounce: !wasIgcPlaying,
+    refreshAirports: true,
+  });
 }

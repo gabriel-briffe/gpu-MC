@@ -11,6 +11,8 @@ let playing = false;
 let seconds = 0;
 let lastTick = 0;
 let frame = 0;
+/** Resume Play after a combined-mode cone recompute that paused us. */
+let resumeAfterConeRecompute = false;
 
 function writeAltitude(meters) {
   const value = String(Math.round(meters));
@@ -157,7 +159,29 @@ export function isIgcPlaying() {
   return playing;
 }
 
+/** Pause playback so combined-mode can recompute; returns true if we were playing. */
+export function pauseIgcForConeRecompute() {
+  if (!playing) {
+    return false;
+  }
+  resumeAfterConeRecompute = true;
+  stop();
+  return true;
+}
+
+export function resumeIgcAfterConeRecompute() {
+  if (!resumeAfterConeRecompute) {
+    return;
+  }
+  resumeAfterConeRecompute = false;
+  if (!fixes.length || playing) {
+    return;
+  }
+  play();
+}
+
 export function stopIgcReplay() {
+  resumeAfterConeRecompute = false;
   stop();
   fixes = [];
   seconds = 0;
@@ -182,6 +206,9 @@ export function syncIgcReplayBar(sim) {
 
 export function initIgcReplay(h) {
   hooks = h;
+  hooks.isIgcPlaying = isIgcPlaying;
+  hooks.pauseIgcForConeRecompute = pauseIgcForConeRecompute;
+  hooks.resumeIgcAfterConeRecompute = resumeIgcAfterConeRecompute;
   setTransportEnabled(false);
   dom.igcBtn?.addEventListener("click", () => {
     dom.igcFileInput?.click();
