@@ -221,11 +221,13 @@ export function syncGlideModeCycleButton() {
     Boolean(app.cacheSelectMode) || app.computeHardwareSupported === false;
   btn.hidden = hide;
   if (hide) {
+    hooks.syncOptionsEngineButton?.();
     return;
   }
   const mode = getGlideChromeMode();
   img.src = assetUrl(GLIDE_MODE_ICONS[mode]);
   btn.setAttribute("aria-label", `${GLIDE_MODE_LABELS[mode]} (tap to cycle)`);
+  hooks.syncOptionsEngineButton?.();
 }
 
 function cycleGlideMode() {

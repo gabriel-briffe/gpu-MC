@@ -1,4 +1,5 @@
-const ALT_EPSILON_M = 0.05;
+/** Cell is in the optional area (arrival clears the cone floor). */
+const FLAG_OPTION = 1;
 
 class MaxArrivalHeap {
   constructor() {
@@ -73,19 +74,162 @@ class MaxArrivalHeap {
   }
 }
 
-function coneAltAt(altitudes, maxAltitude, idx) {
-  const alt = altitudes[idx];
-  if (!Number.isFinite(alt) || alt >= maxAltitude) {
-    return Number.POSITIVE_INFINITY;
+function hasConeFloor(floors, maxAltitude, idx) {
+  const alt = floors[idx];
+  return Number.isFinite(alt) && alt < maxAltitude;
+}
+
+function cellBlocksRay(best, floors, maxAltitude, width, height, cx, cy, ox, oy, cellSizeM, glideRatio) {
+  if (cx < 0 || cy < 0 || cx >= width || cy >= height) {
+    return true;
   }
-  return alt;
+  if (cx === ox && cy === oy) {
+    return false;
+  }
+  const i = cy * width + cx;
+  if (!hasConeFloor(floors, maxAltitude, i)) {
+    return false;
+  }
+  const originAlt = best[oy * width + ox];
+  const descent =
+    originAlt -
+    (Math.hypot((cx - ox) * cellSizeM, (cy - oy) * cellSizeM) / glideRatio);
+  return floors[i] >= descent;
+}
+
+/** Extended Bresenham LOS matching the GPU downward shader. */
+function inView(best, floors, maxAltitude, width, height, x0, y0, ox, oy, cellSizeM, glideRatio) {
+  if (ox < 0 || oy < 0 || ox >= width || oy >= height) {
+    return false;
+  }
+  if (x0 === ox && y0 === oy) {
+    return true;
+  }
+
+  const adx = Math.abs(ox - x0);
+  const ady = Math.abs(oy - y0);
+  let x1 = x0;
+  let y1 = y0;
+  const xstep = ox > x1 ? 1 : -1;
+  const ystep = oy > y1 ? 1 : -1;
+  const dx = adx;
+  const dy = ady;
+  const ddy = dy * 2;
+  const ddx = dx * 2;
+  let error = dx;
+  let errorprev = error;
+
+  if (dx >= dy) {
+    for (let s = 0; s < dx; s += 1) {
+      x1 += xstep;
+      error += ddy;
+      if (error > ddx) {
+        y1 += ystep;
+        error -= ddx;
+        if (error + errorprev < ddx) {
+          if (
+            cellBlocksRay(
+              best,
+              floors,
+              maxAltitude,
+              width,
+              height,
+              x1,
+              y1 - ystep,
+              ox,
+              oy,
+              cellSizeM,
+              glideRatio
+            )
+          ) {
+            return false;
+          }
+        } else if (error + errorprev > ddx) {
+          if (
+            cellBlocksRay(
+              best,
+              floors,
+              maxAltitude,
+              width,
+              height,
+              x1 - xstep,
+              y1,
+              ox,
+              oy,
+              cellSizeM,
+              glideRatio
+            )
+          ) {
+            return false;
+          }
+        }
+      }
+      if (
+        cellBlocksRay(best, floors, maxAltitude, width, height, x1, y1, ox, oy, cellSizeM, glideRatio)
+      ) {
+        return false;
+      }
+      errorprev = error;
+    }
+  } else {
+    for (let s = 0; s < dy; s += 1) {
+      y1 += ystep;
+      error += ddx;
+      if (error > ddy) {
+        x1 += xstep;
+        error -= ddy;
+        if (error + errorprev < ddy) {
+          if (
+            cellBlocksRay(
+              best,
+              floors,
+              maxAltitude,
+              width,
+              height,
+              x1 - xstep,
+              y1,
+              ox,
+              oy,
+              cellSizeM,
+              glideRatio
+            )
+          ) {
+            return false;
+          }
+        } else if (error + errorprev > ddy) {
+          if (
+            cellBlocksRay(
+              best,
+              floors,
+              maxAltitude,
+              width,
+              height,
+              x1,
+              y1 - ystep,
+              ox,
+              oy,
+              cellSizeM,
+              glideRatio
+            )
+          ) {
+            return false;
+          }
+        }
+      }
+      if (
+        cellBlocksRay(best, floors, maxAltitude, width, height, x1, y1, ox, oy, cellSizeM, glideRatio)
+      ) {
+        return false;
+      }
+      errorprev = error;
+    }
+  }
+  return true;
 }
 
 /**
- * Descending glide from a clicked cell. A cell is optional when the arrival
- * altitude (start altitude minus path distance / L/D) is above the airport
- * glide-cone altitude. Ridge height is already included in that cone.
- * Distance is the shortest 8-connected path, so the mask can go around a ridge.
+ * Downward options wavefront (CPU). Matches the GPU Option-cell growth:
+ * only cells above the cone floor are written; LOS uses extended Bresenham.
  */
 export function buildOptionalMask({
   dem,
@@ -95,12 +239,24 @@ export function buildOptionalMask({
   gj,
   startAlt,
   glideRatio,
-  groundClearance,
 }) {
   const width = dem.width;
   const height = dem.height;
   const count = width * height;
   const mask = new Uint8Array(count);
+  // Float64 so heap arrivals match stored best under strict inequality
+  // (Float32 rounding made pop() treat live entries as stale).
+  const best = new Float64Array(count).fill(-1);
+  const originX = new Int32Array(count).fill(-1);
+  const originY = new Int32Array(count).fill(-1);
+  const flags = new Uint8Array(count);
+  const finish = () => {
+    mask.arrivals = best;
+    mask.originX = originX;
+    mask.originY = originY;
+    return mask;
+  };
+
   if (
     !Number.isFinite(startAlt) ||
     !Number.isFinite(glideRatio) ||
@@ -110,47 +266,46 @@ export function buildOptionalMask({
     gi >= width ||
     gj >= height
   ) {
-    return mask;
-  }
-
-  const originX = new Int32Array(count).fill(-1);
-  const originY = new Int32Array(count).fill(-1);
-  const best = new Float32Array(count);
-  best.fill(Number.NEGATIVE_INFINITY);
-  const finish = () => {
-    mask.arrivals = best;
-    mask.originX = originX;
-    mask.originY = originY;
-    return mask;
-  };
-
-  const startIdx = gj * width + gi;
-  const startCone = coneAltAt(altitudes, maxAltitude, startIdx);
-  if (!(startAlt > startCone)) {
     return finish();
   }
 
+  const startIdx = gj * width + gi;
+  if (!hasConeFloor(altitudes, maxAltitude, startIdx) || !(startAlt > altitudes[startIdx])) {
+    return finish();
+  }
+
+  best[startIdx] = startAlt;
   originX[startIdx] = gi;
   originY[startIdx] = gj;
-  best[startIdx] = startAlt;
+  flags[startIdx] = FLAG_OPTION;
   mask[startIdx] = 1;
 
   const heap = new MaxArrivalHeap();
   heap.push(startIdx, startAlt);
   const cellSizeM = dem.cellSizeM;
   const offsets = [
-    [-1, -1], [0, -1], [1, -1],
-    [-1, 0], [1, 0],
-    [-1, 1], [0, 1], [1, 1],
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+    [-1, 0],
+    [1, 0],
+    [-1, 1],
+    [0, 1],
+    [1, 1],
   ];
 
   while (heap.size > 0) {
     const { index, arrival } = heap.pop();
-    if (arrival < best[index] - ALT_EPSILON_M) {
+    if (!(flags[index] & FLAG_OPTION)) {
+      continue;
+    }
+    if (arrival < best[index]) {
       continue;
     }
     const x = index % width;
     const y = (index / width) | 0;
+    const fromOx = originX[index];
+    const fromOy = originY[index];
     for (const [dx, dy] of offsets) {
       const nx = x + dx;
       const ny = y + dy;
@@ -158,23 +313,44 @@ export function buildOptionalMask({
         continue;
       }
       const nIdx = ny * width + nx;
-      const step = cellSizeM * Math.hypot(dx, dy);
-      const nextArrival = arrival - step / glideRatio;
-      const cone = coneAltAt(altitudes, maxAltitude, nIdx);
-      if (!(nextArrival > cone)) {
+
+      let electedOx = x;
+      let electedOy = y;
+      if (
+        fromOx >= 0 &&
+        fromOy >= 0 &&
+        inView(best, altitudes, maxAltitude, width, height, nx, ny, fromOx, fromOy, cellSizeM, glideRatio)
+      ) {
+        electedOx = fromOx;
+        electedOy = fromOy;
+      }
+
+      const electedIdx = electedOy * width + electedOx;
+      if (!(flags[electedIdx] & FLAG_OPTION)) {
         continue;
       }
-      if (nextArrival <= best[nIdx]) {
+
+      const dist = Math.hypot((nx - electedOx) * cellSizeM, (ny - electedOy) * cellSizeM);
+      const next = best[electedIdx] - dist / glideRatio;
+
+      // No upward-cone value (capped / unreachable): not an Option cell.
+      if (!hasConeFloor(altitudes, maxAltitude, nIdx)) {
         continue;
       }
-      best[nIdx] = nextArrival;
-      originX[nIdx] = x;
-      originY[nIdx] = y;
+      if (next <= altitudes[nIdx]) {
+        continue;
+      }
+      if (next <= best[nIdx]) {
+        continue;
+      }
+      best[nIdx] = next;
+      originX[nIdx] = electedOx;
+      originY[nIdx] = electedOy;
+      flags[nIdx] = FLAG_OPTION;
       mask[nIdx] = 1;
-      heap.push(nIdx, nextArrival);
+      heap.push(nIdx, next);
     }
   }
 
   return finish();
 }
-

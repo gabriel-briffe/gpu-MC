@@ -272,16 +272,14 @@ export class GlideConeEngine {
     const originX = new Int32Array(count).fill(-1);
     const originY = new Int32Array(count).fill(-1);
     const flags = new Uint32Array(count);
-    originX[startIdx] = gi;
-    originY[startIdx] = gj;
     const startCone = coneAltitudes[startIdx];
-    // Already at/below the upward cone: seed as GC (no wavefront).
-    if (Number.isFinite(startCone) && startCone < maxAltitude && startAlt < startCone) {
-      alt[startIdx] = startCone;
-      flags[startIdx] = 1; // FLAG_GROUND
-    } else {
+    const hasFloor = Number.isFinite(startCone) && startCone < maxAltitude;
+    // Seed is an Option only when arrival clears the cone floor (no GC freeze).
+    if (!hasFloor || startAlt > startCone) {
       alt[startIdx] = startAlt;
-      flags[startIdx] = 2; // FLAG_CHANGED
+      originX[startIdx] = gi;
+      originY[startIdx] = gj;
+      flags[startIdx] = 1 | 2; // FLAG_OPTION | FLAG_CHANGED
     }
     const originPairs = new Int32Array(count * 2);
     for (let i = 0; i < count; i += 1) {

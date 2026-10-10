@@ -35,6 +35,15 @@
       </button>
       <button
         type="button"
+        id="options-engine-btn"
+        class="iconch1-step-btn options-engine-btn"
+        aria-pressed="false"
+        aria-label="Options engine: GPU"
+      >
+        GPU
+      </button>
+      <button
+        type="button"
         id="downward-method-btn"
         class="iconch1-step-btn downward-method-btn"
         hidden
@@ -362,6 +371,13 @@
                   <span>Options</span>
                 </label>
                 <span class="param-hint">Compute the options area and its paths.</span>
+              </div>
+              <div class="param-field param-field-full" id="options-cpu-field">
+                <label class="param-check">
+                  <input id="options-cpu" type="checkbox" />
+                  <span>CPU options</span>
+                </label>
+                <span class="param-hint">Use the CPU Dijkstra options engine instead of the GPU shader.</span>
               </div>
               <div class="param-field param-field-full" id="optional-opacity-field">
                 <div class="param-label-row">

@@ -2527,6 +2527,28 @@
         }
       }
 
+      #app-menu-chrome .options-engine-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      #app-menu-chrome .options-engine-btn[hidden] {
+        display: none !important;
+      }
+
+      #app-menu-chrome .options-engine-btn[aria-pressed="true"] {
+        border-color: rgba(90, 159, 212, 0.75);
+        background: rgba(90, 159, 212, 0.22);
+        color: #d7ecff;
+      }
+
+      body.glidecones-disabled #app-menu-chrome .options-engine-btn {
+        display: none !important;
+      }
+
       #app-menu-chrome .downward-method-btn {
         width: 40px;
         height: 40px;

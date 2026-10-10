@@ -28,6 +28,38 @@ export function downwardMethod() {
   return app?.downwardMethod === "shader" ? "shader" : "dijkstra";
 }
 
+function optionsUseCpu() {
+  return dom.optionsCpuInput?.checked === true;
+}
+
+function syncOptionsEngineButton() {
+  const button = dom.optionsEngineBtn;
+  if (!button) {
+    return;
+  }
+  const hide =
+    Boolean(app?.cacheSelectMode) || app?.computeHardwareSupported === false;
+  button.hidden = hide;
+  if (hide) {
+    return;
+  }
+  const cpu = optionsUseCpu();
+  button.textContent = cpu ? "CPU" : "GPU";
+  button.setAttribute("aria-pressed", cpu ? "true" : "false");
+  button.setAttribute(
+    "aria-label",
+    cpu ? "Options engine: CPU (tap for GPU)" : "Options engine: GPU (tap for CPU)"
+  );
+}
+
+function setOptionsUseCpu(cpu) {
+  if (dom.optionsCpuInput) {
+    dom.optionsCpuInput.checked = Boolean(cpu);
+  }
+  syncOptionsEngineButton();
+  void refreshOptionalArea({ force: true });
+}
+
 function syncDownwardMethodButton() {
   const button = dom.downwardMethodBtn;
   if (!button) {
@@ -557,6 +589,9 @@ export function copySimGliderDebugAt(domEvent) {
 }
 
 function preferShader() {
+  if (optionsUseCpu()) {
+    return false;
+  }
   if (isDebugMode()) {
     return downwardMethod() === "shader";
   }
@@ -1059,6 +1094,7 @@ export function initOptionalArea(h) {
   app = h.app;
   hooks.syncEmulatedAltitudeBox = syncEmulatedAltitudeBox;
   hooks.syncDownwardMethodButton = syncDownwardMethodButton;
+  hooks.syncOptionsEngineButton = syncOptionsEngineButton;
   hooks.clearOptionalArea = clearOptionalArea;
   hooks.refreshOptionalArea = refreshOptionalArea;
   hooks.syncOptionalVizHint = syncOptionalVizHint;
@@ -1066,6 +1102,10 @@ export function initOptionalArea(h) {
   hooks.copySimGliderDebugAt = copySimGliderDebugAt;
   hooks.buildSimGliderDebugSnapshot = buildSimGliderDebugSnapshot;
   app.downwardMethod = app.downwardMethod === "shader" ? "shader" : "dijkstra";
+
+  dom.optionsEngineBtn?.addEventListener("click", () => {
+    setOptionsUseCpu(!optionsUseCpu());
+  });
 
   dom.downwardMethodBtn?.addEventListener("click", () => {
     app.downwardMethod = downwardMethod() === "shader" ? "dijkstra" : "shader";
@@ -1088,6 +1128,11 @@ export function initOptionalArea(h) {
   } catch {
     // Ignore storage reads that are blocked.
   }
+
+  dom.optionsCpuInput?.addEventListener("change", () => {
+    syncOptionsEngineButton();
+    void refreshOptionalArea({ force: true });
+  });
 
   dom.emulatedAltitudeInput?.addEventListener("input", () => {
     onEmulatedAltitudeEdited(dom.emulatedAltitudeInput);
@@ -1124,5 +1169,6 @@ export function initOptionalArea(h) {
   initIgcReplay(hooks);
   syncEmulatedAltitudeBox();
   syncDownwardMethodButton();
+  syncOptionsEngineButton();
   syncOptionalVizHint();
 }
