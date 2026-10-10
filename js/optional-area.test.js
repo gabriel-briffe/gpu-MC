@@ -58,23 +58,6 @@ test("optional mask can step around a ridge already raised in the cone", () => {
   assert.equal(mask[1 * width + 2], 1);
 });
 
-test("optional mask starts on ground when above proof floor but below stored terrain", () => {
-  // IGC ridge case: stored terrain 2058, proof ~1849, glider 2056.
-  const floors = new Float32Array([1818.57, 1848.67]);
-  const mask = buildOptionalMask({
-    dem: demOf(2, 1, new Float32Array([1700, 1958]), 425),
-    altitudes: floors,
-    maxAltitude: 4050,
-    gi: 1,
-    gj: 0,
-    startAlt: 2056,
-    glideRatio: 20,
-    groundClearance: 100,
-  });
-  assert.equal(mask[1], 1);
-  assert.equal(mask[0], 1);
-});
-
 test("no emulated altitude leaves the mask empty", () => {
   const terrain = new Float32Array([0]);
   const mask = buildOptionalMask({
@@ -128,7 +111,7 @@ test("below the cone with an air next cell has no options", () => {
   assert.equal(decision.kind, "none");
 });
 
-test("ground cell above proof altitude still gets options when next cell is air", () => {
+test("ground below stored cone with air next has no options (proof ignored)", () => {
   const decision = ridgeEscapeSeed({
     dem: coneDem(2, 1, 425),
     altitudes: new Float32Array([1818.57, 2058]),
@@ -140,7 +123,22 @@ test("ground cell above proof altitude still gets options when next cell is air"
     gj: 0,
     startAlt: 2042,
     glideRatio: 20,
-    proofAltitude: 1848.67,
+  });
+  assert.equal(decision.kind, "none");
+});
+
+test("ground above stored cone seeds at the glider", () => {
+  const decision = ridgeEscapeSeed({
+    dem: coneDem(2, 1, 425),
+    altitudes: new Float32Array([1818.57, 2058]),
+    originX: new Int32Array([0, 0]),
+    originY: new Int32Array([0, 0]),
+    ground: new Uint32Array([0, 1]),
+    maxAltitude: 4050,
+    gi: 1,
+    gj: 0,
+    startAlt: 2060,
+    glideRatio: 20,
   });
   assert.equal(decision.kind, "normal");
 });

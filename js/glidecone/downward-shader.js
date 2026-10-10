@@ -1,9 +1,13 @@
 /**
  * Downward optional-area propagate.
  *
- * Cells that stay above the cone floor are Options. The wavefront grows only
- * through Option neighbours — no GC freeze. Arrivals that would fall at/below
- * the floor are not written, so a better path can still fill that cell later.
+ * Cells that stay above the cone floor (coneAlt) are Options. The wavefront
+ * grows only through Option neighbours — no GC freeze. Arrivals that would
+ * fall at/below the floor are not written, so a better path can still fill
+ * that cell later.
+ *
+ * Dual floors: coneAlt = reach/margin (stored glide cone);
+ * elev = LOS blockers (same stored cone unless a caller passes different losAltitudes).
  *
  * FLAG_OPTION (bit 0): cell is in the optional area.
  * FLAG_CHANGED (bit 1): cell updated this iteration.
@@ -79,14 +83,20 @@ fn packFlags(option: bool, changed: bool) -> u32 {
   return f;
 }
 
-/** Real upward-cone floor (ignore unreachable / maxAlt sentinels). */
+/** Reach floor from stored glide cone (ignore unreachable / maxAlt sentinels). */
 fn hasConeFloor(i: u32) -> bool {
   let gc = coneAlt[i];
   return gc < params.maxAlt;
 }
 
-// True if the upward cone sticks through the descending L/D slope from origin.
-// Option flags alone do not block.
+/** LOS obstacle height (stored cone / terrain+GC on ground). */
+fn hasLosObstacle(i: u32) -> bool {
+  let h = elev[i];
+  return h < params.maxAlt;
+}
+
+// True if stored cone sticks through the descending L/D slope from origin.
+// Uses elev (losAltitudes). Option flags alone do not block.
 fn cellBlocksRay(cx: i32, cy: i32, ox: i32, oy: i32, originAlt: f32) -> bool {
   if (!inBounds(cx, cy)) {
     return true;
@@ -95,13 +105,13 @@ fn cellBlocksRay(cx: i32, cy: i32, ox: i32, oy: i32, originAlt: f32) -> bool {
     return false;
   }
   let i = idx(cx, cy);
-  if (!hasConeFloor(i)) {
+  if (!hasLosObstacle(i)) {
     return false;
   }
   let dx = f32(cx - ox);
   let dy = f32(cy - oy);
   let descentAlt = originAlt - sqrt(dx * dx + dy * dy) * params.cellSizeM / params.glideRatio;
-  return coneAlt[i] >= descentAlt;
+  return elev[i] >= descentAlt;
 }
 
 // Extended Bresenham LOS to the elected origin (diagonal corner samples).

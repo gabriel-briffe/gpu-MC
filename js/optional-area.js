@@ -94,63 +94,6 @@ function maskFromArrivals(arrivals, altitudes, maxAltitude) {
   return mask;
 }
 
-/** Floors depend on L/D (proof = air + distance / L/D); key by milliratio. */
-function optionsFloorsCacheKey(glideRatio) {
-  return Math.round(glideRatio * 1000);
-}
-
-/**
- * Options floor heights: stored cone on air cells; on ground cells the walked-back
- * proof altitude when it is lower than stored terrain (so a clear ridge can seed).
- * Cached on the cone — rebuilt only when the cone or L/D tier changes.
- */
-function optionsConeFloors(coneState, glideRatio) {
-  if (!coneState || !(glideRatio > 0)) {
-    return coneState?.altitudes ? Float32Array.from(coneState.altitudes) : null;
-  }
-  if (!coneState.optionsFloorsByLd) {
-    coneState.optionsFloorsByLd = new Map();
-  }
-  const key = optionsFloorsCacheKey(glideRatio);
-  const cached = coneState.optionsFloorsByLd.get(key);
-  if (cached) {
-    return cached;
-  }
-
-  const { dem, altitudes, ground, originX, originY, maxAltitude, circuitHeight } = coneState;
-  const floors = Float32Array.from(altitudes);
-  if (!dem || !ground || !originX || !originY) {
-    coneState.optionsFloorsByLd.set(key, floors);
-    return floors;
-  }
-  const ctx = {
-    dem,
-    altitudes,
-    ground,
-    originX,
-    originY,
-    maxAltitude,
-    glideRatio,
-    circuitHeight,
-  };
-  const width = dem.width;
-  for (let i = 0; i < floors.length; i += 1) {
-    if (ground[i] !== 1) {
-      continue;
-    }
-    const stored = altitudes[i];
-    if (!Number.isFinite(stored) || stored >= maxAltitude) {
-      continue;
-    }
-    const proof = requiredAltitudeAt(i % width, (i / width) | 0, ctx);
-    if (Number.isFinite(proof) && proof < stored) {
-      floors[i] = proof;
-    }
-  }
-  coneState.optionsFloorsByLd.set(key, floors);
-  return floors;
-}
-
 export function readEmulatedAltitudeM() {
   const value = Number.parseFloat(dom.emulatedAltitudeInput?.value ?? "");
   return Number.isFinite(value) ? value : null;
@@ -605,16 +548,6 @@ function gridIndexLngLat(gi, gj, dem) {
 }
 
 function optionsSeed(cell, startAlt, coneState, glideRatio = coneState.glideRatio) {
-  const proof = requiredAltitudeAt(cell.gi, cell.gj, {
-    dem: coneState.dem,
-    altitudes: coneState.altitudes,
-    ground: coneState.ground,
-    originX: coneState.originX,
-    originY: coneState.originY,
-    maxAltitude: coneState.maxAltitude,
-    glideRatio,
-    circuitHeight: coneState.circuitHeight,
-  });
   const decision = ridgeEscapeSeed({
     dem: coneState.dem,
     altitudes: coneState.altitudes,
@@ -626,7 +559,6 @@ function optionsSeed(cell, startAlt, coneState, glideRatio = coneState.glideRati
     gj: cell.gj,
     startAlt,
     glideRatio,
-    proofAltitude: Number.isFinite(proof) ? proof : null,
   });
   if (decision.kind === "none") {
     return null;
@@ -694,8 +626,9 @@ function optionsReachHints(cell, startAlt, coneState, glideRatio) {
 }
 
 async function computeField(cell, startAlt, coneState, glideRatio = coneState.glideRatio) {
-  const { dem, maxAltitude, groundClearance } = coneState;
-  const floors = optionsConeFloors(coneState, glideRatio);
+  const { dem, maxAltitude, altitudes, groundClearance } = coneState;
+  // Stored glide cone only — no proof-lowered floors.
+  const floors = altitudes;
   if (preferShader()) {
     try {
       const reach = optionsReachHints(cell, startAlt, coneState, glideRatio);
@@ -707,6 +640,7 @@ async function computeField(cell, startAlt, coneState, glideRatio = coneState.gl
           gj: cell.gj,
           startAlt,
           coneAltitudes: floors,
+          losAltitudes: floors,
           ...reach,
         });
       return {
@@ -728,6 +662,7 @@ async function computeField(cell, startAlt, coneState, glideRatio = coneState.gl
   const mask = buildOptionalMask({
     dem,
     altitudes: floors,
+    losAltitudes: floors,
     maxAltitude,
     gi: cell.gi,
     gj: cell.gj,

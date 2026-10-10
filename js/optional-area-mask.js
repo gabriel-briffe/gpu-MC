@@ -79,7 +79,7 @@ function hasConeFloor(floors, maxAltitude, idx) {
   return Number.isFinite(alt) && alt < maxAltitude;
 }
 
-function cellBlocksRay(best, floors, maxAltitude, width, height, cx, cy, ox, oy, cellSizeM, glideRatio) {
+function cellBlocksRay(best, losFloors, maxAltitude, width, height, cx, cy, ox, oy, cellSizeM, glideRatio) {
   if (cx < 0 || cy < 0 || cx >= width || cy >= height) {
     return true;
   }
@@ -87,18 +87,18 @@ function cellBlocksRay(best, floors, maxAltitude, width, height, cx, cy, ox, oy,
     return false;
   }
   const i = cy * width + cx;
-  if (!hasConeFloor(floors, maxAltitude, i)) {
+  if (!hasConeFloor(losFloors, maxAltitude, i)) {
     return false;
   }
   const originAlt = best[oy * width + ox];
   const descent =
     originAlt -
     (Math.hypot((cx - ox) * cellSizeM, (cy - oy) * cellSizeM) / glideRatio);
-  return floors[i] >= descent;
+  return losFloors[i] >= descent;
 }
 
 /** Extended Bresenham LOS matching the GPU downward shader. */
-function inView(best, floors, maxAltitude, width, height, x0, y0, ox, oy, cellSizeM, glideRatio) {
+function inView(best, losFloors, maxAltitude, width, height, x0, y0, ox, oy, cellSizeM, glideRatio) {
   if (ox < 0 || oy < 0 || ox >= width || oy >= height) {
     return false;
   }
@@ -130,7 +130,7 @@ function inView(best, floors, maxAltitude, width, height, x0, y0, ox, oy, cellSi
           if (
             cellBlocksRay(
               best,
-              floors,
+              losFloors,
               maxAltitude,
               width,
               height,
@@ -148,7 +148,7 @@ function inView(best, floors, maxAltitude, width, height, x0, y0, ox, oy, cellSi
           if (
             cellBlocksRay(
               best,
-              floors,
+              losFloors,
               maxAltitude,
               width,
               height,
@@ -165,7 +165,7 @@ function inView(best, floors, maxAltitude, width, height, x0, y0, ox, oy, cellSi
         }
       }
       if (
-        cellBlocksRay(best, floors, maxAltitude, width, height, x1, y1, ox, oy, cellSizeM, glideRatio)
+        cellBlocksRay(best, losFloors, maxAltitude, width, height, x1, y1, ox, oy, cellSizeM, glideRatio)
       ) {
         return false;
       }
@@ -182,7 +182,7 @@ function inView(best, floors, maxAltitude, width, height, x0, y0, ox, oy, cellSi
           if (
             cellBlocksRay(
               best,
-              floors,
+              losFloors,
               maxAltitude,
               width,
               height,
@@ -200,7 +200,7 @@ function inView(best, floors, maxAltitude, width, height, x0, y0, ox, oy, cellSi
           if (
             cellBlocksRay(
               best,
-              floors,
+              losFloors,
               maxAltitude,
               width,
               height,
@@ -217,7 +217,7 @@ function inView(best, floors, maxAltitude, width, height, x0, y0, ox, oy, cellSi
         }
       }
       if (
-        cellBlocksRay(best, floors, maxAltitude, width, height, x1, y1, ox, oy, cellSizeM, glideRatio)
+        cellBlocksRay(best, losFloors, maxAltitude, width, height, x1, y1, ox, oy, cellSizeM, glideRatio)
       ) {
         return false;
       }
@@ -230,10 +230,14 @@ function inView(best, floors, maxAltitude, width, height, x0, y0, ox, oy, cellSi
 /**
  * Downward options wavefront (CPU). Matches the GPU Option-cell growth:
  * only cells above the cone floor are written; LOS uses extended Bresenham.
+ *
+ * altitudes: reach/margin floors (may be proof-lowered on ground).
+ * losAltitudes: stored cone for LOS (defaults to altitudes).
  */
 export function buildOptionalMask({
   dem,
   altitudes,
+  losAltitudes,
   maxAltitude,
   gi,
   gj,
@@ -250,6 +254,7 @@ export function buildOptionalMask({
   const originX = new Int32Array(count).fill(-1);
   const originY = new Int32Array(count).fill(-1);
   const flags = new Uint8Array(count);
+  const los = losAltitudes ?? altitudes;
   const finish = () => {
     mask.arrivals = best;
     mask.originX = originX;
@@ -319,7 +324,7 @@ export function buildOptionalMask({
       if (
         fromOx >= 0 &&
         fromOy >= 0 &&
-        inView(best, altitudes, maxAltitude, width, height, nx, ny, fromOx, fromOy, cellSizeM, glideRatio)
+        inView(best, los, maxAltitude, width, height, nx, ny, fromOx, fromOy, cellSizeM, glideRatio)
       ) {
         electedOx = fromOx;
         electedOy = fromOy;

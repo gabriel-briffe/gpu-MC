@@ -1,15 +1,11 @@
 /**
- * Ridge-soaring escape along the upward cone path.
+ * Options seed along the upward cone (worst-case) path.
  *
- * Above the cone, options start at the glider. Below it, options exist only
- * when the next cone cell is still ground. The glider is flown along that
- * first ground-only run, and options start at the first ground cell where the
- * arrival is above the cone. A below-cone glider whose next cone cell is
- * already air has no options.
- *
- * "Above the cone" uses proofAltitude when given (walked-back required height
- * on ground cells). Stored ground cells are terrain, so comparing startAlt to
- * that alone would wrongly treat a clear ridge as below the cone.
+ * Compare the glider to the *stored* glide cone only (no walked-back proof).
+ * Above the cone → seed at the glider. Below it → fly L/D along the first
+ * ground-only origin run and seed at the first ground cell where arrival is
+ * above the stored cone. If the last ground cell before air is still below
+ * the cone → no options.
  */
 
 function coneAt(altitudes, maxAltitude, idx) {
@@ -39,7 +35,6 @@ export function ridgeEscapeSeed({
   gj,
   startAlt,
   glideRatio,
-  proofAltitude = null,
 }) {
   const none = { kind: "none" };
   const width = dem?.width ?? 0;
@@ -62,10 +57,7 @@ export function ridgeEscapeSeed({
   }
 
   const startIdx = gj * width + gi;
-  const floor = Number.isFinite(proofAltitude)
-    ? proofAltitude
-    : coneAt(altitudes, maxAltitude, startIdx);
-  if (startAlt > floor) {
+  if (startAlt > coneAt(altitudes, maxAltitude, startIdx)) {
     return { kind: "normal" };
   }
 
@@ -99,6 +91,7 @@ export function ridgeEscapeSeed({
     if (seen.has(key)) {
       return none;
     }
+    // Last ground before air still below the stored cone → no options.
     if (!isGround(ground, ny * width + nx)) {
       return none;
     }

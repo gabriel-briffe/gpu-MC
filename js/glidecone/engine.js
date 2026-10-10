@@ -256,6 +256,8 @@ export class GlideConeEngine {
       gj,
       startAlt,
       coneAltitudes,
+      /** Stored cone altitudes for LOS (defaults to coneAltitudes). */
+      losAltitudes,
       pathDistanceM = 0,
       marginM = 0,
       iterationCap = 2000,
@@ -265,7 +267,7 @@ export class GlideConeEngine {
     if (!device || !pipelines?.downward) {
       throw new Error("WebGPU downward pipeline is not ready.");
     }
-    const { width, height, cellSizeM, elevation } = dem;
+    const { width, height, cellSizeM } = dem;
     const count = width * height;
     const startIdx = gj * width + gi;
     const alt = new Float32Array(count).fill(-1);
@@ -290,11 +292,13 @@ export class GlideConeEngine {
     const sumUniform = new ArrayBuffer(8);
     new DataView(sumUniform).setUint32(0, width, true);
     new DataView(sumUniform).setUint32(4, height, true);
+    const los = losAltitudes ?? coneAltitudes;
 
     const { pool, owned } = this._acquireDownwardBuffers(count);
     try {
       writeGpuBuffer(device, pool.uniform, params);
-      writeGpuBuffer(device, pool.elevBuffer, elevation);
+      // elev binding carries LOS blockers (stored terrain/cone), not DEM.
+      writeGpuBuffer(device, pool.elevBuffer, los);
       writeGpuBuffer(device, pool.coneBuffer, coneAltitudes);
       writeGpuBuffer(device, pool.altA, alt);
       writeGpuBuffer(device, pool.altB, alt);
