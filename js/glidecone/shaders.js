@@ -1,5 +1,4 @@
 export const SECTOR_ORIGIN_RESOLVE_PASSES = 16;
-export const PROPAGATE_ALT_EPSILON = 0.001;
 export const FLAG_CHANGED = 2;
 
 export const PROPAGATE_SHADER = /* wgsl */ `
@@ -361,7 +360,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   let changed = newOx != myOx
     || newOy != myOy
-    || abs(newAlt - curAlt) > ${PROPAGATE_ALT_EPSILON}
+    || newAlt != curAlt
     || newGround != isGroundCell(curFlags);
   flagsOut[i] = packFlags(newGround, changed);
 }

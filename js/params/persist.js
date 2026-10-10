@@ -64,6 +64,7 @@ function collectFormState(dom) {
     optionalOpacity: readInput(dom.optionalOpacityInput),
     optionalViz: readInput(dom.optionalVizSelect),
     optionsDebounce: readInput(dom.optionsDebounceInput),
+    coneCpu: readCheckbox(dom.coneCpuInput),
     optionsCpu: readCheckbox(dom.optionsCpuInput),
     weatherOpacity: readInput(dom.weatherOpacityInput),
     debugMode: readCheckbox(dom.debugModeInput),
@@ -89,6 +90,7 @@ function applyFormState(dom, form) {
   writeInput(dom.optionalOpacityInput, form.optionalOpacity);
   writeInput(dom.optionalVizSelect, form.optionalViz);
   writeInput(dom.optionsDebounceInput, form.optionsDebounce);
+  writeCheckbox(dom.coneCpuInput, form.coneCpu);
   writeCheckbox(dom.optionsCpuInput, form.optionsCpu);
   writeInput(dom.weatherOpacityInput, form.weatherOpacity);
   writeCheckbox(dom.debugModeInput, form.debugMode);

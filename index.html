@@ -35,12 +35,23 @@
       </button>
       <button
         type="button"
+        id="cone-engine-btn"
+        class="iconch1-step-btn cone-engine-btn"
+        aria-pressed="false"
+        aria-label="Cone engine: GPU"
+      >
+        <span class="engine-btn-kind">cone</span>
+        <span class="engine-btn-eng">GPU</span>
+      </button>
+      <button
+        type="button"
         id="options-engine-btn"
         class="iconch1-step-btn options-engine-btn"
         aria-pressed="false"
         aria-label="Options engine: GPU"
       >
-        GPU
+        <span class="engine-btn-kind">opts</span>
+        <span class="engine-btn-eng">GPU</span>
       </button>
       <button
         type="button"
@@ -371,6 +382,13 @@
                   <span>Options</span>
                 </label>
                 <span class="param-hint">Compute the options area and its paths.</span>
+              </div>
+              <div class="param-field param-field-full" id="cone-cpu-field">
+                <label class="param-check">
+                  <input id="cone-cpu" type="checkbox" />
+                  <span>CPU cone</span>
+                </label>
+                <span class="param-hint">Use the CPU Dijkstra upward glide cone instead of the GPU shader.</span>
               </div>
               <div class="param-field param-field-full" id="options-cpu-field">
                 <label class="param-check">

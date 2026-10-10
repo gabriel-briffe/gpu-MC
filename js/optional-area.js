@@ -44,7 +44,9 @@ function syncOptionsEngineButton() {
     return;
   }
   const cpu = optionsUseCpu();
-  button.textContent = cpu ? "CPU" : "GPU";
+  button.innerHTML =
+    `<span class="engine-btn-kind">opts</span>` +
+    `<span class="engine-btn-eng">${cpu ? "CPU" : "GPU"}</span>`;
   button.setAttribute("aria-pressed", cpu ? "true" : "false");
   button.setAttribute(
     "aria-label",

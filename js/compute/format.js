@@ -5,7 +5,8 @@ export function formatComputeDone(result, extra = "") {
   } else if (result.stopped) {
     suffix = " (stopped)";
   }
-  return `Done — ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms GPU${suffix}${extra}`;
+  const engine = result.engine === "cpu" ? "CPU" : "GPU";
+  return `Done — ${result.iterations} iters, ${result.elapsedMs.toFixed(0)} ms ${engine}${suffix}${extra}`;
 }
 
 export function formatDistanceKm(distanceM) {

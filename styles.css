@@ -2529,16 +2529,42 @@
         }
       }
 
+      #app-menu-chrome .cone-engine-btn,
       #app-menu-chrome .options-engine-btn {
-        width: 40px;
-        height: 40px;
-        font-size: 0.72rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.05rem;
+        width: 44px;
+        height: 44px;
+        padding: 0.2rem 0.15rem;
         font-weight: 700;
         letter-spacing: 0.02em;
+        line-height: 1.05;
       }
 
+      #app-menu-chrome .engine-btn-kind {
+        font-size: 0.55rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        opacity: 0.75;
+      }
+
+      #app-menu-chrome .engine-btn-eng {
+        font-size: 0.72rem;
+      }
+
+      #app-menu-chrome .cone-engine-btn[hidden],
       #app-menu-chrome .options-engine-btn[hidden] {
         display: none !important;
+      }
+
+      #app-menu-chrome .cone-engine-btn[aria-pressed="true"] {
+        border-color: rgba(46, 204, 113, 0.75);
+        background: rgba(46, 204, 113, 0.2);
+        color: #d8ffe8;
       }
 
       #app-menu-chrome .options-engine-btn[aria-pressed="true"] {
@@ -2547,6 +2573,7 @@
         color: #d7ecff;
       }
 
+      body.glidecones-disabled #app-menu-chrome .cone-engine-btn,
       body.glidecones-disabled #app-menu-chrome .options-engine-btn {
         display: none !important;
       }

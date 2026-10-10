@@ -4,11 +4,80 @@ import { formatComputeDone } from "./format.js";
 import { getGlideParams } from "./params.js";
 import { updateConeVisualization, updateOverlay } from "./visualization.js";
 import { logOriginPathValidation } from "../debug/origin-path-validate.js";
+import { computeUpwardConeCpu } from "../upward-cone-mask.js";
+import { dom } from "../dom.js";
 
 let hooks;
 
 export function initComputeSession(h) {
   hooks = h;
+  hooks.syncConeEngineButton = syncConeEngineButton;
+  hooks.coneUseCpu = coneUseCpu;
+
+  dom.coneEngineBtn?.addEventListener("click", () => {
+    setConeUseCpu(!coneUseCpu());
+  });
+  dom.coneCpuInput?.addEventListener("change", () => {
+    syncConeEngineButton();
+    hooks.schedulePersistParamsState?.();
+    recomputeConeAfterEngineChange();
+  });
+  syncConeEngineButton();
+}
+
+export function coneUseCpu() {
+  return dom.coneCpuInput?.checked === true;
+}
+
+function syncConeEngineButton() {
+  const button = dom.coneEngineBtn;
+  if (!button) {
+    return;
+  }
+  const hide = Boolean(hooks?.app?.cacheSelectMode);
+  button.hidden = hide;
+  if (hide) {
+    return;
+  }
+  const cpu = coneUseCpu();
+  button.innerHTML =
+    `<span class="engine-btn-kind">cone</span>` +
+    `<span class="engine-btn-eng">${cpu ? "CPU" : "GPU"}</span>`;
+  button.setAttribute("aria-pressed", cpu ? "true" : "false");
+  button.setAttribute(
+    "aria-label",
+    cpu ? "Cone engine: CPU (tap for GPU)" : "Cone engine: GPU (tap for CPU)"
+  );
+}
+
+function setConeUseCpu(cpu) {
+  if (dom.coneCpuInput) {
+    dom.coneCpuInput.checked = Boolean(cpu);
+  }
+  syncConeEngineButton();
+  hooks.schedulePersistParamsState?.();
+  recomputeConeAfterEngineChange();
+}
+
+function recomputeConeAfterEngineChange() {
+  if (!hooks?.isGlideConesEnabled?.()) {
+    return;
+  }
+  // Prefer schedule* so pending is set; if a run is in flight it requests stop
+  // and endComputeSession flushes the pending recompute with the new engine.
+  if (hooks.isAutoParamsMode?.()) {
+    hooks.scheduleAutoCompute?.({ debounce: false });
+    return;
+  }
+  if (hooks.isSingleParamsMode?.()) {
+    hooks.scheduleSingleAirportCompute?.(undefined, { debounce: false });
+    return;
+  }
+  if (hooks.isComputing?.()) {
+    hooks.setComputeShouldStop?.(true);
+    return;
+  }
+  void runComputation();
 }
 
 export function startComputeSession() {
@@ -40,7 +109,9 @@ export function endComputeSession() {
 export function requestStopCompute() {
   hooks.setComputeShouldStop(true);
   hooks.stopComputeBtn.disabled = true;
-  hooks.setStatus("Stopping after current GPU step…");
+  hooks.setStatus(
+    coneUseCpu() ? "Stopping after current CPU step…" : "Stopping after current GPU step…"
+  );
 }
 
 function makeComputeOptions(dem, glideParams) {
@@ -52,6 +123,7 @@ function makeComputeOptions(dem, glideParams) {
 }
 
 function makeComputeProgressHandler(dem, glideParams) {
+  const engineLabel = coneUseCpu() ? "CPU" : "GPU";
   return ({ imageData, iteration, elapsedMs }) => {
     if (
       !glideParams.pathOnly &&
@@ -60,15 +132,16 @@ function makeComputeProgressHandler(dem, glideParams) {
     ) {
       updateOverlay(imageData, dem);
     }
-    hooks.setStatus(`Computing… iter ${iteration}, ${elapsedMs.toFixed(0)} ms GPU`);
+    hooks.setStatus(`Computing… iter ${iteration}, ${elapsedMs.toFixed(0)} ms ${engineLabel}`);
   };
 }
 
 export async function runComputation(seedsOverride = null, { gridBounds = null } = {}) {
+  const useCpu = coneUseCpu();
   if (
     hooks.isComputing() ||
     !hooks.isGlideConesEnabled?.() ||
-    hooks.isComputeHardwareSupported?.() === false
+    (!useCpu && hooks.isComputeHardwareSupported?.() === false)
   ) {
     return;
   }
@@ -97,7 +170,7 @@ export async function runComputation(seedsOverride = null, { gridBounds = null }
     });
 
     if (hooks.getComputeShouldStop()) {
-      hooks.setStatus("Stopped before GPU compute");
+      hooks.setStatus(useCpu ? "Stopped before CPU compute" : "Stopped before GPU compute");
       return;
     }
 
@@ -106,11 +179,22 @@ export async function runComputation(seedsOverride = null, { gridBounds = null }
         ? `, ${dem.airspaces.length} airspace volumes (${dem.airspaceAffectedCells} cells capped)`
         : "";
 
+    const engineLabel = useCpu ? "CPU" : "GPU";
     hooks.setStatus(
-      `Computing ${dem.width}×${dem.height} grid (${dem.tileCount} tiles) on GPU${airspaceNote}…`
+      `Computing ${dem.width}×${dem.height} grid (${dem.tileCount} tiles) on ${engineLabel}${airspaceNote}…`
     );
-    const gpu = await hooks.ensureEngine();
-    const result = await gpu.compute(dem, glideParams, makeComputeOptions(dem, glideParams));
+
+    const computeOptions = makeComputeOptions(dem, glideParams);
+    let result;
+    if (useCpu) {
+      result = await computeUpwardConeCpu(dem, glideParams, computeOptions);
+    } else {
+      const gpu = await hooks.ensureEngine();
+      result = await gpu.compute(dem, glideParams, computeOptions);
+      if (result && !result.engine) {
+        result.engine = "gpu";
+      }
+    }
 
     hooks.setConeState(dem, result, glideParams);
     updateConeVisualization(result, dem, glideParams);
