@@ -131,14 +131,14 @@ import {
   setOpenAipVectorEnabled,
   syncAppMenuUi,
   syncGlideModeCycleButton,
-  applyComputeHardwareUnavailable,
+  applyComputeCapabilities,
   openAppMenu,
   openGlideSettings,
   closeAppMenu,
 } from "./app-menu.js";
 import {
-  COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE,
-  isComputeHardwareSupported,
+  isWebGpuSupported,
+  isWasmSupported,
   probeComputeHardware,
 } from "./capabilities.js";
 import { initIconCh1 } from "./iconch1/iconch1-app.js";
@@ -691,7 +691,8 @@ app.hooks = {
   openGlideSettings,
   closeAppMenu,
   isGlideConesEnabled,
-  isComputeHardwareSupported,
+  isWebGpuSupported,
+  isWasmSupported,
   isIconCh1Enabled,
   getIconChActiveModel,
   toggleIconChActiveModel,
@@ -1394,10 +1395,6 @@ async function ensureEngine() {
 }
 
 function syncOfflineBanner() {
-  if (app.computeHardwareSupported === false) {
-    setStatus(COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE);
-    return;
-  }
   if (navigator.onLine || app.computing || app.cacheDownloadInProgress) {
     return;
   }
@@ -1442,10 +1439,6 @@ app.map.on("load", async () => {
   app.map.on("resize", syncContourLabelSpacing);
   window.addEventListener("resize", syncContourLabelSpacing);
   window.addEventListener("online", () => {
-    if (app.computeHardwareSupported === false) {
-      setStatus(COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE);
-      return;
-    }
     if (!app.computing && !app.cacheDownloadInProgress && !app.cacheSelectMode) {
       setStatus("");
     }
@@ -1470,26 +1463,22 @@ app.map.on("load", async () => {
     );
   }
 
-  let hardwareOk = true;
+  let capabilities = { webgpu: false, wasm: false };
   try {
-    const capabilities = await probeComputeHardware();
-    hardwareOk = capabilities.supported;
-    app.computeHardwareSupported = capabilities.supported;
-    if (!hardwareOk) {
-      console.warn("Compute hardware unavailable", capabilities);
-      applyComputeHardwareUnavailable();
+    capabilities = await probeComputeHardware();
+    if (!capabilities.webgpu || !capabilities.wasm) {
+      console.warn("Partial compute capabilities", capabilities);
     }
+    applyComputeCapabilities(capabilities);
   } catch (error) {
-    hardwareOk = false;
-    app.computeHardwareSupported = false;
-    console.warn("Compute hardware probe failed", error);
-    applyComputeHardwareUnavailable();
+    console.warn("Compute capability probe failed", error);
+    applyComputeCapabilities({ webgpu: false, wasm: false });
   }
 
-  if (hardwareOk && needsStartupCacheMode()) {
+  if (needsStartupCacheMode()) {
     // Keep combined (auto) mode; cache select does not require single.
     app.hooks.enterCacheSelectMode?.();
-  } else if (hardwareOk) {
+  } else {
     const showedOpenAipExpiryDialog = app.hooks.maybeShowOpenAipExpiryDialog?.() ?? false;
     if (
       !showedOpenAipExpiryDialog &&
@@ -1501,21 +1490,18 @@ app.map.on("load", async () => {
     }
   }
 
-  if (!hardwareOk) {
-    setStatus(COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE);
-    return;
-  }
-
-  try {
-    await ensureEngine();
-    if (!app.cacheSelectMode) {
-      setStatus("");
+  if (capabilities.webgpu) {
+    try {
+      await ensureEngine();
+      if (!app.cacheSelectMode) {
+        setStatus("");
+      }
+    } catch (error) {
+      console.error(error);
+      applyComputeCapabilities({ webgpu: false, wasm: capabilities.wasm });
     }
-  } catch (error) {
-    app.computeHardwareSupported = false;
-    applyComputeHardwareUnavailable();
-    setStatus(COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE);
-    console.error(error);
+  } else if (!app.cacheSelectMode) {
+    setStatus("");
   }
 });
 

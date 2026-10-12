@@ -2,22 +2,35 @@ import { assetUrl } from "./asset-url.js";
 import initGrib from "./iconch1/pkg/gribinfo.js";
 import { ensureRegridWasm } from "./iconch1/regrid.js";
 
-export const COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE =
-  "Your device doesn't have the necessary hardware to compute glide cones and iconCH wave forecasts";
-
 /** @type {boolean|null} null until probed */
-let computeHardwareSupported = null;
+let webGpuSupported = null;
+/** @type {boolean|null} null until probed */
+let wasmSupported = null;
 
-export function isComputeHardwareSupported() {
-  return computeHardwareSupported !== false;
+/** WebGPU available for GPU cone/options (CPU path works without it). */
+export function isWebGpuSupported() {
+  return webGpuSupported !== false;
 }
 
-export function getComputeHardwareSupported() {
-  return computeHardwareSupported;
+/** WASM available for IconCH grib/regrid. */
+export function isWasmSupported() {
+  return wasmSupported !== false;
 }
 
-export function markComputeHardwareUnsupported() {
-  computeHardwareSupported = false;
+export function getWebGpuSupported() {
+  return webGpuSupported;
+}
+
+export function getWasmSupported() {
+  return wasmSupported;
+}
+
+export function markWebGpuUnsupported() {
+  webGpuSupported = false;
+}
+
+export function markWasmUnsupported() {
+  wasmSupported = false;
 }
 
 async function probeWebGpu() {
@@ -59,16 +72,10 @@ async function probeWasm() {
   }
 }
 
-/**
- * Probe WebGPU (adapter + device) and both WASM modules.
- * If either fails, compute features should stay disabled.
- */
+/** Probe WebGPU and WASM independently. */
 export async function probeComputeHardware() {
   const [webgpu, wasm] = await Promise.all([probeWebGpu(), probeWasm()]);
-  computeHardwareSupported = webgpu && wasm;
-  return {
-    supported: computeHardwareSupported,
-    webgpu,
-    wasm,
-  };
+  webGpuSupported = webgpu;
+  wasmSupported = wasm;
+  return { webgpu, wasm };
 }

@@ -14,11 +14,7 @@ import {
 } from "./map/basemap-preview-icons.js";
 import { assetUrl } from "./asset-url.js";
 import { bindLongPress } from "./ui/long-press.js";
-import {
-  COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE,
-  isComputeHardwareSupported,
-  markComputeHardwareUnsupported,
-} from "./capabilities.js";
+import { isWasmSupported, isWebGpuSupported } from "./capabilities.js";
 
 const GLIDE_MODE_CYCLE = ["auto", "single", "none"];
 const GLIDE_MODE_ICONS = {
@@ -217,8 +213,7 @@ export function syncGlideModeCycleButton() {
   if (!btn || !img) {
     return;
   }
-  const hide =
-    Boolean(app.cacheSelectMode) || app.computeHardwareSupported === false;
+  const hide = Boolean(app.cacheSelectMode);
   btn.hidden = hide;
   if (hide) {
     hooks.syncConeEngineButton?.();
@@ -338,9 +333,6 @@ export function setGradientSettingsOpen(open) {
 }
 
 export function setGlideConesEnabled(enabled) {
-  if (enabled && !isComputeHardwareSupported()) {
-    return;
-  }
   if (app.glideConesEnabled === enabled) {
     return;
   }
@@ -372,7 +364,7 @@ export function toggleIconChActiveModel() {
 }
 
 export function setIconChActiveModel(modelId) {
-  if (modelId && !isComputeHardwareSupported()) {
+  if (modelId && !isWasmSupported()) {
     return;
   }
   if (app.iconChActiveModel === modelId) {
@@ -389,24 +381,45 @@ export function setIconChActiveModel(modelId) {
   syncAppMenuUi();
 }
 
-export function applyComputeHardwareUnavailable() {
-  markComputeHardwareUnsupported();
-  app.computeHardwareSupported = false;
-  setGlideConesEnabled(false);
-  setIconChActiveModel(null);
-  if (dom.capabilityWarningEl) {
-    dom.capabilityWarningEl.textContent = COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE;
-    dom.capabilityWarningEl.hidden = false;
+/** Apply probed capabilities: force CPU without WebGPU; hide IconCH without WASM. */
+export function applyComputeCapabilities({ webgpu, wasm }) {
+  app.webGpuSupported = webgpu;
+  app.wasmSupported = wasm;
+  if (!webgpu) {
+    if (dom.coneCpuInput) {
+      dom.coneCpuInput.checked = true;
+      dom.coneCpuInput.disabled = true;
+    }
+    if (dom.optionsCpuInput) {
+      dom.optionsCpuInput.checked = true;
+      dom.optionsCpuInput.disabled = true;
+    }
+    hooks.syncConeEngineButton?.();
+    hooks.syncOptionsEngineButton?.();
+  } else {
+    if (dom.coneCpuInput) {
+      dom.coneCpuInput.disabled = false;
+    }
+    if (dom.optionsCpuInput) {
+      dom.optionsCpuInput.disabled = false;
+    }
   }
-  hooks.setStatus?.(COMPUTE_HARDWARE_UNAVAILABLE_MESSAGE);
+  if (!wasm) {
+    setIconChActiveModel(null);
+  }
+  if (dom.capabilityWarningEl) {
+    dom.capabilityWarningEl.hidden = true;
+  }
   syncAppMenuUi();
 }
 
 export function syncAppMenuUi() {
-  const hardwareOk = app.computeHardwareSupported !== false;
+  const webgpuOk = app.webGpuSupported !== false;
+  const wasmOk = app.wasmSupported !== false;
   document.body.classList.toggle("app-menu-open", app.appMenuOpen);
   document.body.classList.toggle("glidecones-disabled", !app.glideConesEnabled);
-  document.body.classList.toggle("compute-hardware-unavailable", !hardwareOk);
+  document.body.classList.toggle("webgpu-unavailable", !webgpuOk);
+  document.body.classList.toggle("wasm-unavailable", !wasmOk);
   document.body.classList.toggle(
     "basemap-raster-enabled",
     app.baseMapRaster === "osm" ||
@@ -426,18 +439,18 @@ export function syncAppMenuUi() {
   }
 
   if (dom.glideconesSection) {
-    dom.glideconesSection.hidden = !hardwareOk;
-  }
-  if (dom.iconCh1Section) {
-    dom.iconCh1Section.hidden = !hardwareOk;
+    dom.glideconesSection.hidden = false;
   }
   if (dom.glideconesDivider) {
-    dom.glideconesDivider.hidden = !hardwareOk;
+    dom.glideconesDivider.hidden = false;
+  }
+  if (dom.iconCh1Section) {
+    dom.iconCh1Section.hidden = !wasmOk;
   }
   if (dom.iconchDivider) {
-    dom.iconchDivider.hidden = !hardwareOk;
+    dom.iconchDivider.hidden = !wasmOk;
   }
-  if (dom.capabilityWarningEl && hardwareOk) {
+  if (dom.capabilityWarningEl) {
     dom.capabilityWarningEl.hidden = true;
   }
 
@@ -489,7 +502,7 @@ export function syncAppMenuUi() {
   }
   dom.iconChSettingsBtn?.setAttribute("aria-expanded", String(app.iconChSettingsOpen));
 
-  const iconChChromeHidden = !hardwareOk || !app.iconChActiveModel;
+  const iconChChromeHidden = !wasmOk || !app.iconChActiveModel;
   if (dom.iconCh1TimeHeader) {
     dom.iconCh1TimeHeader.hidden = iconChChromeHidden;
   }

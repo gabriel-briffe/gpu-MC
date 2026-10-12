@@ -1622,7 +1622,7 @@ export function initIconCh1(h, domRefs) {
 }
 
 export async function startIconCh1() {
-  if (!hooks.isIconCh1Enabled?.() || hooks.isComputeHardwareSupported?.() === false) {
+  if (!hooks.isIconCh1Enabled?.() || hooks.isWasmSupported?.() === false) {
     debugLog("startIconCh1 skipped — disabled");
     return;
   }

@@ -37,8 +37,7 @@ function syncOptionsEngineButton() {
   if (!button) {
     return;
   }
-  const hide =
-    Boolean(app?.cacheSelectMode) || app?.computeHardwareSupported === false;
+  const hide = Boolean(app?.cacheSelectMode) || app?.webGpuSupported === false;
   button.hidden = hide;
   if (hide) {
     return;
@@ -540,7 +539,7 @@ function preferShader() {
   if (isDebugMode()) {
     return downwardMethod() === "shader";
   }
-  return app?.computeHardwareSupported !== false && Boolean(app?.engine?.computeDownward);
+  return app?.webGpuSupported !== false && Boolean(app?.engine?.computeDownward);
 }
 
 function gridIndexLngLat(gi, gj, dem) {

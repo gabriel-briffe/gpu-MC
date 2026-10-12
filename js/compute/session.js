@@ -34,7 +34,8 @@ function syncConeEngineButton() {
   if (!button) {
     return;
   }
-  const hide = Boolean(hooks?.app?.cacheSelectMode);
+  const hide =
+    Boolean(hooks?.app?.cacheSelectMode) || hooks?.app?.webGpuSupported === false;
   button.hidden = hide;
   if (hide) {
     return;
@@ -143,7 +144,7 @@ export async function runComputation(seedsOverride = null, { gridBounds = null }
   if (
     hooks.isComputing() ||
     !hooks.isGlideConesEnabled?.() ||
-    (!useCpu && hooks.isComputeHardwareSupported?.() === false)
+    (!useCpu && hooks.isWebGpuSupported?.() === false)
   ) {
     return;
   }
