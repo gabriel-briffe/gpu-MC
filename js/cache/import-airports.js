@@ -57,12 +57,18 @@ function parseCupLine(line) {
   return fields;
 }
 
+// CUP style codes that are airports/airfields (SeeYou/XCSoar):
+// 2 = grass runway, 4 = gliding airfield, 5 = solid runway
+const AIRPORT_STYLES = new Set([2, 4, 5]);
+
 export function parseOpenAipCup(text) {
   const lines = text.split(/\r?\n/).filter((l) => l.trim() && !l.startsWith("name,"));
   const airports = [];
   for (const line of lines) {
     const f = parseCupLine(line);
-    if (f.length < 5) continue;
+    if (f.length < 7) continue;
+    const style = parseInt(f[6], 10);
+    if (!AIRPORT_STYLES.has(style)) continue;
     const name = f[0]?.replace(/^"|"$/g, "").trim() || "";
     const code = f[1]?.replace(/^"|"$/g, "").trim() || "";
     const country = f[2]?.trim() || "";

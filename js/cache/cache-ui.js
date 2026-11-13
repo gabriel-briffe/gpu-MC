@@ -30,7 +30,6 @@ let app;
 export function initCacheUi(h) {
   hooks = h;
   app = h.app;
-  console.log("initCacheUi importAirportsBtn:", !!h.importAirportsBtn, "dialog:", !!h.importAirportsDialog);
   initOpenAipExpiryUi(h);
   hooks.getCacheSelectMode = () => app.cacheSelectMode;
   hooks.enterCacheSelectMode = enterCacheSelectMode;
