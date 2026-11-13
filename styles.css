@@ -265,7 +265,7 @@
       .cache-clear-dialog {
         position: fixed;
         inset: 0;
-        z-index: 6;
+        z-index: 40;
         display: flex;
         align-items: center;
         justify-content: center;

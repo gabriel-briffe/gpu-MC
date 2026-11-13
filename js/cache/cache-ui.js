@@ -460,17 +460,25 @@ function renderImportAirportsList() {
 function openImportAirportsDialog() {
   closeCacheDownloadDialog();
   closeCacheClearDialog();
-  if (hooks.importAirportsDialog) {
-    hooks.importAirportsDialog.hidden = false;
+  const dlg = hooks.importAirportsDialog;
+  if (!dlg) {
+    console.error("import-airports-dialog element not found");
+    alert("Import airports dialog not found in page");
+    return;
   }
+  dlg.hidden = false;
+  dlg.style.zIndex = "40";
   if (hooks.importAirportsSearch) {
     hooks.importAirportsSearch.value = "";
-    hooks.importAirportsSearch.focus();
   }
   if (hooks.importAirportsStatus) {
     hooks.importAirportsStatus.textContent = "";
   }
   renderImportAirportsList();
+  const list = hooks.importAirportsList;
+  if (list && list.children.length === 0) {
+    list.textContent = "No countries loaded";
+  }
 }
 
 function closeImportAirportsDialog() {
