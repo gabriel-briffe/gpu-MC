@@ -22,7 +22,9 @@ import {
   OPENAIP_COUNTRY_CODES,
   fetchAndParseOpenAipCountry,
 } from "./import-airports.js";
-import { setOpenAipCache, getCachedAirspaces } from "./cell-store.js";
+import { setOpenAipCache, getCachedAirspaces, getCachedAirports } from "./cell-store.js";
+
+const selectedAirportCountries = new Set();
 
 let hooks;
 let app;
@@ -58,6 +60,7 @@ export function initCacheUi(h) {
   hooks.importAirportsCancelBtn?.addEventListener("click", closeImportAirportsDialog);
   hooks.importAirportsDialogBackdrop?.addEventListener("click", closeImportAirportsDialog);
   hooks.importAirportsSearch?.addEventListener("input", renderImportAirportsList);
+  hooks.importAirportsConfirmBtn?.addEventListener("click", () => void importSelectedAirports());
 
   hooks.clearCacheDataBtn?.addEventListener("click", () => {
     void openCacheClearDialog();
@@ -302,7 +305,7 @@ function closeCacheClearDialog() {
 
 function readCacheDownloadOptions() {
   return {
-    tiles: hooks.cacheDownloadTilesInput?.checked === true,
+    tiles: true,
     airports: false,
     airspace: false,
   };
@@ -390,7 +393,7 @@ async function runClearOpenAipData() {
     hooks.clearComputeResults?.();
     closeCacheClearDialog();
     await refreshAfterCacheMutation(
-      "OpenAIP data cleared — hit Cache to refresh airports and airspace"
+      "Airports cleared"
     );
   });
 }
@@ -447,14 +450,32 @@ function renderImportAirportsList() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "action-btn";
-    btn.style.cssText = "display:block;width:100%;text-align:left;margin:2px 0;";
-    btn.textContent = `${code} — ${name}`;
-    btn.addEventListener("click", () => void importCountryAirports(code, name));
+    const selected = selectedAirportCountries.has(code);
+    btn.style.cssText = `display:block;width:100%;text-align:left;margin:2px 0;${selected ? "background:#2a6;" : ""}`;
+    btn.textContent = `${selected ? "✓ " : ""}${code} — ${name}`;
+    btn.addEventListener("click", () => {
+      if (selectedAirportCountries.has(code)) {
+        selectedAirportCountries.delete(code);
+      } else {
+        selectedAirportCountries.add(code);
+      }
+      renderImportAirportsList();
+      updateImportConfirmButton();
+    });
     list.appendChild(btn);
   }
   if (items.length === 0) {
     list.textContent = "No matches";
   }
+  updateImportConfirmButton();
+}
+
+function updateImportConfirmButton() {
+  const btn = hooks.importAirportsConfirmBtn;
+  if (!btn) return;
+  const n = selectedAirportCountries.size;
+  btn.disabled = n === 0;
+  btn.textContent = n === 0 ? "Import selected" : `Import selected (${n})`;
 }
 
 function openImportAirportsDialog() {
@@ -487,28 +508,43 @@ function closeImportAirportsDialog() {
   }
 }
 
-async function importCountryAirports(code, name) {
+async function importSelectedAirports() {
+  const codes = [...selectedAirportCountries];
+  if (codes.length === 0) return;
   if (hooks.importAirportsStatus) {
-    hooks.importAirportsStatus.textContent = `Downloading ${code} — ${name}…`;
+    hooks.importAirportsStatus.textContent = `Downloading ${codes.length} countries…`;
+  }
+  if (hooks.importAirportsConfirmBtn) {
+    hooks.importAirportsConfirmBtn.disabled = true;
   }
   try {
-    const airports = await fetchAndParseOpenAipCountry(code);
+    const allAirports = [];
+    for (const code of codes) {
+      const name = countryLabel(code);
+      if (hooks.importAirportsStatus) {
+        hooks.importAirportsStatus.textContent = `Downloading ${code} — ${name}…`;
+      }
+      const airports = await fetchAndParseOpenAipCountry(code);
+      allAirports.push(...airports);
+    }
     const existingAirspaces = getCachedAirspaces();
     setOpenAipCache({
-      airports,
+      airports: allAirports,
       airspaces: existingAirspaces,
-      airportFetches: 1,
+      airportFetches: codes.length,
       airspaceFetches: 0,
     });
+    selectedAirportCountries.clear();
     closeImportAirportsDialog();
     await refreshAfterCacheMutation(
-      `Imported ${airports.length} airports from ${code} (${name})`
+      `Imported ${allAirports.length} airports from ${codes.length} countries`
     );
   } catch (error) {
     if (hooks.importAirportsStatus) {
       hooks.importAirportsStatus.textContent = `Import failed: ${error.message}`;
     }
     console.error(error);
+    updateImportConfirmButton();
   }
 }
 

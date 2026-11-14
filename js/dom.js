@@ -162,6 +162,7 @@ export const dom = {
   importAirportsList: document.getElementById("import-airports-list"),
   importAirportsStatus: document.getElementById("import-airports-status"),
   importAirportsCancelBtn: document.getElementById("import-airports-cancel-btn"),
+  importAirportsConfirmBtn: document.getElementById("import-airports-confirm-btn"),
   cacheDownloadConfirmBtn: document.getElementById("cache-download-confirm-btn"),
   cacheDownloadCancelBtn: document.getElementById("cache-download-cancel-btn"),
   cacheClearDialog: document.getElementById("cache-clear-dialog"),

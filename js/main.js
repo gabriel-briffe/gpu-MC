@@ -789,6 +789,7 @@ app.hooks = {
   importAirportsList: dom.importAirportsList,
   importAirportsStatus: dom.importAirportsStatus,
   importAirportsCancelBtn: dom.importAirportsCancelBtn,
+  importAirportsConfirmBtn: dom.importAirportsConfirmBtn,
   cacheClearDialog,
   cacheClearDialogBackdrop,
   cacheClearOpenAipDesc,

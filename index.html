@@ -97,18 +97,12 @@
         aria-modal="true"
       >
         <h2 id="cache-download-dialog-title" class="cache-clear-dialog-title">Cache</h2>
-        <p class="cache-clear-desc">Choose what to download for the selected cells.</p>
-        <div class="cache-clear-section cache-download-options">
-          <label class="param-check" for="cache-download-tiles">
-            <input id="cache-download-tiles" type="checkbox" checked />
-            <span>Tiles</span>
-          </label>
-        </div>
+        <p class="cache-clear-desc">Download terrain tiles for the selected cells.</p>
         <button type="button" class="action-btn btn-blue" id="import-airports-btn">
           Import airports
         </button>
         <button type="button" class="action-btn btn-green" id="cache-download-confirm-btn">
-          Cache
+          Import terrain
         </button>
         <button type="button" class="action-btn" id="cache-download-cancel-btn">Cancel</button>
       </div>
@@ -123,7 +117,7 @@
         aria-modal="true"
       >
         <h2 id="import-airports-dialog-title" class="cache-clear-dialog-title">Import airports</h2>
-        <p class="cache-clear-desc">Select a country OpenAIP waypoint file from XCSoar.</p>
+        <p class="cache-clear-desc">Select one or more countries, then import.</p>
         <input
           type="search"
           id="import-airports-search"
@@ -133,6 +127,7 @@
         />
         <div id="import-airports-list" class="manual-airport-list" style="max-height: 50vh; overflow: auto; margin-top: 8px;"></div>
         <p id="import-airports-status" class="map-select-status" style="margin-top: 8px;"></p>
+        <button type="button" class="action-btn btn-green" id="import-airports-confirm-btn">Import selected</button>
         <button type="button" class="action-btn" id="import-airports-cancel-btn">Cancel</button>
       </div>
     </div>
@@ -149,7 +144,7 @@
         <div class="cache-clear-section">
           <p id="cache-clear-openaip-desc" class="cache-clear-desc">OpenAIP data: …</p>
           <button type="button" class="action-btn btn-red" id="cache-clear-openaip-btn">
-            Clear airports and prohibited airspace
+            Clear airports
           </button>
         </div>
         <div class="cache-clear-section">
