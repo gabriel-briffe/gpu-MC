@@ -269,10 +269,9 @@ async function syncCacheClearDialogStats() {
   const selectedCount = hooks.getSelectedCacheCells().size;
 
   if (hooks.cacheClearOpenAipDesc) {
-    const expiry = formatDaysUntilExpiry(daysUntilOpenAipExpiry());
     hooks.cacheClearOpenAipDesc.textContent = hasOpenAipCacheData()
-      ? `OpenAIP data: ${formatCacheBytes(openAipBytes)}, ${expiry}`
-      : "OpenAIP data: none cached";
+      ? `Airports: ${formatCacheBytes(openAipBytes)}`
+      : "Airports: none cached";
   }
   if (hooks.cacheClearTerrainDesc) {
     hooks.cacheClearTerrainDesc.textContent =

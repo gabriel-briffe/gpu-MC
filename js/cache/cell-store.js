@@ -13,8 +13,8 @@ let lastCachedCellKeys = [];
  */
 let openAipCache = null;
 
-export function isOpenAipCacheFresh(now = Date.now()) {
-  return openAipCache != null && now - openAipCache.fetchedAt < CACHE_CELL_TTL_MS;
+export function isOpenAipCacheFresh(_now = Date.now()) {
+  return openAipCache != null;
 }
 
 function openAipStoragePayload() {
@@ -185,15 +185,8 @@ export function estimateOpenAipCacheBytes() {
   return estimatePayloadBytes(openAipCache.airports, openAipCache.airspaces);
 }
 
-export function daysUntilOpenAipExpiry(now = Date.now()) {
-  if (!openAipCache || !Number.isFinite(openAipCache.fetchedAt)) {
-    return null;
-  }
-  if (!isOpenAipCacheFresh(now)) {
-    return 0;
-  }
-  const remaining = CACHE_CELL_TTL_MS - (now - openAipCache.fetchedAt);
-  return Math.max(0, Math.ceil(remaining / (24 * 60 * 60 * 1000)));
+export function daysUntilOpenAipExpiry(_now = Date.now()) {
+  return null;
 }
 
 /** True when a shared OpenAIP payload is loaded (clearable), even if empty arrays. */
@@ -201,9 +194,8 @@ export function hasOpenAipCacheData() {
   return openAipCache != null;
 }
 
-export function shouldWarnOpenAipExpiry(warnDays = 6, now = Date.now()) {
-  const days = daysUntilOpenAipExpiry(now);
-  return days !== null && days < warnDays;
+export function shouldWarnOpenAipExpiry(_warnDays = 6, _now = Date.now()) {
+  return false;
 }
 
 /** Drop OpenAIP payloads; keeps lastCachedCellKeys for re-selection. */
